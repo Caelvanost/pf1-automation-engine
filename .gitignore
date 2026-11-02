@@ -1,0 +1,12 @@
+# Archives générées par build_release.ps1
+/dist/
+*.zip
+
+# Dépendances et caches de développement
+/node_modules/
+/coverage/
+/.cache/
+.vscode/
+.idea/
+*.log
+.DS_Store

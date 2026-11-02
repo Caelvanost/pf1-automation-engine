@@ -3,7 +3,7 @@
  * Les copies sont marquées et supprimées par ce module uniquement.
  * Les requêtes joueurs sont validées et exécutées par le MJ principal.
  */
-const MODULE = 'pf1-combat-automation';
+const MODULE = 'pf1-automation-engine';
 const SOCKET = `module.${MODULE}`;
 const SCOPE = MODULE;
 const STATE_KEY = 'managedEffects';
@@ -31,6 +31,7 @@ function combatantFor(combat, actor, requestedId) {
 }
 async function runRequest(data, requester) {
   if (!isPrimaryGM()) return;
+  if (game.modules.get('pf1-combat-automation')?.active) throw Error('Désactiver l’ancien module avant d’utiliser le nouveau.');
   if (!data || !['start','stop'].includes(data.op) || !isValidKey(data.key)) throw Error('Requête ou clé invalide.');
   const source = await resolveActor(data.sourceUuid);
   if (!source || !canOwn(requester, source)) throw Error('Accès refusé à l’acteur source.');
@@ -117,7 +118,7 @@ function publicRequest(op, { actor, key, templateEffectId, targets, durationTurn
 
 Hooks.once('ready', () => {
   const module = game.modules.get(MODULE);
-  module.api = {
+  module.api = { ...(module.api ?? {}),
     startEffect: options => publicRequest('start', options),
     stopEffect: options => publicRequest('stop', options)
   };

@@ -1,0 +1,52 @@
+name: Build Foundry ZIP
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build ZIP with Windows PowerShell
+        shell: powershell
+        run: .\build_release.ps1
+
+      - name: Test generic discovery and migration
+        shell: powershell
+        run: |
+          node tests/discovery.test.cjs
+          node tests/migration.test.cjs
+          node tests/neutrality.test.cjs
+
+      - name: Validate Foundry package
+        shell: powershell
+        run: |
+          $zips = @(Get-ChildItem -Path .\dist -Filter '*.zip' -File)
+          if ($zips.Count -ne 1) { throw "Expected exactly one ZIP, found $($zips.Count)." }
+          Add-Type -AssemblyName System.IO.Compression
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zips[0].FullName)
+          try {
+            if ($null -eq $archive.GetEntry('module.json')) { throw 'module.json is not at ZIP root.' }
+            if ($null -ne $archive.GetEntry('scripts/combat-hooks.js')) { throw 'Removed class-specific combat hook still packaged.' }
+            if ($null -ne $archive.GetEntry('macros/enregistrer-cold-adaptation.js')) { throw 'Removed class-specific example macro still packaged.' }
+            if (@($archive.Entries | Where-Object { $_.FullName -match '^(\.git|tests|tools)/' }).Count -gt 0) {
+              throw 'Development files leaked into release ZIP.'
+            }
+          } finally {
+            $archive.Dispose()
+          }
+
+      - name: Upload installable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: pf1-automation-engine-foundry-zip
+          path: dist/*.zip
+          if-no-files-found: error

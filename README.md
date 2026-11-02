@@ -1,5 +1,50 @@
 # PF1 Automation Engine
 
-Module Foundry VTT v13 / Pathfinder 1e.
+Foundry VTT v13.351 · Pathfinder 1e 11.11
 
-Le nom affiché est « PF1 Automation Engine » ; l’identifiant technique `pf1-combat-automation` est conservé pour préserver les macros et données existantes.
+**Version 1.5.1 : moteur universel, nettoyage des éléments spécifiques aux classes.**
+
+L’ancien identifiant `pf1-combat-automation` n’est plus utilisé par le module. Le nouveau dossier d’installation doit impérativement être `Data/modules/pf1-automation-engine/`.
+
+**Avant l’installation :** sauvegarder le monde, désactiver l’ancien module, extraire le ZIP dans le nouveau dossier, puis activer PF1 Automation Engine. Seul le MJ principal copie les paramètres et flags historiques au premier chargement. Les anciens enregistrements sont conservés pour le retour arrière.
+
+Voir [MIGRATION-V1.5.md](MIGRATION-V1.5.md) pour les consignes détaillées et les limitations concernant les références codées dans les capacités PF1.
+
+## Construire le ZIP Windows
+
+Depuis la racine du dépôt :
+
+```powershell
+.\build_release.bat
+```
+
+Ou directement :
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_release.ps1
+```
+
+L’archive est produite sous `dist/pf1-automation-engine-v1.5.1.zip`. Le numéro de version provient de `module.json`. Le script exclut les fichiers Git et les outils de développement, vérifie les chemins du manifeste et contrôle la syntaxe JavaScript si Node.js est installé.
+
+## Tests
+
+```powershell
+node tests/discovery.test.cjs
+node tests/migration.test.cjs
+node tests/neutrality.test.cjs
+```
+
+## Nettoyage v1.5.1
+
+Le script d’expiration propre à une classe et la macro de test correspondante ont été supprimés. Les scripts de classe restent exclusivement dans les fiches PF1. Les expirations doivent être déclarées via le moteur générique (`schedule`) et un script d’objet ; les anciens flags ne sont pas effacés automatiquement.
+
+Voir [CHANGELOG.md](CHANGELOG.md).
+
+## Documentation
+
+- [MIGRATION-V1.5.md](MIGRATION-V1.5.md)
+- [API-DECOUVERTE.md](API-DECOUVERTE.md)
+- [API-GENERIQUE.md](API-GENERIQUE.md)
+- [API-SCRIPTS-OBJET.md](API-SCRIPTS-OBJET.md)
+
+**Les tests d’intégration en multijoueur sous Foundry réel restent à effectuer avant fusion.**

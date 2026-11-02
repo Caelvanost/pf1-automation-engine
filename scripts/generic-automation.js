@@ -1,5 +1,5 @@
 /** Generic persistent automation services. Foundry VTT v13. No class rules. */
-const NS = 'pf1-combat-automation';
+const NS = 'pf1-automation-engine';
 const REG = 'eventRegistry';
 const TIMERS = 'timerRegistry';
 const ENABLED = 'genericEnabled';
@@ -13,7 +13,7 @@ const uid = () => foundry.utils.randomID();
 const log = (...args) => { if (game.settings.get(NS, DEBUG)) console.debug(`${NS} |`, ...args); };
 const primary = () => game.users.filter(u=>u.active && u.isGM).sort((a,b)=>a.id.localeCompare(b.id))[0];
 const leader = () => primary()?.id === game.user.id;
-const enabled = () => game.settings.get(NS, ENABLED);
+const enabled = () => !game.modules.get('pf1-combat-automation')?.active && game.settings.get(NS, ENABLED);
 const getRegistry = () => game.settings.get(NS, REG) ?? [];
 const getTimers = () => game.settings.get(NS, TIMERS) ?? [];
 const obj = v => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -80,6 +80,7 @@ function resolveTarget(item, entry) {
 async function runHandler(entry, ev) {
   const key = entry.id;
   if (activeRuns.has(key)) {log('Récursion évitée',key);return;}
+  if (entry.autoSourceUuid && !await game.modules.get(NS)?.api?.discovery?.stillApproved(entry)) {log('Approbation absente ou périmée',entry.id);return;}
   const item = await fromUuid(entry.itemUuid);
   if (!item || item.documentName !== 'Item') {console.warn(NS,'Item de script introuvable',entry.itemUuid);return;}
   const actor = actorFor(item) ?? (entry.actorUuid ? await fromUuid(entry.actorUuid) : null);
@@ -107,7 +108,9 @@ async function runHandler(entry, ev) {
 async function dispatch(ev) {
   if (!enabled() || !leader()) return;
   if (ev.actorUuid && activeActorRuns.has(ev.actorUuid)) return;
-  const matched = getRegistry().filter(r=>isMatch(r,ev));
+  const discovery = game.modules.get(NS)?.api?.discovery;
+  await discovery?.ensureScanned();
+  const matched = [...getRegistry(), ...(discovery?.listApproved() ?? [])].filter(r=>isMatch(r,ev));
   for (const entry of matched) await appendQueue(entry.id,()=>runHandler(entry,ev));
 }
 function event(type,doc,change={}) {
@@ -118,7 +121,7 @@ function event(type,doc,change={}) {
   return { type, document:doc, documentUuid:doc?.uuid ?? null, actorUuid:a?.uuid ?? null, itemUuid:item?.uuid ?? null, changedPaths:pathsChanged, buffState: type.includes('ActiveEffect') ? (type === 'createActiveEffect' ? 'active' : type === 'deleteActiveEffect' ? 'inactive' : disabled===true ? 'inactive' : disabled===false ? 'active' : null) : null };
 }
 function validateRule(data) {
-  if (!obj(data) || !safeText(data.id,100) || !EVENT_TYPES.has(data.on)) throw Error('Déclaration événement invalide');
+  if (!obj(data) || !safeText(data.id,300) || !EVENT_TYPES.has(data.on)) throw Error('Déclaration événement invalide');
   if (!safeText(data.itemUuid,300) || !(safeText(data.actionId,120) !== safeText(data.scriptId,120))) throw Error('Item et exactement un de actionId/scriptId requis');
   if(data.scriptId && !CATEGORIES[data.scriptCategory]) throw Error('Catégorie de script invalide (use, postUse, afterUse ou toggle)');
   const f = data.filter ?? {};
@@ -174,9 +177,9 @@ async function advanceTimers(combat,prior,current) {
 }
 function install() {
   Hooks.on('updateActor',(doc,change,options)=>{if(options?.[NS]?.skip)return;void dispatch(event('updateActor',doc,change));});
-  Hooks.on('updateItem',(doc,change,options)=>{if(options?.[NS]?.skip)return;void dispatch(event('updateItem',doc,change));});
-  Hooks.on('createItem',(doc,options)=>{if(options?.[NS]?.skip)return;void dispatch(event('createItem',doc));});
-  Hooks.on('deleteItem',(doc,options)=>{if(options?.[NS]?.skip)return;void dispatch(event('deleteItem',doc));});
+  Hooks.on('updateItem',(doc,change,options)=>{if(options?.[NS]?.skip)return;void (async()=>{await game.modules.get(NS)?.api?.discovery?.changedItem(doc);await dispatch(event('updateItem',doc,change));})();});
+  Hooks.on('createItem',(doc,options)=>{if(options?.[NS]?.skip)return;void (async()=>{await game.modules.get(NS)?.api?.discovery?.changedItem(doc,'create');await dispatch(event('createItem',doc));})();});
+  Hooks.on('deleteItem',(doc,options)=>{if(options?.[NS]?.skip)return;void (async()=>{await dispatch(event('deleteItem',doc));await game.modules.get(NS)?.api?.discovery?.changedItem(doc,'delete');})();});
   for (const name of ['createActiveEffect','updateActiveEffect','deleteActiveEffect']) Hooks.on(name,(doc,changeOrOptions,options)=>{if((options??changeOrOptions)?.[NS]?.skip)return;void dispatch(event(name,doc,name==='updateActiveEffect'?changeOrOptions:{}));});
   Hooks.on('combatTurnChange',(combat,prior,current)=>{void advanceTimers(combat,prior,current);void dispatch({type:'combatTurnChange',documentUuid:combat.uuid,actorUuid:combat.combatants.get(prior.combatantId)?.actor?.uuid??null,itemUuid:null,changedPaths:['round','turn'],round:current.round,combatId:combat.id,combatantId:prior.combatantId,buffState:null});});
   Hooks.on('deleteCombat',async combat=>{if(!enabled()||!leader())return;const old=getTimers();if(old.some(t=>t.combatId===combat.id))await game.settings.set(NS,TIMERS,old.filter(t=>t.combatId!==combat.id));});
@@ -188,8 +191,11 @@ Hooks.once('init',()=>{
   game.settings.register(NS,TIMERS,{scope:'world',config:false,type:Array,default:[]});
   install();
 });
-Hooks.once('ready',()=>{
+Hooks.once('ready',async()=>{
   game.modules.get(NS).api ??= {};
-  game.modules.get(NS).api.generic = Object.freeze({register,unregister,schedule,cancelTimer,listEvents:()=>clone(getRegistry()),listTimers:()=>clone(getTimers()),isLeader:leader});
+  game.modules.get(NS).api.generic = Object.freeze({register,unregister,schedule,cancelTimer,listEvents:()=>clone(getRegistry()),listTimers:()=>clone(getTimers()),isLeader:leader,validateRule,validateTarget:async r=>{const i=await fromUuid(r.itemUuid);if(i?.documentName!=='Item')throw Error('Objet de script introuvable');return resolveTarget(i,r);}});
+  try { await game.modules.get(NS).api.migration?.whenReady(); }
+  catch(error) { console.error(`${NS} | Automatisations suspendues : échec de migration`, error); return; }
+  await game.modules.get(NS).api.discovery?.scan();
   if(leader()&&enabled())void dispatch({type:'ready',documentUuid:null,actorUuid:null,itemUuid:null,changedPaths:[],buffState:null});
 });
