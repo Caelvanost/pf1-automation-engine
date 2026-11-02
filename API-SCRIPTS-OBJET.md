@@ -1,4 +1,4 @@
-# PF1 Combat Automation v1.3.0 — Appels de script d'objet
+# PF1 Automation Engine v1.5.1 — Appels de script d'objet
 
 ## Structure réelle PF1 11.11
 
@@ -7,7 +7,7 @@ Les appels sont stockés sur l'objet dans `item.system.scriptCalls` et exposés 
 ## API
 
 ```js
-const api = game.modules.get('pf1-combat-automation').api.generic;
+const api = game.modules.get('pf1-automation-engine').api.generic;
 await api.register({
   id: 'my-watch', on: 'updateItem',
   itemUuid: 'Actor.XXX.Item.YYY', // objet qui contient le script
@@ -27,13 +27,16 @@ Les variables du script d'objet utilisent le mécanisme natif PF1 : `actor`, `it
 
 ## Installation et validation
 
-1. Faites une sauvegarde du dossier du module 1.2.0 et des données du monde. Remplacez le dossier et redémarrez Foundry v13.351 avec PF1 11.11.
-2. Vérifiez la version 1.3.0 dans la gestion des modules. Vérifiez que la surveillance Gather Power et le gestionnaire d'effets existants continuent à fonctionner.
-3. Dans Cold Adaptation > Avancé > Appel de script > Utiliser, vérifiez la présence d'une unique entrée `Synchroniser`. Sélectionnez le token, puis exécutez en MJ la macro `macros/enregistrer-cold-adaptation.js` (copiez son contenu dans une macro Script).
-4. Modifiez `system.uses.value` sur l'objet Burn. Le script `Synchroniser` doit être appelé une fois sans activer Cold Adaptation comme capacité.
-5. Rechargez F5 sur le MJ : `Synchroniser` doit se relancer lors de `ready`, et les deux entrées doivent rester dans `api.listEvents()`.
-6. Connectez un joueur et un second MJ simultanément. Une seule exécution doit se produire sous le MJ principal (ID le plus petit parmi les MJ actifs). Vérifiez les logs en activant les diagnostics du module ; déconnectez/reconnectez le MJ principal puis rechargez l'autre client.
-7. Vérifiez qu'une mise à jour effectuée par le script lui-même ne crée pas de boucle. Pour diagnostiquer, consultez la console F12.
+1. Sauvegarder le monde. Installer le module dans `Data/modules/pf1-automation-engine`, avec `module.json` à la racine, puis redémarrer Foundry v13.351 avec PF1 11.11.
+2. Vérifier que l’API est disponible : `game.modules.get('pf1-automation-engine').api.generic`.
+3. Dans un objet PF1 de test, créer un appel de script nommé `Synchroniser` sous « Avancé → Appel de script → Utiliser ». Ce script peut simplement écrire un message dans la console ; il ne doit pas lancer de jets ni modifier de ressources pour ce premier test.
+4. Enregistrer avec `api.register()` un déclencheur `updateItem` surveillant `system.uses.value` d’un autre objet, ainsi qu’un déclencheur `ready`, tous deux ciblant le script du premier objet.
+5. Modifier la propriété surveillée : vérifier qu’un seul appel `Synchroniser` survient, sans utilisation de l’objet. Vérifier qu’une propriété non surveillée ne déclenche rien.
+6. Recharger F5 : vérifier que `ready` déclenche le script et que les deux enregistrements persistent dans `api.listEvents()`.
+7. Connecter un joueur puis un second MJ. Vérifier qu’un seul MJ responsable exécute les scripts ; observer la console F12 en cas d’erreur.
+8. Vérifier qu’un script modifiant un document ne provoque pas de boucle de mises à jour.
+
+La macro d’exemple `macros/declaration-automatique-generique.js` illustre l’enregistrement déclaratif avec approbation MJ.
 
 ## Limites
 

@@ -2,43 +2,49 @@
 
 Foundry VTT v13.351 · Pathfinder 1e 11.11
 
-Version de développement **1.4.0** : découverte automatique des déclarations d’automatisation sur les objets PF1 avec **approbation du MJ**. Les scripts de capacité contiennent seuls la logique de classe.
+**Version 1.5.1 : moteur universel, nettoyage des éléments spécifiques aux classes.**
 
-> **Compatibilité** : l’identifiant technique demeure `pf1-combat-automation`, malgré le nouveau nom affiché. L’objectif est de préserver les paramètres, flags et macros installés avec la v1.3.0.
+L’ancien identifiant `pf1-combat-automation` n’est plus utilisé par le module. Le nouveau dossier d’installation doit impérativement être `Data/modules/pf1-automation-engine/`.
 
-Installation : copier le dossier `pf1-combat-automation` dans `FoundryVTT/Data/modules/`, redémarrer puis activer **PF1 Automation Engine**.
+**Avant l’installation :** sauvegarder le monde, désactiver l’ancien module, extraire le ZIP dans le nouveau dossier, puis activer PF1 Automation Engine. Seul le MJ principal copie les paramètres et flags historiques au premier chargement. Les anciens enregistrements sont conservés pour le retour arrière.
 
-Documentation : [API-DECOUVERTE.md](API-DECOUVERTE.md), [API-GENERIQUE.md](API-GENERIQUE.md) et [API-SCRIPTS-OBJET.md](API-SCRIPTS-OBJET.md).
+Voir [MIGRATION-V1.5.md](MIGRATION-V1.5.md) pour les consignes détaillées et les limitations concernant les références codées dans les capacités PF1.
 
-Tests statiques : `node tests/discovery.test.cjs`. Les tests d’intégration dans Foundry restent à faire.
+## Construire le ZIP Windows
 
-## Construire le ZIP installable (Windows)
-
-Depuis la racine du dépôt (PowerShell) :
+Depuis la racine du dépôt :
 
 ```powershell
 .\build_release.bat
 ```
 
-Ou directement avec PowerShell 5.1+ :
+Ou directement :
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_release.ps1
 ```
 
-Le script lit la **version** et l'**identifiant technique** dans `module.json`, contrôle les fichiers référencés et génère `dist/pf1-automation-engine-v1.4.0.zip` (le numéro est adapté à la version du manifeste). Node.js est facultatif : s'il est installé, la syntaxe des sources JavaScript est vérifiée avant la création de l'archive.
+L’archive est produite sous `dist/pf1-automation-engine-v1.5.1.zip`. Le numéro de version provient de `module.json`. Le script exclut les fichiers Git et les outils de développement, vérifie les chemins du manifeste et contrôle la syntaxe JavaScript si Node.js est installé.
 
-Le ZIP contient `module.json` **directement à sa racine**, avec les répertoires d'exécution ; il exclut notamment `.git`, les outils, les tests et les archives précédentes. Pour installer manuellement, **extraire son contenu** dans `FoundryVTT/Data/modules/pf1-combat-automation/` : le dossier doit contenir `module.json` sans niveau supplémentaire. Redémarrer Foundry, puis activer le module. L'identifiant interne historique est volontairement préservé.
-
-Options :
-
-```powershell
-.\build_release.ps1 -OutputDirectory "C:\Temp\Foundry"
-.\build_release.ps1 -SkipSyntaxCheck
-```
-
-Pour lancer des tests Node indépendamment de la création du ZIP :
+## Tests
 
 ```powershell
 node tests/discovery.test.cjs
+node tests/migration.test.cjs
+node tests/neutrality.test.cjs
 ```
+
+## Nettoyage v1.5.1
+
+Le script d’expiration propre à une classe et la macro de test correspondante ont été supprimés. Les scripts de classe restent exclusivement dans les fiches PF1. Les expirations doivent être déclarées via le moteur générique (`schedule`) et un script d’objet ; les anciens flags ne sont pas effacés automatiquement.
+
+Voir [CHANGELOG.md](CHANGELOG.md).
+
+## Documentation
+
+- [MIGRATION-V1.5.md](MIGRATION-V1.5.md)
+- [API-DECOUVERTE.md](API-DECOUVERTE.md)
+- [API-GENERIQUE.md](API-GENERIQUE.md)
+- [API-SCRIPTS-OBJET.md](API-SCRIPTS-OBJET.md)
+
+**Les tests d’intégration en multijoueur sous Foundry réel restent à effectuer avant fusion.**

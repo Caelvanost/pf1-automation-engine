@@ -2,7 +2,7 @@
  * PF1 Automation Engine — approval-gated, generic item declaration discovery.
  * Class-neutral; never evaluates code stored in flags. Only approved PF1 scripts run.
  */
-const DISC_NS = 'pf1-combat-automation'; // Stable technical ID for backwards compatibility.
+const DISC_NS = 'pf1-automation-engine'; // Persistent namespace after v1.5.0 migration.
 const DISC_FLAG = 'automations';
 const DISC_APPROVALS = 'autoApprovals';
 const DISC_ENABLED = 'autoDiscoveryEnabled';
@@ -15,7 +15,7 @@ const discLeader = () => game.users.filter(u => u.active && u.isGM)
 const discLog = (...a) => { if (game.settings.get(DISC_NS, DISC_DEBUG)) console.debug('PF1 Auto Discovery |',...a); };
 const declarations = item => item?.getFlag?.(DISC_NS, DISC_FLAG);
 const isItem = doc => doc?.documentName === 'Item';
-const enabledDiscovery = () => game.settings.get(DISC_NS, DISC_ENABLED) && game.settings.get(DISC_NS, 'genericEnabled');
+const enabledDiscovery = () => !game.modules.get('pf1-combat-automation')?.active && game.settings.get(DISC_NS, DISC_ENABLED) && game.settings.get(DISC_NS, 'genericEnabled');
 const approvals = () => game.settings.get(DISC_NS, DISC_APPROVALS) ?? {};
 function ownItems() {
   const found = new Map();

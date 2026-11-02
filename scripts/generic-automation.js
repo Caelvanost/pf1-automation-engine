@@ -1,5 +1,5 @@
 /** Generic persistent automation services. Foundry VTT v13. No class rules. */
-const NS = 'pf1-combat-automation';
+const NS = 'pf1-automation-engine';
 const REG = 'eventRegistry';
 const TIMERS = 'timerRegistry';
 const ENABLED = 'genericEnabled';
@@ -13,7 +13,7 @@ const uid = () => foundry.utils.randomID();
 const log = (...args) => { if (game.settings.get(NS, DEBUG)) console.debug(`${NS} |`, ...args); };
 const primary = () => game.users.filter(u=>u.active && u.isGM).sort((a,b)=>a.id.localeCompare(b.id))[0];
 const leader = () => primary()?.id === game.user.id;
-const enabled = () => game.settings.get(NS, ENABLED);
+const enabled = () => !game.modules.get('pf1-combat-automation')?.active && game.settings.get(NS, ENABLED);
 const getRegistry = () => game.settings.get(NS, REG) ?? [];
 const getTimers = () => game.settings.get(NS, TIMERS) ?? [];
 const obj = v => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -194,6 +194,8 @@ Hooks.once('init',()=>{
 Hooks.once('ready',async()=>{
   game.modules.get(NS).api ??= {};
   game.modules.get(NS).api.generic = Object.freeze({register,unregister,schedule,cancelTimer,listEvents:()=>clone(getRegistry()),listTimers:()=>clone(getTimers()),isLeader:leader,validateRule,validateTarget:async r=>{const i=await fromUuid(r.itemUuid);if(i?.documentName!=='Item')throw Error('Objet de script introuvable');return resolveTarget(i,r);}});
+  try { await game.modules.get(NS).api.migration?.whenReady(); }
+  catch(error) { console.error(`${NS} | Automatisations suspendues : échec de migration`, error); return; }
   await game.modules.get(NS).api.discovery?.scan();
   if(leader()&&enabled())void dispatch({type:'ready',documentUuid:null,actorUuid:null,itemUuid:null,changedPaths:[],buffState:null});
 });

@@ -6,7 +6,7 @@ const root=require('node:path').join(__dirname,'../scripts');
 const callbacks=new Map();const onceCallbacks=new Map();
 const Hooks={on(name,cb){(callbacks.get(name)||callbacks.set(name,[]).get(name)).push(cb);},once(name,cb){(onceCallbacks.get(name)||onceCallbacks.set(name,[]).get(name)).push(cb);}};
 const emitted=async(name,...args)=>{for(const cb of [...(onceCallbacks.get(name)??[]),...(callbacks.get(name)??[])]) await cb(...args);onceCallbacks.delete(name)};
-const saved=new Map();const modules=new Map([['pf1-combat-automation',{id:'pf1-combat-automation',api:{}}]]);
+const saved=new Map();const modules=new Map([['pf1-automation-engine',{id:'pf1-automation-engine',api:{}}]]);
 let calls=0;
 const actor={uuid:'Actor.A',documentName:'Actor',items:[],getActiveTokens:()=>[],testUserPermission:()=>true};
 const source={uuid:'Actor.A.Item.S',documentName:'Item',name:'passif',actor,system:{scriptCalls:[{_id:'CALL',name:'Synchroniser',category:'use',value:'return 1;'}],actions:[]},getFlag(ns,k){return this.flags?.[ns]?.[k]},flags:{}};
@@ -23,13 +23,13 @@ for(const file of ['auto-discovery.js','generic-automation.js']){
 }
 (async()=>{
  await emitted('init');
- source.flags['pf1-combat-automation']={automations:[
+ source.flags['pf1-automation-engine']={automations:[
   {id:'watch',on:'updateItem',scriptCategory:'use',scriptId:'Synchroniser',filter:{itemUuid:target.uuid,properties:['system.uses.value']}},
   {id:'startup',on:'ready',scriptCategory:'use',scriptId:'Synchroniser'}
  ]};
  await emitted('ready');
  assert.equal(calls,0,'Unapproved declarations must not execute');
- const api=game.modules.get('pf1-combat-automation').api;
+ const api=game.modules.get('pf1-automation-engine').api;
  assert.equal(await api.discovery.approveItem(source.uuid),2);
  await emitted('updateItem',target,{system:{uses:{value:2}}},{});
  await new Promise(r=>setTimeout(r,10));
