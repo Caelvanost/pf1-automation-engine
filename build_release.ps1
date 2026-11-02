@@ -117,11 +117,27 @@ try {
     if (Test-Path -LiteralPath $zipPath -PathType Leaf) {
         Remove-Item -LiteralPath $zipPath -Force
     }
-    # Racine du ZIP : module.json (pas de dossier parent).
-    Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $zipPath -CompressionLevel Optimal -Force
-
+    # Construire directement les entrees avec '/' (portable pour Foundry).
+    # Compress-Archive peut utiliser des separateurs Windows dans les noms.
     Add-Type -AssemblyName System.IO.Compression
     Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zipWriter = [System.IO.Compression.ZipFile]::Open(
+        $zipPath, [System.IO.Compression.ZipArchiveMode]::Create
+    )
+    try {
+        foreach ($file in $files) {
+            $relative = $file.FullName.Substring($repoRoot.Length).TrimStart([char[]]@(92, 47))
+            $entryName = $relative.Replace('\', '/')
+            $stagedFile = Join-Path $staging $relative
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+                $zipWriter, $stagedFile, $entryName,
+                [System.IO.Compression.CompressionLevel]::Optimal
+            ) | Out-Null
+        }
+    } finally {
+        $zipWriter.Dispose()
+    }
+
     $archive = [System.IO.Compression.ZipFile]::OpenRead($zipPath)
     try {
         if ($null -eq $archive.GetEntry('module.json')) {
