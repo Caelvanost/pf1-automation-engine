@@ -7,7 +7,7 @@ Les appels sont stockés sur l'objet dans `item.system.scriptCalls` et exposés 
 ## API
 
 ```js
-const api = game.modules.get('pf1-combat-automation').api.generic;
+const api = game.modules.get('pf1-automation-engine').api.generic;
 await api.register({
   id: 'my-watch', on: 'updateItem',
   itemUuid: 'Actor.XXX.Item.YYY', // objet qui contient le script

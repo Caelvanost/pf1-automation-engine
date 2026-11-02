@@ -1,8 +1,8 @@
 {
-  "id": "pf1-combat-automation",
+  "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "Moteur générique d’automatisations pour Pathfinder 1 : événements, scripts PF1, effets et durées.",
-  "version": "1.4.0",
+  "description": "Moteur générique d’automatisations PF1 avec migration non destructive depuis pf1-combat-automation.",
+  "version": "1.5.0",
   "authors": [
     {
       "name": "Module personnalisé"
@@ -25,6 +25,7 @@
     ]
   },
   "esmodules": [
+    "scripts/module-migration.js",
     "scripts/combat-hooks.js",
     "scripts/effect-manager.js",
     "scripts/auto-discovery.js",

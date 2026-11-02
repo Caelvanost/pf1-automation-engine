@@ -4,7 +4,7 @@ Version visée : Foundry VTT 13.351, Pathfinder 1e 11.11.
 
 ## Compatibilité
 
-Le nom affiché devient **PF1 Automation Engine**. L'identifiant technique reste **`pf1-combat-automation`** pour préserver les flags, paramètres de monde et macros des versions précédentes. Le dépôt GitHub peut s'appeler `pf1-automation-engine` sans renommer cet ID.
+Depuis la v1.5.0, le nom, le dossier Foundry et l'identifiant technique sont **`pf1-automation-engine`**. La migration automatique copie les données de `pf1-combat-automation` lors du premier démarrage sur un monde existant. Ne pas activer les deux modules en même temps.
 
 La v1.4.0 conserve `register`, `unregister`, `schedule`, `cancelTimer`, `listEvents`, `listTimers`, `isLeader`, `startEffect` et `stopEffect` et le fonctionnement des scripts d'objet (`scriptCategory` `use`, `postUse`/`afterUse`, `toggle`).
 
@@ -12,7 +12,7 @@ La v1.4.0 conserve `register`, `unregister`, `schedule`, `cancelTimer`, `listEve
 
 Une capacité ou tout autre Item peut porter **plusieurs** déclarations dans :
 
-`flags.pf1-combat-automation.automations`
+`flags.pf1-automation-engine.automations`
 
 Exemple générique (ne contient **aucune** logique de classe) :
 
@@ -49,7 +49,7 @@ Un joueur propriétaire d'une fiche peut parfois modifier les flags et les scrip
 2. Le MJ **approuve explicitement** l'état des déclarations ET le contenu des scripts cibles :
 
 ```js
-const mod = game.modules.get('pf1-combat-automation');
+const mod = game.modules.get('pf1-automation-engine');
 const item = canvas.tokens.controlled[0].actor.items.getName('Nom de la capacité');
 await mod.api.discovery.approveItem(item.uuid);
 ```
@@ -68,7 +68,7 @@ L'approbation ne constitue pas une isolation de code : le MJ reste responsable d
 ## API de découverte
 
 ```js
-const discovery = game.modules.get('pf1-combat-automation').api.discovery;
+const discovery = game.modules.get('pf1-automation-engine').api.discovery;
 await discovery.scan();                   // rafraîchissement du registre en mémoire
 await discovery.approveItem(item.uuid);  // approbation après vérification par MJ
 await discovery.revokeItem(item.uuid);
@@ -87,7 +87,7 @@ Voir `macros/declaration-automatique-generique.js` pour poser deux règles, les 
 ## Validation
 
 1. Sauvegarder le monde et l'ancienne version. Installer la 1.4.0, puis ouvrir Foundry avec **un seul MJ**.
-2. Vérifier que `game.modules.get('pf1-combat-automation').api.generic` contient les méthodes existantes et que `api.discovery` est présent.
+2. Vérifier que `game.modules.get('pf1-automation-engine').api.generic` contient les méthodes existantes et que `api.discovery` est présent.
 3. Poser les déclarations sur une capacité contenant un script `Synchroniser`, puis appeler `approveItem` en MJ.
 4. Modifier `system.uses.value` de l'objet surveillé et confirmer **une seule** exécution du script. Un changement sur un autre objet ne doit rien déclencher.
 5. F5 : le script déclaré pour `ready` doit s'exécuter, et la surveillance `updateItem` doit être restaurée.

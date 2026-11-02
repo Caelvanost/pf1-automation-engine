@@ -18,6 +18,12 @@ jobs:
         shell: powershell
         run: .\build_release.ps1
 
+      - name: Test generic discovery and migration
+        shell: powershell
+        run: |
+          node tests/discovery.test.cjs
+          node tests/migration.test.cjs
+
       - name: Validate Foundry package
         shell: powershell
         run: |

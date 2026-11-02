@@ -4,7 +4,7 @@ Compatible Foundry VTT 13 / Pathfinder 1. Aucun traitement propre à une classe 
 
 ## Installation
 
-Décompresser `pf1-combat-automation` dans `Data/modules/`, redémarrer Foundry, activer le module.
+Décompresser `pf1-automation-engine` dans `Data/modules/`, redémarrer Foundry, activer le module.
 Les deux fichiers historiques `combat-hooks.js` et `effect-manager.js` sont conservés **sans modification** ; leurs API et flags existants restent disponibles.
 
 Dans Configuration des modules, les options de monde **Activer les automatisations génériques** et **Logs de diagnostic** sont disponibles.
@@ -12,7 +12,7 @@ Dans Configuration des modules, les options de monde **Activer les automatisatio
 ## API
 
 ```js
-const api = game.modules.get('pf1-combat-automation')?.api?.generic;
+const api = game.modules.get('pf1-automation-engine')?.api?.generic;
 ```
 
 Toutes les opérations d'écriture de déclarations (`register`, `unregister`, `schedule`, `cancelTimer`) sont **réservées au MJ principal actif**. C'est volontaire : un script persisté est exécuté avec les permissions de ce MJ. Aucun script ne peut être fourni en clair dans une déclaration. Seul un script d'action enregistré dans un Item existant et validé par un MJ est utilisé. 
@@ -26,7 +26,7 @@ Toutes les opérations d'écriture de déclarations (`register`, `unregister`, `
 
 `on` accepte `updateActor`, `updateItem`, `createItem`, `deleteItem`, `createActiveEffect`, `updateActiveEffect`, `deleteActiveEffect`, `ready`, `combatTurnChange`.
 
-`filter` accepte `actorUuid`, `documentUuid`, `itemUuid`, `tag`, `properties` (tableau de chemins, recherche de préfixe), `buffState` (`active` / `inactive`). Les tags sont les chaînes du flag `flags.pf1-combat-automation.tags` sur le document à surveiller. Pour les buffs PF1 représentés par ActiveEffect, surveiller `createActiveEffect`, `updateActiveEffect` et `deleteActiveEffect`. Si un buff PF1 est représenté par un Item, utiliser `updateItem` et un filtre sur sa propriété d'activation.
+`filter` accepte `actorUuid`, `documentUuid`, `itemUuid`, `tag`, `properties` (tableau de chemins, recherche de préfixe), `buffState` (`active` / `inactive`). Les tags sont les chaînes du flag `flags.pf1-automation-engine.tags` sur le document à surveiller. Pour les buffs PF1 représentés par ActiveEffect, surveiller `createActiveEffect`, `updateActiveEffect` et `deleteActiveEffect`. Si un buff PF1 est représenté par un Item, utiliser `updateItem` et un filtre sur sa propriété d'activation.
 
 Les scripts d'actions doivent être accessibles à partir des entrées de `item.system.actions` et de leur `id`, `_id` ou `name`. Le moteur cherche le texte dans `action.script.command`, `action.script.code`, `action.script`, `action.command`, puis `action.data.script.command`. **La structure interne des actions varie selon la version du système PF1 : vérifier dans la console la structure de l'action réelle avant de déclarer.** Le module signale explicitement les scripts introuvables au lieu de les inventer.
 
@@ -39,7 +39,7 @@ Le code s'exécute avec les variables de contexte : `actor`, `item`, `event`, `a
 Créer dans l'Item de capacité une action script `Synchroniser` et y placer le recalcul voulu. Exécuter une fois par le MJ :
 
 ```js
-const api = game.modules.get('pf1-combat-automation').api.generic;
+const api = game.modules.get('pf1-automation-engine').api.generic;
 const capacite = game.actors.getName('PERSONNAGE').items.getName('CAPACITÉ');
 await api.register({
   id: `passif:${capacite.uuid}`,
@@ -89,7 +89,7 @@ Le script d'action `Expiration` doit restaurer lui-même l'état voulu. Le moteu
 
 - Un MJ principal (plus petit ID parmi les MJ actifs) écrit les registres et exécute les scripts. L'accès en tant que joueur aux écritures des registres n'est pas implémenté dans cette version : le MJ doit enregistrer les abonnements et minuteurs. Cela évite toute exécution arbitraire de scripts de joueurs avec les permissions MJ.
 - Les registres sont stockés dans les paramètres **world** de Foundry, pas dans le navigateur ; ils sont persistants après reconnexion et changement de scène. Les `Actor.uuid` et `Item.uuid` permettent de cibler les acteurs de tokens liés **ou non liés** si leur document existe encore.
-- Un même abonnement ne peut pas réentrer dans son propre script pendant son exécution. Les événements produits par des **abonnements différents** peuvent toutefois se déclencher mutuellement : écrire des scripts idempotents, et passer `{ 'pf1-combat-automation': {skip:true} }` comme options de `update()` lorsque les changements doivent être ignorés par ce moteur.
+- Un même abonnement ne peut pas réentrer dans son propre script pendant son exécution. Les événements produits par des **abonnements différents** peuvent toutefois se déclencher mutuellement : écrire des scripts idempotents, et passer `{ 'pf1-automation-engine': {skip:true} }` comme options de `update()` lorsque les changements doivent être ignorés par ce moteur.
 - Le gestionnaire de scripts ne peut pas garantir l'absence de toute double écriture sous déconnexions/réconnexions simultanées de MJ : les paramètres world ne sont pas transactionnels. En cas de changement de MJ principal au milieu d'une exécution, surveiller les logs.
 - Le moteur ne modifie pas les calculs des capacités et ne garantit pas qu'une action PF1 préexistante expose son script dans un des champs pris en charge ; voir diagnostic navigateur.
 - Les logs détaillés sont désactivés par défaut. Les erreurs de script restent affichées dans la console.

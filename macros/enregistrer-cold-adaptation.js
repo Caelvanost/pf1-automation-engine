@@ -1,8 +1,8 @@
 /** Macro MJ. Sélectionnez le token du cinétiste sur la scène avant exécution.
  * Les noms sont utilisés seulement pour rechercher les Items ; personnalisez si besoin.
  */
-const api = game.modules.get('pf1-combat-automation')?.api?.generic;
-if (!api) throw Error('Activez PF1 Combat Automation 1.3.0.');
+const api = game.modules.get('pf1-automation-engine')?.api?.generic;
+if (!api) throw Error('Activez PF1 Automation Engine 1.5.0.');
 if (!api.isLeader()) throw Error('Exécuter depuis le client MJ principal actif.');
 const actor = canvas.tokens.controlled[0]?.actor;
 if (!actor) throw Error('Sélectionnez le token du personnage.');
