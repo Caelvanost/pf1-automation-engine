@@ -1,3 +1,7 @@
+PF1 Automation Engine v1.4.0 (id technique : pf1-combat-automation)
+
+NOUVEAU : voir API-DECOUVERTE.md pour les déclarations automatiques et l’approbation MJ.
+
 PF1 - Automatisation des combats v1.1.0
 Foundry VTT v13 / Système PF1
 

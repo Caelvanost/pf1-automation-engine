@@ -1,8 +1,8 @@
 {
   "id": "pf1-combat-automation",
-  "title": "PF1 - Automatisation des combats",
-  "description": "Surveillance des tours, effets temporaires et services génériques persistants, sans règles de classe.",
-  "version": "1.3.0",
+  "title": "PF1 Automation Engine",
+  "description": "Moteur générique d’automatisations pour Pathfinder 1 : événements, scripts PF1, effets et durées.",
+  "version": "1.4.0",
   "authors": [
     {
       "name": "Module personnalisé"
@@ -10,19 +10,24 @@
   ],
   "compatibility": {
     "minimum": "13",
-    "verified": "13"
+    "verified": "13.351"
   },
   "relationships": {
     "systems": [
       {
         "id": "pf1",
-        "type": "system"
+        "type": "system",
+        "compatibility": {
+          "minimum": "11.11",
+          "verified": "11.11"
+        }
       }
     ]
   },
   "esmodules": [
     "scripts/combat-hooks.js",
     "scripts/effect-manager.js",
+    "scripts/auto-discovery.js",
     "scripts/generic-automation.js"
   ]
 }

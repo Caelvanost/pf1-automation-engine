@@ -117,7 +117,7 @@ function publicRequest(op, { actor, key, templateEffectId, targets, durationTurn
 
 Hooks.once('ready', () => {
   const module = game.modules.get(MODULE);
-  module.api = {
+  module.api = { ...(module.api ?? {}),
     startEffect: options => publicRequest('start', options),
     stopEffect: options => publicRequest('stop', options)
   };
