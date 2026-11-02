@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "Moteur générique d’automatisations PF1 avec migration non destructive depuis pf1-combat-automation.",
-  "version": "1.5.0",
+  "description": "Moteur générique d’automatisations PF1 : événements, scripts natifs, effets temporaires et découverte approuvée par MJ.",
+  "version": "1.5.1",
   "authors": [
     {
       "name": "Module personnalisé"
@@ -26,7 +26,6 @@
   },
   "esmodules": [
     "scripts/module-migration.js",
-    "scripts/combat-hooks.js",
     "scripts/effect-manager.js",
     "scripts/auto-discovery.js",
     "scripts/generic-automation.js"

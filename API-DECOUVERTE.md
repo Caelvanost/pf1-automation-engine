@@ -1,4 +1,4 @@
-# PF1 Automation Engine v1.4.0 — Déclarations automatiques
+# PF1 Automation Engine v1.5.1 — Déclarations automatiques
 
 Version visée : Foundry VTT 13.351, Pathfinder 1e 11.11.
 
@@ -86,14 +86,14 @@ Voir `macros/declaration-automatique-generique.js` pour poser deux règles, les 
 
 ## Validation
 
-1. Sauvegarder le monde et l'ancienne version. Installer la 1.4.0, puis ouvrir Foundry avec **un seul MJ**.
+1. Sauvegarder le monde et l'ancienne version. Installer la 1.5.1, puis ouvrir Foundry avec **un seul MJ**.
 2. Vérifier que `game.modules.get('pf1-automation-engine').api.generic` contient les méthodes existantes et que `api.discovery` est présent.
 3. Poser les déclarations sur une capacité contenant un script `Synchroniser`, puis appeler `approveItem` en MJ.
 4. Modifier `system.uses.value` de l'objet surveillé et confirmer **une seule** exécution du script. Un changement sur un autre objet ne doit rien déclencher.
 5. F5 : le script déclaré pour `ready` doit s'exécuter, et la surveillance `updateItem` doit être restaurée.
 6. Changer le script `Synchroniser` (sans utiliser l'objet) : il ne doit plus s'exécuter avant une nouvelle approbation.
 7. Ouvrir une session joueur puis un second MJ : seul le MJ principal traite les événements. En cas de changement de leader, vérifier après rechargement.
-8. Tester un token non lié en sélectionnant l'acteur synthétique du token. Tester les fonctions antérieures de Gather Power et des effets temporaires séparément.
+8. Tester un token non lié en sélectionnant l'acteur synthétique du token. Tester également les expirations génériques et le gestionnaire d’effets temporaires.
 
 ## Limites
 

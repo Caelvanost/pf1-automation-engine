@@ -1,4 +1,4 @@
-PF1 AUTOMATION ENGINE v1.5.0
+PF1 AUTOMATION ENGINE v1.5.1
 =================================
 Foundry VTT v13.351 / Pathfinder 1e 11.11
 
@@ -18,3 +18,7 @@ dans les objets ne sont pas réécrits.
 API : game.modules.get('pf1-automation-engine').api
 
 Voir MIGRATION-V1.5.md et API-DECOUVERTE.md pour les instructions.
+
+Depuis v1.5.1 : les anciens hooks et macros spécifiques à une classe
+ont été retirés. Seuls les mécanismes de surveillance génériques
+et les scripts portés par les objets PF1 assurent ces comportements.
