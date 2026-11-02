@@ -2,7 +2,7 @@
 
 Foundry VTT v13.351 · Pathfinder 1e 11.11
 
-**Version 1.5.0 : migration de l’identifiant technique vers `pf1-automation-engine`.**
+**Version 1.5.1 : moteur universel, nettoyage des éléments spécifiques aux classes.**
 
 L’ancien identifiant `pf1-combat-automation` n’est plus utilisé par le module. Le nouveau dossier d’installation doit impérativement être `Data/modules/pf1-automation-engine/`.
 
@@ -24,14 +24,21 @@ Ou directement :
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_release.ps1
 ```
 
-L’archive est produite sous `dist/pf1-automation-engine-v1.5.0.zip`. Le numéro de version provient de `module.json`. Le script exclut les fichiers Git et les outils de développement, vérifie les chemins du manifeste et contrôle la syntaxe JavaScript si Node.js est installé.
+L’archive est produite sous `dist/pf1-automation-engine-v1.5.1.zip`. Le numéro de version provient de `module.json`. Le script exclut les fichiers Git et les outils de développement, vérifie les chemins du manifeste et contrôle la syntaxe JavaScript si Node.js est installé.
 
 ## Tests
 
 ```powershell
 node tests/discovery.test.cjs
 node tests/migration.test.cjs
+node tests/neutrality.test.cjs
 ```
+
+## Nettoyage v1.5.1
+
+Le script d’expiration propre à une classe et la macro de test correspondante ont été supprimés. Les scripts de classe restent exclusivement dans les fiches PF1. Les expirations doivent être déclarées via le moteur générique (`schedule`) et un script d’objet ; les anciens flags ne sont pas effacés automatiquement.
+
+Voir [CHANGELOG.md](CHANGELOG.md).
 
 ## Documentation
 

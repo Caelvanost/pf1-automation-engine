@@ -1,11 +1,11 @@
-# API générique — PF1 Combat Automation 1.2.0
+# API générique — PF1 Automation Engine 1.5.1
 
 Compatible Foundry VTT 13 / Pathfinder 1. Aucun traitement propre à une classe dans `generic-automation.js`.
 
 ## Installation
 
 Décompresser `pf1-automation-engine` dans `Data/modules/`, redémarrer Foundry, activer le module.
-Les deux fichiers historiques `combat-hooks.js` et `effect-manager.js` sont conservés **sans modification** ; leurs API et flags existants restent disponibles.
+Le gestionnaire générique d’effets temporaires `effect-manager.js` reste disponible avec ses API existantes. L’ancien hook de classe `combat-hooks.js` a été retiré à partir de la version 1.5.1 : les expirations propres à une capacité doivent être déclarées dans ses scripts PF1.
 
 Dans Configuration des modules, les options de monde **Activer les automatisations génériques** et **Logs de diagnostic** sont disponibles.
 
@@ -15,7 +15,7 @@ Dans Configuration des modules, les options de monde **Activer les automatisatio
 const api = game.modules.get('pf1-automation-engine')?.api?.generic;
 ```
 
-Toutes les opérations d'écriture de déclarations (`register`, `unregister`, `schedule`, `cancelTimer`) sont **réservées au MJ principal actif**. C'est volontaire : un script persisté est exécuté avec les permissions de ce MJ. Aucun script ne peut être fourni en clair dans une déclaration. Seul un script d'action enregistré dans un Item existant et validé par un MJ est utilisé. 
+Toutes les opérations d'écriture de déclarations (`register`, `unregister`, `schedule`, `cancelTimer`) sont **réservées au MJ principal actif**. C'est volontaire : un script persisté est exécuté avec les permissions de ce MJ. Aucun script ne peut être fourni en clair dans une déclaration. Les scripts exécutés doivent exister sur un Item PF1 et être approuvés par le MJ : scripts d’action (`actionId`) ou appels de script natifs (`scriptCategory`, `scriptId`). 
 
 - `await api.register({ id, on, itemUuid, actionId, actorUuid?, filter? })` : ajoute ou remplace une surveillance persistante.
 - `await api.unregister(id)` : supprime une surveillance.
@@ -27,6 +27,8 @@ Toutes les opérations d'écriture de déclarations (`register`, `unregister`, `
 `on` accepte `updateActor`, `updateItem`, `createItem`, `deleteItem`, `createActiveEffect`, `updateActiveEffect`, `deleteActiveEffect`, `ready`, `combatTurnChange`.
 
 `filter` accepte `actorUuid`, `documentUuid`, `itemUuid`, `tag`, `properties` (tableau de chemins, recherche de préfixe), `buffState` (`active` / `inactive`). Les tags sont les chaînes du flag `flags.pf1-automation-engine.tags` sur le document à surveiller. Pour les buffs PF1 représentés par ActiveEffect, surveiller `createActiveEffect`, `updateActiveEffect` et `deleteActiveEffect`. Si un buff PF1 est représenté par un Item, utiliser `updateItem` et un filtre sur sa propriété d'activation.
+
+Pour exécuter un appel de script natif de l’objet, indiquer `scriptCategory` (`use`, `postUse` / `afterUse` ou `toggle`) et `scriptId` au lieu de `actionId`. Voir `API-SCRIPTS-OBJET.md`.
 
 Les scripts d'actions doivent être accessibles à partir des entrées de `item.system.actions` et de leur `id`, `_id` ou `name`. Le moteur cherche le texte dans `action.script.command`, `action.script.code`, `action.script`, `action.command`, puis `action.data.script.command`. **La structure interne des actions varie selon la version du système PF1 : vérifier dans la console la structure de l'action réelle avant de déclarer.** Le module signale explicitement les scripts introuvables au lieu de les inventer.
 
@@ -79,11 +81,11 @@ Le script d'action `Expiration` doit restaurer lui-même l'état voulu. Le moteu
 
 `rounds` compte les changements de numéro de round et `turns` compte les fins de tour **du combattant choisi**. Le compteur est conservé dans les paramètres du monde après F5. Cela ne correspond pas à une horloge temps réel et requiert des tours avancés normalement. Lors de modifications manuelles du Combat Tracker, les sauts, tours supprimés, changements d'initiative et retours en arrière peuvent demander une correction manuelle : inspecter `listTimers()`.
 
-## Cas de validation, sans règles dans le module
+## Cas de validation génériques
 
-**Cold Adaptation** : placer tout le recalcul de résistance au froid dans une action `Synchroniser` de cette capacité. Surveiller le chemin de ressource effectivement utilisé par votre fiche PF1 (le chemin `system.resources` ci-dessus est illustratif). Surveiller aussi `ready`. Ne pas modifier le calcul dans le moteur.
+**Synchronisation** : placer une entrée `Synchroniser` dans les appels de scripts PF1 de l’objet. Surveiller une propriété d’un autre objet via `updateItem`, et déclarer `ready` pour resynchroniser au chargement. Le comportement métier appartient au script de l’objet.
 
-**Shroud of Water** : placer la restauration initiale de protection dans une action `Expiration`. Déclarer `schedule({unit:'rounds',amount:1,...})` quand la capacité passe en mode temporaire. Ne pas coder le montant de protection ni la règle d'expiration dans le moteur.
+**Expiration** : un script `Expiration` enregistré sur un Item peut être ciblé par un minuteur `schedule({unit:'rounds',amount:1,...})`. Il restaure lui-même l’état voulu ; le moteur ne calcule aucune règle de capacité.
 
 ## Sécurité, limites et diagnostic
 

@@ -23,6 +23,7 @@ jobs:
         run: |
           node tests/discovery.test.cjs
           node tests/migration.test.cjs
+          node tests/neutrality.test.cjs
 
       - name: Validate Foundry package
         shell: powershell
@@ -34,6 +35,8 @@ jobs:
           $archive = [System.IO.Compression.ZipFile]::OpenRead($zips[0].FullName)
           try {
             if ($null -eq $archive.GetEntry('module.json')) { throw 'module.json is not at ZIP root.' }
+            if ($null -ne $archive.GetEntry('scripts/combat-hooks.js')) { throw 'Removed class-specific combat hook still packaged.' }
+            if ($null -ne $archive.GetEntry('macros/enregistrer-cold-adaptation.js')) { throw 'Removed class-specific example macro still packaged.' }
             if (@($archive.Entries | Where-Object { $_.FullName -match '^(\.git|tests|tools)/' }).Count -gt 0) {
               throw 'Development files leaked into release ZIP.'
             }
