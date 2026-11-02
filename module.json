@@ -1,0 +1,28 @@
+{
+  "id": "pf1-combat-automation",
+  "title": "PF1 - Automatisation des combats",
+  "description": "Surveillance des tours, effets temporaires et services génériques persistants, sans règles de classe.",
+  "version": "1.3.0",
+  "authors": [
+    {
+      "name": "Module personnalisé"
+    }
+  ],
+  "compatibility": {
+    "minimum": "13",
+    "verified": "13"
+  },
+  "relationships": {
+    "systems": [
+      {
+        "id": "pf1",
+        "type": "system"
+      }
+    ]
+  },
+  "esmodules": [
+    "scripts/combat-hooks.js",
+    "scripts/effect-manager.js",
+    "scripts/generic-automation.js"
+  ]
+}

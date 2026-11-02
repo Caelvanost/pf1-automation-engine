@@ -1,0 +1,57 @@
+PF1 - Automatisation des combats v1.1.0
+Foundry VTT v13 / Système PF1
+
+INSTALLATION
+1. Décompresser l'archive dans Data/modules (un seul dossier pf1-combat-automation).
+2. Redémarrer Foundry et activer « PF1 - Automatisation des combats ».
+3. Un MJ doit être connecté pour la gestion des effets.
+
+FONCTIONS
+- Gather Power : expiration du flag world.kineticistGatherPower à la fin du tour approprié.
+- Nouveau moteur d'effets : duplique un ActiveEffect modèle existant sur l'acteur source ; les copies peuvent être appliquées à un ou plusieurs acteurs ; seules les copies du module sont supprimées.
+- La durée est comptée en FIN DE TOURS DU PERSONNAGE SOURCE et non en rounds globaux.
+- Les copies sont retirées lorsque le nombre de tours est écoulé, lors d'un arrêt manuel ou à la suppression du combat.
+- Pas de déduction automatique des utilisations de représentation bardique ni des rounds de rage : ces ressources nécessitent un raccordement à la fiche PF1 utilisée.
+
+PRÉPARATION
+Sur le Barde ou le Barbare, créer un ActiveEffect modèle portant les modifications PF1 souhaitées. Il peut être désactivé sur la fiche, puisque le module crée une copie ACTIVE. Relever son ID (_id) depuis les données de l'effet. Attention : vérifier que l'effet comporte des changements valides pour votre version du système PF1.
+
+API depuis une macro script ou une action associée :
+const api = game.modules.get('pf1-combat-automation')?.api;
+
+Exemple : INSPIRATION VAILLANTE (appliquer pendant 3 fins de tour du barde)
+await api.startEffect({
+  actor,                           // Acteur du Barde
+  key: 'inspiration-vaillante',
+  templateEffectId: 'ID_EFFET_MODELE',
+  targets: [actor, ...Array.from(game.user.targets, t => t.actor).filter(Boolean)],
+  durationTurns: 3
+});
+
+Exemple : ARRÊTER LA REPRÉSENTATION
+await api.stopEffect({ actor, key: 'inspiration-vaillante' });
+
+Exemple : RAGE (appliquer pendant 4 fins de tour du barbare)
+await api.startEffect({
+  actor,
+  key: 'rage',
+  templateEffectId: 'ID_EFFET_MODELE_RAGE',
+  targets: [actor],
+  durationTurns: 4
+});
+
+Exemple : FIN IMMÉDIATE DE RAGE
+await api.stopEffect({ actor, key: 'rage' });
+
+LIMITES
+- Une nouvelle activation avec la même clé remplace l'ancienne et renouvelle l'état.
+- Il ne gère pas encore les bonus suivant les alliés mobiles, les cibles qui cessent d'entendre la musique, la Rage post-fin (fatigue), les dégâts reçus pendant Gather Power ni l'extinction des effets lorsqu'on quitte le combat sans le supprimer.
+- Réduire la durée par fin de tour ne remplace pas les règles d'action nécessaires pour démarrer ou entretenir une capacité.
+- Les macros client envoient une demande au MJ connecté pour appliquer les effets ; pour un utilisateur non MJ, l'envoi ne garantit pas à lui seul que le traitement a abouti. Contrôler le résultat sur les fiches.
+
+
+VERSION 1.2.0 : sous-système générique optionnel, voir API-GENERIQUE.md.
+Aucune règle cinétiste, barde ou barbare dans ce nouveau moteur.
+
+
+Version 1.3.0 : prise en charge des appels de script natifs item.system.scriptCalls (use, postUse, toggle). Voir API-SCRIPTS-OBJET.md et macros/enregistrer-cold-adaptation.js.
