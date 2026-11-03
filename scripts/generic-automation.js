@@ -39,7 +39,7 @@ function isMatch(rule, ev) {
   if (f.buffState && f.buffState !== ev.buffState) return false;
   return true;
 }
-function serialize(ev) { return { type:ev.type, actorUuid:ev.actorUuid, itemUuid:ev.itemUuid, documentUuid:ev.documentUuid, changedPaths:ev.changedPaths, buffState:ev.buffState, round:ev.round, combatId:ev.combatId, combatantId:ev.combatantId }; }
+function serialize(ev) { return { type:ev.type, actorUuid:ev.actorUuid, itemUuid:ev.itemUuid, documentUuid:ev.documentUuid, changedPaths:ev.changedPaths, buffState:ev.buffState, round:ev.round, combatId:ev.combatId, combatantId:ev.combatantId, phase:ev.phase ?? null, timing:ev.timing ?? null }; }
 function appendQueue(key, fn) {
   const last = queues.get(key) ?? Promise.resolve();
   const next = last.catch(()=>{}).then(fn);
@@ -155,25 +155,228 @@ function validTimer(data) {
 async function schedule(data) {
   requireGM(); const timer=validTimer(data);
   const item=await fromUuid(timer.itemUuid);if(!item||item.documentName!=='Item')throw Error('Item introuvable');resolveTarget(item,timer);
-  const list=getTimers().filter(t=>t.id!==timer.id);list.push(timer);await game.settings.set(NS,TIMERS,list);return timer.id;
+  return appendQueue('__pf1_timer_write__',async()=>{
+    const list=getTimers().filter(t=>t.id!==timer.id);list.push(timer);
+    await game.settings.set(NS,TIMERS,list);return timer.id;
+  });
 }
-async function cancelTimer(id) {requireGM();await game.settings.set(NS,TIMERS,getTimers().filter(t=>t.id!==id));}
+async function cancelTimer(id) {
+  requireGM();
+  return appendQueue('__pf1_timer_write__',async()=>{
+    const existing=getTimers();
+    if(existing.some(t=>t.id===id)) await game.settings.set(NS,TIMERS,existing.filter(t=>t.id!==id));
+  });
+}
+/**
+ * Turn boundaries (Foundry v13): combatTurnChange is fired AFTER the database update.
+ * We deliberately count combatant IDs, not initiative list indexes, so reordering
+ * initiatives or skipping a defeated combatant doesn't redirect an expiration.
+ *
+ * No PF1 class rules in this file. One timer targets ONE approved script OR ONE
+ * PF1 buff / ActiveEffect document. Writes are GM-only and persistent in TIMERS.
+ */
+const TURN_TIMINGS = new Set(['endOfCurrentTurn','startOfNextTurn','endOfNextTurn','turnStart','turnEnd']);
+const EFFECT_ACTIONS = new Set(['disable','delete']);
+
+function resolveCombat(data) {
+  const combat = data.combatId ? game.combats.get(data.combatId) : game.combat;
+  if (!combat?.started) throw Error('Combat démarré requis pour une expiration en phase de tour.');
+  const combattant = data.combatantId ? combat.combatants.get(data.combatantId) : combat.combatant;
+  if (!combattant) throw Error('Combattant de référence introuvable dans le combat.');
+  return {combat, combattant};
+}
+
+/** Validate that a document is an expirable ActiveEffect or a native PF1 buff. */
+function isExpirable(doc) {
+  return doc?.documentName === 'ActiveEffect' || (doc?.documentName === 'Item' && doc.type === 'buff');
+}
+
+function phaseConfig(timing, combat, combattant, occurrences) {
+  if (!TURN_TIMINGS.has(timing)) throw Error(`Moment d'expiration inconnu : ${timing}`);
+  const active = combat.combatant?.id === combattant.id;
+  if (timing === 'endOfCurrentTurn') {
+    if (!active) throw Error('endOfCurrentTurn exige que le combattant choisi joue actuellement.');
+    return {phase:'turnEnd', amount:1};
+  }
+  if (timing === 'startOfNextTurn') return {phase:'turnStart', amount:1};
+  if (timing === 'endOfNextTurn') return {phase:'turnEnd', amount:active ? 2 : 1};
+  if (!Number.isInteger(occurrences) || occurrences < 1 || occurrences > 10000) {
+    throw Error('occurrences doit être un entier de 1 à 10000.');
+  }
+  return {phase:timing,amount:occurrences};
+}
+
+/**
+ * Schedule a precise start/end boundary for a script callback OR an effect.
+ * - Script: itemUuid + one of actionId or scriptId (+ scriptCategory).
+ * - Effect: effectUuid for a PF1 buff or an ActiveEffect, default disable.
+ * Use an explicit unique id: scheduling the same id replaces the old timer.
+ * The write must originate with the elected GM, never from a player socket.
+ */
+async function scheduleTurn(data) {
+  requireGM();
+  if (!obj(data) || !safeText(data.id,100)) throw Error('Identifiant du minuteur invalide.');
+  const {combat, combattant} = resolveCombat(data);
+  const timing = data.timing ?? 'startOfNextTurn';
+  const {phase,amount} = phaseConfig(timing,combat,combattant,data.occurrences ?? 1);
+  const effectMode = data.effectUuid !== undefined && data.effectUuid !== null;
+  let target;
+  if (effectMode) {
+    if (!safeText(data.effectUuid,400) || data.itemUuid || data.scriptId || data.actionId) {
+      throw Error('Une expiration d’effet exige effectUuid, sans script associé.');
+    }
+    const action=data.effectAction ?? 'disable';
+    if (!EFFECT_ACTIONS.has(action)) throw Error('effectAction inconnu : disable ou delete.');
+    const effect = await fromUuid(data.effectUuid);
+    if (!isExpirable(effect)) throw Error(`Effet temporaire introuvable ou incompatible : ${data.effectUuid}`);
+    if (effect.documentName === 'Item' && action === 'delete') {
+      throw Error('La suppression d’un objet buff est interdite : utiliser effectAction: disable.');
+    }
+    if (!effect.parent || !actorFor(effect)) {
+      throw Error('Effet sans acteur propriétaire : ne pas expirer un modèle d’objet ou de compendium.');
+    }
+    target = {effectUuid:data.effectUuid,effectAction:action};
+  } else {
+    if (!safeText(data.itemUuid,400) || !(safeText(data.actionId,120) !== safeText(data.scriptId,120))) {
+      throw Error('Le minuteur exige effectUuid OU itemUuid et un seul script (actionId/scriptId).');
+    }
+    if (data.scriptId && !CATEGORIES[data.scriptCategory]) throw Error('Catégorie PF1 invalide.');
+    const item = await fromUuid(data.itemUuid);
+    if (item?.documentName !== 'Item') throw Error(`Objet de script introuvable : ${data.itemUuid}`);
+    resolveTarget(item,data);
+    if (!actorFor(item) && !data.actorUuid) throw Error('Le script exige un acteur ou actorUuid.');
+    target = {itemUuid:data.itemUuid,actionId:data.actionId??null,scriptId:data.scriptId??null,
+      scriptCategory:data.scriptCategory??null,actorUuid:normalizeUUID(data.actorUuid)??combattant.actor?.uuid??null};
+  }
+  const timer = {
+    id:data.id,unit:'phase',timing,phase,amount,remaining:amount,
+    combatId:combat.id,combatantId:combattant.id,
+    createdRound:combat.round,createdTurn:combat.turn,
+    lastPosition:`${combat.round}:${combat.turn}`,
+    ...target
+  };
+  return appendQueue('__pf1_timer_write__',async()=>{
+    const old=getTimers();
+    await game.settings.set(NS,TIMERS,[...old.filter(t=>t.id!==timer.id),timer]);
+    return timer.id;
+  });
+}
+
+/** Convenience wrapper for a direct effect expiration; no script will execute. */
+async function expireEffectAt(data) {
+  if (!obj(data)) throw Error('Options d’expiration invalides.');
+  if (!safeText(data.effectUuid,400)) throw Error('effectUuid est requis.');
+  return scheduleTurn(data);
+}
+
+function isForward(prior,current) {
+  return Number.isInteger(prior?.round) && Number.isInteger(current?.round) &&
+    Number.isInteger(prior?.turn) && Number.isInteger(current?.turn) &&
+    (current.round > prior.round || (current.round === prior.round && current.turn > prior.turn));
+}
+
+/** The callback is due on a transition, not at the moment it is registered. */
+function phaseHit(t,prior,current) {
+  return t.phase === 'turnEnd' ? prior.combatantId === t.combatantId :
+    t.phase === 'turnStart' ? current.combatantId === t.combatantId : false;
+}
+
+async function canExecuteTimer(t) {
+  try {
+    if (t.effectUuid) {
+      const effect=await fromUuid(t.effectUuid);
+      return isExpirable(effect) && !!actorFor(effect);
+    }
+    const item=await fromUuid(t.itemUuid);
+    if (item?.documentName !== 'Item') return false;
+    const actor=actorFor(item) ?? (t.actorUuid ? await fromUuid(t.actorUuid) : null);
+    return actor?.documentName === 'Actor';
+  } catch(error) {
+    log('Cible temporairement indisponible',t.id,error);
+    return false;
+  }
+}
+
+async function executeTimer(t,combat) {
+  if (!leader() || !enabled()) return;
+  if (t.effectUuid) {
+    const effect=await fromUuid(t.effectUuid);
+    if (!isExpirable(effect)) return;
+    try {
+      // PF1 ItemBuffPF.setActive is the native way to switch a buff off.
+      if (effect.documentName === 'Item') {
+        if (effect.type !== 'buff') throw Error('Seuls les Items PF1 de type buff peuvent être désactivés.');
+        if (effect.activeState === false || effect.system?.active === false) return;
+        if (typeof effect.setActive === 'function') {
+          await effect.setActive(false,{[NS]:{skip:true}});
+        } else {
+          await effect.update({'system.active':false},{[NS]:{skip:true}});
+        }
+      } else if (t.effectAction === 'delete') {
+        await effect.delete({[NS]:{skip:true}});
+      } else if (!effect.disabled) {
+        await effect.update({disabled:true},{[NS]:{skip:true}});
+      }
+      log('Effet expiré',t.id,t.effectUuid,t.phase);
+    } catch(error) {console.error(`${NS} | Expiration de l'effet ${t.id} impossible`,error);}
+    return;
+  }
+  await runHandler(t,{
+    type:'expiry',phase:t.phase,timing:t.timing,round:combat?.round ?? null,
+    combatId:t.combatId,combatantId:t.combatantId,
+    actorUuid:t.actorUuid ?? null,itemUuid:t.itemUuid,documentUuid:t.itemUuid,
+    changedPaths:[],buffState:null
+  });
+}
+
+/**
+ * Handles expired callbacks from a previous session whose document was missing
+ * when their turn elapsed. Keep them queued until the document comes back.
+ * The timer is removed from world settings before side effects are executed,
+ * preventing duplicate callbacks when two clients see the same transition.
+ */
+async function runDueTimers(list,combat,forceWrite=false) {
+  const keep=[]; const ready=[];
+  for (const timer of list) {
+    if (!timer.due) {keep.push(timer);continue;}
+    if (await canExecuteTimer(timer)) ready.push(timer);
+    else keep.push(timer);
+  }
+  if (ready.length || forceWrite) await game.settings.set(NS,TIMERS,keep);
+  for (const timer of ready) await executeTimer(timer,combat);
+}
 async function advanceTimers(combat,prior,current) {
   if (!leader()||!enabled()) return;
-  if (!Number.isInteger(prior?.round)||!Number.isInteger(current?.round))return;
-  if (current.round<prior.round || (current.round===prior.round && current.turn<=prior.turn))return;
-  const cursor=`${current.round}:${current.turn}`;
-  const list=getTimers();const pending=[];const expired=[];
-  for (const t of list) {
-    if(t.combatId!==combat.id){pending.push(t);continue;}
-    if(t.lastPosition===cursor){pending.push(t);continue;}
-    const decrement=t.unit==='rounds'?Math.max(0,current.round-prior.round):(prior.combatantId===t.combatantId?1:0);
-    const remaining=t.remaining-decrement;
-    if (remaining<=0) expired.push(t); else pending.push({...t,remaining,lastPosition:cursor});
-  }
-  // Commit removal before invoking scripts; re-entrant updates cannot fire same expiry twice.
-  if (expired.length || pending.length!==list.length || pending.some((t,i)=>t!==list[i])) await game.settings.set(NS,TIMERS,pending);
-  for (const t of expired) await runHandler(t,{type:'expiry',round:current.round,combatId:combat.id,combatantId:t.combatantId,actorUuid:t.actorUuid,itemUuid:t.itemUuid,documentUuid:t.itemUuid,changedPaths:[],buffState:null});
+  if (!isForward(prior,current)) return; // Rewinds never fire a new expiry.
+  return appendQueue('__pf1_timer_write__',async()=>{
+    if (!leader() || !enabled()) return;
+    const cursor=`${current.round}:${current.turn}`;
+    const old=getTimers();
+    const updated=[];
+    let changed=false;
+    for (const t of old) {
+      if(t.combatId!==combat.id || t.due || t.lastPosition===cursor) {updated.push(t);continue;}
+      const decrement=t.unit==='phase'?Number(phaseHit(t,prior,current)):
+        t.unit==='rounds'?Math.max(0,current.round-prior.round):
+          (prior.combatantId===t.combatantId?1:0);
+      if (!decrement) {updated.push(t);continue;}
+      const remaining=t.remaining-decrement;
+      const next={...t,remaining,lastPosition:cursor};
+      if (remaining<=0) next.due=true;
+      updated.push(next);changed=true;
+    }
+    // Retry any previously due timer (including a document which reappeared).
+    await runDueTimers(updated,combat,changed);
+  });
+}
+/** Recheck pending expirations on F5 without advancing the combat clock. */
+async function resumeDueTimers() {
+  if (!leader() || !enabled()) return;
+  return appendQueue('__pf1_timer_write__',async()=>{
+    if (!leader() || !enabled()) return;
+    const list=getTimers();
+    if (list.some(t=>t.due)) await runDueTimers(list,null);
+  });
 }
 function install() {
   Hooks.on('updateActor',(doc,change,options)=>{if(options?.[NS]?.skip)return;void dispatch(event('updateActor',doc,change));});
@@ -182,7 +385,7 @@ function install() {
   Hooks.on('deleteItem',(doc,options)=>{if(options?.[NS]?.skip)return;void (async()=>{await dispatch(event('deleteItem',doc));await game.modules.get(NS)?.api?.discovery?.changedItem(doc,'delete');})();});
   for (const name of ['createActiveEffect','updateActiveEffect','deleteActiveEffect']) Hooks.on(name,(doc,changeOrOptions,options)=>{if((options??changeOrOptions)?.[NS]?.skip)return;void dispatch(event(name,doc,name==='updateActiveEffect'?changeOrOptions:{}));});
   Hooks.on('combatTurnChange',(combat,prior,current)=>{void advanceTimers(combat,prior,current);void dispatch({type:'combatTurnChange',documentUuid:combat.uuid,actorUuid:combat.combatants.get(prior.combatantId)?.actor?.uuid??null,itemUuid:null,changedPaths:['round','turn'],round:current.round,combatId:combat.id,combatantId:prior.combatantId,buffState:null});});
-  Hooks.on('deleteCombat',async combat=>{if(!enabled()||!leader())return;const old=getTimers();if(old.some(t=>t.combatId===combat.id))await game.settings.set(NS,TIMERS,old.filter(t=>t.combatId!==combat.id));});
+  Hooks.on('deleteCombat',combat=>{if(!enabled()||!leader())return;void appendQueue('__pf1_timer_write__',async()=>{const old=getTimers();if(old.some(t=>t.combatId===combat.id))await game.settings.set(NS,TIMERS,old.filter(t=>t.combatId!==combat.id));});});
 }
 Hooks.once('init',()=>{
   game.settings.register(NS,ENABLED,{name:'Activer les automatisations génériques',hint:'Active les événements persistants, synchronisations et minuteurs.',scope:'world',config:true,type:Boolean,default:true});
@@ -193,9 +396,10 @@ Hooks.once('init',()=>{
 });
 Hooks.once('ready',async()=>{
   game.modules.get(NS).api ??= {};
-  game.modules.get(NS).api.generic = Object.freeze({register,unregister,schedule,cancelTimer,listEvents:()=>clone(getRegistry()),listTimers:()=>clone(getTimers()),isLeader:leader,validateRule,validateTarget:async r=>{const i=await fromUuid(r.itemUuid);if(i?.documentName!=='Item')throw Error('Objet de script introuvable');return resolveTarget(i,r);}});
+  game.modules.get(NS).api.generic = Object.freeze({register,unregister,schedule,scheduleTurn,expireEffectAt,cancelTimer,listEvents:()=>clone(getRegistry()),listTimers:()=>clone(getTimers()),isLeader:leader,validateRule,validateTarget:async r=>{const i=await fromUuid(r.itemUuid);if(i?.documentName!=='Item')throw Error('Objet de script introuvable');return resolveTarget(i,r);}});
   try { await game.modules.get(NS).api.migration?.whenReady(); }
   catch(error) { console.error(`${NS} | Automatisations suspendues : échec de migration`, error); return; }
   await game.modules.get(NS).api.discovery?.scan();
+  await resumeDueTimers();
   if(leader()&&enabled())void dispatch({type:'ready',documentUuid:null,actorUuid:null,itemUuid:null,changedPaths:[],buffState:null});
 });
