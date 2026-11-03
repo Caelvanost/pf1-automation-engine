@@ -1,0 +1,370 @@
+/**
+ * PF1 Automation Engine — generic, GM-approved, multi-target effects (v1.7.0).
+ * A source actor may copy an approved ActiveEffect or a PF1 Item buff to allies.
+ * The elected GM owns the world ledger and a single turn-phase expiration.
+ * No character class, spell or feat rules live here.
+ */
+const EFFECT_NS = 'pf1-automation-engine';
+const EFFECT_SOCKET = `module.${EFFECT_NS}`;
+const EFFECT_CHANNEL = 'pf1ae-effect-groups-v1';
+const GROUPS_SETTING = 'managedEffectGroups';
+const TEMPLATES_SETTING = 'effectTemplateApprovals';
+const EFFECT_MAX_TARGETS = 30;
+const effectSeenRequests = new Set();
+let effectMutationTail = Promise.resolve();
+
+function effectQueue(fn) {
+  const next = effectMutationTail.catch(() => {}).then(fn);
+  effectMutationTail = next.catch(() => {});
+  return next;
+}
+function effectPrimaryGM() {
+  return [...game.users].filter(u => u.active && u.isGM)
+    .sort((a,b) => a.id.localeCompare(b.id))[0] ?? null;
+}
+function effectIsLeader() { return effectPrimaryGM()?.id === game.user.id; }
+function effectRequireLeader() {
+  if (!game.user.isGM || !effectIsLeader()) throw Error('Opération réservée au MJ responsable.');
+}
+function effectEnabled() {
+  return !!game.modules.get(EFFECT_NS)?.active &&
+    !game.modules.get('pf1-combat-automation')?.active &&
+    game.settings.get(EFFECT_NS, 'genericEnabled');
+}
+function effectGroups() { return game.settings.get(EFFECT_NS, GROUPS_SETTING) ?? {}; }
+function effectApprovals() { return game.settings.get(EFFECT_NS, TEMPLATES_SETTING) ?? {}; }
+function isEffectTemplate(doc) {
+  return doc?.documentName === 'ActiveEffect' ||
+    (doc?.documentName === 'Item' && doc.type === 'buff');
+}
+function effectValidKey(key) {
+  return typeof key === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(key);
+}
+function effectUuid(doc) { return typeof doc === 'string' ? doc : doc?.uuid; }
+function effectActor(doc) {
+  return doc?.documentName === 'Actor' ? doc : doc?.actor ??
+    (doc?.parent?.documentName === 'Actor' ? doc.parent : null);
+}
+async function effectResolveActor(uuid) {
+  if (typeof uuid !== 'string' || uuid.length > 400) return null;
+  const doc = await fromUuid(uuid);
+  return effectActor(doc);
+}
+function effectFingerprint(template) {
+  // Exact content match, not a weak hash. Includes native PF1 script calls.
+  return JSON.stringify({uuid:template.uuid,content:template.toObject()});
+}
+function effectOwnedBy(template, actor) {
+  return isEffectTemplate(template) &&
+    template.parent?.documentName === 'Actor' &&
+    template.parent.uuid === actor.uuid;
+}
+async function effectApproveTemplate(templateUuid) {
+  effectRequireLeader();
+  const template = await fromUuid(effectUuid(templateUuid));
+  if (!isEffectTemplate(template) || template.parent?.documentName !== 'Actor') {
+    throw Error('Le modèle doit être un ActiveEffect ou un buff PF1 appartenant à un acteur.');
+  }
+  const approvals={...effectApprovals(),[template.uuid]:effectFingerprint(template)};
+  await game.settings.set(EFFECT_NS,TEMPLATES_SETTING,approvals);
+  return template.uuid;
+}
+async function effectRevokeTemplate(templateUuid) {
+  effectRequireLeader();
+  const id=effectUuid(templateUuid);
+  const approvals={...effectApprovals()};
+  delete approvals[id];
+  await game.settings.set(EFFECT_NS,TEMPLATES_SETTING,approvals);
+}
+function effectCheckApproval(template) {
+  const approved=effectApprovals()[template.uuid];
+  if (!approved || approved !== effectFingerprint(template)) {
+    throw Error(`Modèle ${template.name} non approuvé ou modifié depuis son approbation MJ.`);
+  }
+}
+function effectFindCombatant(actor, combat, combatantId) {
+  if (!combat?.started) throw Error('Un combat démarré est nécessaire.');
+  if (combatantId) {
+    const entry=combat.combatants.get(combatantId);
+    if (entry?.actor?.uuid !== actor.uuid) throw Error('Le combattant ne correspond pas à l’acteur source.');
+    return entry;
+  }
+  const matches=[...combat.combatants.values()].filter(c=>c.actor?.uuid === actor.uuid);
+  if (matches.length !== 1) throw Error('Le lanceur doit avoir exactement un combattant identifiable (renseigner combatantId).');
+  return matches[0];
+}
+function effectIsAllowedTarget(requester, actor, source, scene) {
+  if (actor.uuid === source.uuid) return true;
+  if (actor.testUserPermission?.(requester,'OWNER')) return true;
+  // For player-originating requests, only allied tokens in the active combat scene.
+  // The GM approval gate remains mandatory for every source template.
+  const friendly=globalThis.CONST?.TOKEN_DISPOSITIONS?.FRIENDLY ?? 1;
+  return [...(scene?.tokens ?? [])].some(token =>
+    token.actor?.uuid === actor.uuid && Number(token.disposition) === friendly);
+}
+async function effectValidateRequest(data, requester, socketOrigin) {
+  if (!effectEnabled() || !effectIsLeader()) throw Error('Le moteur ou le MJ responsable est indisponible.');
+  if (!data || !effectValidKey(data.key)) throw Error('Clé d’effet invalide (lettres, chiffres, _ et -).');
+  const source=await effectResolveActor(data.sourceUuid);
+  if (!source) throw Error('Acteur source introuvable.');
+  // Never grant elevated GM privileges based on userId from an untrusted socket payload.
+  const isDirectGM = !socketOrigin && requester?.isGM && effectIsLeader();
+  if (!isDirectGM && !source.testUserPermission?.(requester,'OWNER')) {
+    throw Error('Le demandeur ne possède pas le personnage source.');
+  }
+  const combat=data.combatId ? game.combats.get(data.combatId) : game.combat;
+  const combatant=effectFindCombatant(source,combat,data.combatantId);
+  const timing=data.timing ?? 'endOfCurrentTurn';
+  if (!['endOfCurrentTurn','startOfNextTurn','endOfNextTurn','turnStart','turnEnd'].includes(timing)) {
+    throw Error(`Moment d’expiration invalide : ${timing}`);
+  }
+  const occurrences=data.occurrences ?? 1;
+  if (!Number.isInteger(occurrences) || occurrences < 1 || occurrences > 10000) {
+    throw Error('Occurrences invalides (1–10000).');
+  }
+  if (timing === 'endOfCurrentTurn' && combat.combatant?.id !== combatant.id) {
+    throw Error('L’expiration en fin du tour actuel exige que ce soit le tour du lanceur.');
+  }
+  const template=await fromUuid(data.templateUuid);
+  if (!effectOwnedBy(template,source)) throw Error('Le modèle doit appartenir à l’acteur source.');
+  effectCheckApproval(template);
+  if (!Array.isArray(data.targetUuids) || !data.targetUuids.length || data.targetUuids.length>EFFECT_MAX_TARGETS) {
+    throw Error(`Le nombre de bénéficiaires doit être compris entre 1 et ${EFFECT_MAX_TARGETS}.`);
+  }
+  const unique=[...new Set(data.targetUuids)];
+  const targets=[];
+  const scene=typeof combat.scene === 'string' ? game.scenes?.get(combat.scene) :
+    (combat.scene ?? game.scenes?.get(combat.sceneId) ?? canvas.scene);
+  for (const uuid of unique) {
+    const actor=await effectResolveActor(uuid);
+    if (!actor) throw Error(`Bénéficiaire introuvable : ${uuid}`);
+    if (!isDirectGM && !effectIsAllowedTarget(requester,actor,source,scene)) {
+      throw Error(`Bénéficiaire non autorisé : ${actor.name}`);
+    }
+    targets.push(actor);
+  }
+  return {source,template,targets,combat,combatant,timing,occurrences};
+}
+function effectDocumentFor(actor,copy) {
+  if (copy.documentType === 'Item') return actor.items?.get(copy.documentId);
+  if (copy.documentType === 'ActiveEffect') return actor.effects?.get(copy.documentId);
+  return null;
+}
+async function effectDeleteCopies(copies, groupId) {
+  const pending=[];
+  for (const copy of copies) {
+    const actor=await effectResolveActor(copy.actorUuid);
+    if (!actor) {pending.push(copy);continue;}
+    const doc=effectDocumentFor(actor,copy);
+    if (!doc) continue; // It was removed independently; not a reason to fail cleanup.
+    if (doc.getFlag?.(EFFECT_NS,'effectGroupId') !== groupId) {
+      console.warn(`${EFFECT_NS} | Effet non reconnu, conservation`,doc.uuid);
+      continue; // Never delete an unmarked or user-replaced object.
+    }
+    try {
+      // A native PF1 buff may run important toggle-off scripts. Always turn it
+      // off with the system's own API BEFORE removing the temporary Item.
+      if (copy.documentType === 'Item' && (doc.activeState === true || doc.system?.active === true)) {
+        if (typeof doc.setActive === 'function') {
+          await doc.setActive(false,{[EFFECT_NS]:{skip:true}});
+        } else {
+          await doc.update({'system.active':false},{[EFFECT_NS]:{skip:true}});
+        }
+      }
+      await doc.delete({[EFFECT_NS]:{skip:true}});
+    } catch(error) {
+      console.error(`${EFFECT_NS} | Suppression temporaire impossible : ${doc.uuid}`,error);
+      pending.push(copy);
+    }
+  }
+  return pending;
+}
+async function effectExpireGroupInternal(groupId, fromTimer=false) {
+  const ledger=effectGroups();
+  const session=ledger[groupId];
+  if (!session) return false;
+  const pending=await effectDeleteCopies(session.copies ?? [],groupId);
+  const next={...effectGroups()};
+  if (pending.length) next[groupId]={...session,copies:pending,pendingCleanup:true};
+  else delete next[groupId];
+  await game.settings.set(EFFECT_NS,GROUPS_SETTING,next);
+  if (!fromTimer) {
+    // Do not hold the group write queue while awaiting the timer write queue:
+    // a concurrent due timer may be waiting on this group queue.
+    void game.modules.get(EFFECT_NS).api.generic.cancelTimer(session.timerId)
+      .catch(error=>console.error(`${EFFECT_NS} | Annulation du minuteur échouée`,error));
+  }
+  if (pending.length) throw Error(`Nettoyage incomplet : ${pending.length} objet(s) temporairement indisponible(s).`);
+  return true;
+}
+async function effectExpireGroup(groupId,opts={}) {
+  effectRequireLeader();
+  if (typeof groupId !== 'string' || groupId.length > 100) throw Error('Groupe invalide.');
+  return effectQueue(()=>effectExpireGroupInternal(groupId,opts.fromTimer === true));
+}
+async function effectCanExpireGroup(groupId) {
+  const session=effectGroups()[groupId];
+  if (!session) return true; // Timer orphaned after cleanup: consume it safely.
+  for (const copy of session.copies ?? []) {
+    if (!await effectResolveActor(copy.actorUuid)) return false;
+  }
+  return true;
+}
+function effectValidateGroupTimer(groupId,combatId,combatantId) {
+  effectRequireLeader();
+  const group=effectGroups()[groupId];
+  if (!group) throw Error(`Groupe d’effets non enregistré : ${groupId}`);
+  if (group.combatId !== combatId || group.combatantId !== combatantId) {
+    throw Error('Le groupe ne correspond pas au combat/combattant indiqué.');
+  }
+  return true;
+}
+async function effectStopByKeyInternal(sourceUuid,key) {
+  const entries=Object.values(effectGroups()).filter(g=>g.sourceUuid===sourceUuid && g.key===key);
+  let count=0;
+  for (const group of entries) {
+    await effectExpireGroupInternal(group.id,false);
+    count++;
+  }
+  return count;
+}
+async function effectApplyInternal(data,requester,socketOrigin=false) {
+  const ctx=await effectValidateRequest(data,requester,socketOrigin);
+  // Serialize all world-ledger writes and template clones on the elected GM.
+  await effectStopByKeyInternal(ctx.source.uuid,data.key);
+  const id=foundry.utils.randomID();
+  const timerId=`effect-group:${id}`;
+  const copies=[];
+  try {
+    for (const target of ctx.targets) {
+      const copy=ctx.template.toObject();
+      delete copy._id;
+      copy.flags ??= {};
+      // Do not propagate discovery declarations, legacy managed markers or
+      // privileged internal flags from the model to a recipient copy.
+      copy.flags[EFFECT_NS]={
+        effectGroupId:id,sourceUuid:ctx.source.uuid,
+        templateUuid:ctx.template.uuid,key:data.key
+      };
+      let created;
+      if (ctx.template.documentName === 'Item') {
+        copy.system ??= {};
+        copy.system.active=false;
+        const docs=await target.createEmbeddedDocuments('Item',[copy],{[EFFECT_NS]:{skip:true}});
+        created=docs[0];
+        if (!created) throw Error(`Impossible de créer le buff chez ${target.name}.`);
+        copies.push({actorUuid:target.uuid,documentId:created.id,documentType:'Item'});
+        if (typeof created.setActive === 'function') {
+          await created.setActive(true,{[EFFECT_NS]:{skip:true}});
+        } else {
+          await created.update({'system.active':true},{[EFFECT_NS]:{skip:true}});
+        }
+      } else {
+        copy.disabled=false;
+        delete copy.duration; // The engine, not Foundry's seconds, tracks expiry.
+        const docs=await target.createEmbeddedDocuments('ActiveEffect',[copy],{[EFFECT_NS]:{skip:true}});
+        created=docs[0];
+        if (!created) throw Error(`Impossible de créer l’ActiveEffect chez ${target.name}.`);
+        copies.push({actorUuid:target.uuid,documentId:created.id,documentType:'ActiveEffect'});
+      }
+    }
+    const session={id,key:data.key,sourceUuid:ctx.source.uuid,templateUuid:ctx.template.uuid,
+      combatId:ctx.combat.id,combatantId:ctx.combatant.id,timerId,
+      timing:ctx.timing,occurrences:ctx.occurrences,copies};
+    await game.settings.set(EFFECT_NS,GROUPS_SETTING,{...effectGroups(),[id]:session});
+    await game.modules.get(EFFECT_NS).api.generic.scheduleTurn({
+      id:timerId,effectGroupId:id,combatId:ctx.combat.id,
+      combatantId:ctx.combatant.id,timing:ctx.timing,occurrences:ctx.occurrences
+    });
+    console.info(`${EFFECT_NS} | Groupe ${id} appliqué à ${copies.length} bénéficiaire(s).`);
+    return {applied:true,groupId:id,targetCount:copies.length,timerId};
+  } catch(error) {
+    // Rollback best-effort: preserve recorded copies if some could not be removed.
+    const pending=await effectDeleteCopies(copies,id);
+    const groups={...effectGroups()};
+    if (pending.length) groups[id]={id,key:data.key,sourceUuid:ctx.source.uuid,
+      combatId:ctx.combat.id,combatantId:ctx.combatant.id,timerId,copies:pending,pendingCleanup:true};
+    else delete groups[id];
+    await game.settings.set(EFFECT_NS,GROUPS_SETTING,groups);
+    throw error;
+  }
+}
+async function effectStopInternal(data,requester,socketOrigin) {
+  if (!effectEnabled() || !effectIsLeader()) throw Error('Le MJ responsable est indisponible.');
+  if (!effectValidKey(data?.key)) throw Error('Clé invalide.');
+  const source=await effectResolveActor(data.sourceUuid);
+  if (!source) throw Error('Acteur source introuvable.');
+  if ((socketOrigin || !requester.isGM) && !source.testUserPermission?.(requester,'OWNER')) {
+    throw Error('Personnage source non contrôlé.');
+  }
+  return {stopped:await effectStopByKeyInternal(source.uuid,data.key)};
+}
+function effectRequest(op,data) {
+  const source=effectActor(data?.actor);
+  if (!source || !effectValidKey(data?.key)) throw Error('Actor ou clé invalide.');
+  if (!source.isOwner && !game.user.isGM) throw Error('Vous ne contrôlez pas cet acteur.');
+  const combat=data.combatId ? game.combats.get(data.combatId) : game.combat;
+  const combatantId=data.combatantId ?? ([...(combat?.combatants?.values?.() ?? [])].find(c=>c.actor?.uuid===source.uuid)?.id ?? null);
+  const payload={channel:EFFECT_CHANNEL,op,requestId:foundry.utils.randomID(),userId:game.user.id,
+    sourceUuid:source.uuid,key:data.key,combatId:combat?.id,combatantId};
+  if (op === 'apply') {
+    payload.templateUuid=effectUuid(data.templateUuid ?? data.template);
+    payload.targetUuids=(data.targets ?? []).map(effectUuid);
+    payload.timing=data.timing ?? 'endOfCurrentTurn';
+    payload.occurrences=data.occurrences ?? 1;
+  }
+  if (effectIsLeader()) {
+    return effectQueue(()=>op==='apply' ? effectApplyInternal(payload,game.user,false) : effectStopInternal(payload,game.user,false));
+  }
+  if (!effectPrimaryGM()) throw Error('Un MJ doit être connecté pour appliquer des effets.');
+  // This is a request, not an acknowledgement of successful application.
+  game.socket.emit(EFFECT_SOCKET,payload);
+  return Promise.resolve({submitted:true,requestId:payload.requestId});
+}
+async function effectHandleSocket(data) {
+  if (!effectIsLeader() || !effectEnabled() || data?.channel!==EFFECT_CHANNEL) return;
+  if (!data.requestId || typeof data.requestId!=='string' || data.requestId.length>100) return;
+  if (effectSeenRequests.has(data.requestId)) return;
+  effectSeenRequests.add(data.requestId);
+  if (effectSeenRequests.size > 2000) effectSeenRequests.clear();
+  const requester=game.users.get(data.userId);
+  if (!requester?.active || !['apply','stop'].includes(data.op)) return;
+  try {
+    await effectQueue(()=>data.op==='apply' ? effectApplyInternal(data,requester,true) : effectStopInternal(data,requester,true));
+  } catch(error) {
+    console.error(`${EFFECT_NS} | Demande d’effet refusée : ${error.message}`,error);
+  }
+}
+async function effectGroupsForDeletedCombat(combat) {
+  if (!effectIsLeader()) return;
+  return effectQueue(async()=>{
+    const entries=Object.values(effectGroups()).filter(g=>g.combatId===combat.id);
+    for (const group of entries) {
+      try {await effectExpireGroupInternal(group.id,true);}
+      catch(error){console.warn(`${EFFECT_NS} | Nettoyage de combat différé`,group.id,error);}
+    }
+  });
+}
+
+Hooks.once('init',()=>{
+  game.settings.register(EFFECT_NS,GROUPS_SETTING,{scope:'world',config:false,type:Object,default:{}});
+  game.settings.register(EFFECT_NS,TEMPLATES_SETTING,{scope:'world',config:false,type:Object,default:{}});
+  Hooks.on('deleteCombat',combat=>{void effectGroupsForDeletedCombat(combat);});
+});
+Hooks.once('ready',()=>{
+  const mod=game.modules.get(EFFECT_NS);
+  mod.api ??= {};
+  const api=Object.freeze({
+    applyGroup:data=>effectRequest('apply',data),
+    stopGroup:data=>effectRequest('stop',data),
+    approveTemplate:effectApproveTemplate,
+    revokeTemplate:effectRevokeTemplate,
+    listApprovedTemplates:()=>Object.keys(effectApprovals()),
+    listGroups:()=>foundry.utils.deepClone(Object.values(effectGroups())),
+    expireGroup:effectExpireGroup,
+    canExpireGroup:effectCanExpireGroup,
+    validateGroupTimer:effectValidateGroupTimer
+  });
+  mod.api.effectGroups=api;
+  game.socket.on(EFFECT_SOCKET,data=>{if(data?.channel===EFFECT_CHANNEL)void effectHandleSocket(data);});
+});

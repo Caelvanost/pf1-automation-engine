@@ -115,3 +115,7 @@ Il reste possible de cibler une action PF1 ancienne en remplaçant `scriptCatego
 5. Enregistrer un minuteur, faire F5, puis avancer l'initiative : le minuteur doit survivre et expirer au moment prévu.
 6. Connecter un joueur et un assistant MJ, puis refaire la transition. Une seule écriture d'effet doit être observée. Vérifier aussi une déconnexion du MJ élu suivie de la relève par l'autre MJ.
 7. Tester avec un token non lié (acteur synthétique), puis contrôler `api.listTimers()` et la console (`genericDebug: true`).
+
+## Expirations de groupes (v1.7.0)
+
+Le service `api.effectGroups` construit un unique minuteur de phase pour un groupe de copies multi-bénéficiaires. Le champ interne `effectGroupId` est réservé aux minuteries créées/validées par ce service côté MJ. Pour activer ce service depuis une capacité PF1, utiliser `api.effectGroups.applyGroup()` plutôt que programmer manuellement une expiration par cible. Voir [API-EFFETS-GROUPES.md](API-EFFETS-GROUPES.md).

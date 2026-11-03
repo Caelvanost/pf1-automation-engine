@@ -101,3 +101,7 @@ Le script d'action `Expiration` doit restaurer lui-même l'état voulu. Le moteu
 ### Expirations précises (v1.6.0)
 
 Consulter [API-EXPIRATIONS.md](API-EXPIRATIONS.md) pour les cinq timings, les exemples de scripts PF1, les buffs, les ActiveEffects, les garanties et les limites de sécurité.
+
+## Groupes d’effets multi-cibles (v1.7.0)
+
+Voir [API-EFFETS-GROUPES.md](API-EFFETS-GROUPES.md) pour l’approbation MJ des modèles, l’application sécurisée depuis une capacité PF1 et le nettoyage automatique à une échéance de tour via `api.effectGroups.applyGroup()` et `stopGroup()`.
