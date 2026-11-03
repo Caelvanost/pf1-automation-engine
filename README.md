@@ -2,7 +2,7 @@
 
 Foundry VTT v13.351 · Pathfinder 1e 11.11
 
-**Version 1.5.1 : moteur universel, nettoyage des éléments spécifiques aux classes.**
+**Version 1.6.0 : moteur universel, nettoyage des éléments spécifiques aux classes.**
 
 L’ancien identifiant `pf1-combat-automation` n’est plus utilisé par le module. Le nouveau dossier d’installation doit impérativement être `Data/modules/pf1-automation-engine/`.
 
@@ -24,7 +24,7 @@ Ou directement :
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_release.ps1
 ```
 
-L’archive est produite sous `dist/pf1-automation-engine-v1.5.1.zip`. Le numéro de version provient de `module.json`. Le script exclut les fichiers Git et les outils de développement, vérifie les chemins du manifeste et contrôle la syntaxe JavaScript si Node.js est installé.
+L’archive est produite sous `dist/pf1-automation-engine-v1.6.0.zip`. Le numéro de version provient de `module.json`. Le script exclut les fichiers Git et les outils de développement, vérifie les chemins du manifeste et contrôle la syntaxe JavaScript si Node.js est installé.
 
 ## Tests
 
@@ -32,6 +32,7 @@ L’archive est produite sous `dist/pf1-automation-engine-v1.5.1.zip`. Le numér
 node tests/discovery.test.cjs
 node tests/migration.test.cjs
 node tests/neutrality.test.cjs
+node tests/turn-phases.test.cjs
 ```
 
 ## Nettoyage v1.5.1
@@ -48,3 +49,7 @@ Voir [CHANGELOG.md](CHANGELOG.md).
 - [API-SCRIPTS-OBJET.md](API-SCRIPTS-OBJET.md)
 
 **Les tests d’intégration en multijoueur sous Foundry réel restent à effectuer avant fusion.**
+
+## Expirations par phase de tour (v1.6.0)
+
+`api.generic.scheduleTurn(...)` et `api.generic.expireEffectAt(...)` permettent d'exécuter un script PF1 ou de désactiver un buff/ActiveEffect à la **fin du tour actuel**, au **début du prochain tour** ou à la **fin du prochain tour**. Consultez [API-EXPIRATIONS.md](API-EXPIRATIONS.md) pour les exemples et précautions. Cette version ne change aucune règle de classe et conserve les API précédentes.
