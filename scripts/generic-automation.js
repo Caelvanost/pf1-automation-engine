@@ -510,7 +510,25 @@ function install() {
   Hooks.on('createItem',(doc,options)=>{if(options?.[NS]?.skip)return;void (async()=>{await game.modules.get(NS)?.api?.discovery?.changedItem(doc,'create');await dispatch(event('createItem',doc));})();});
   Hooks.on('deleteItem',(doc,options)=>{if(options?.[NS]?.skip)return;void (async()=>{await dispatch(event('deleteItem',doc));await game.modules.get(NS)?.api?.discovery?.changedItem(doc,'delete');})();});
   for (const name of ['createActiveEffect','updateActiveEffect','deleteActiveEffect']) Hooks.on(name,(doc,changeOrOptions,options)=>{if((options??changeOrOptions)?.[NS]?.skip)return;void dispatch(event(name,doc,name==='updateActiveEffect'?changeOrOptions:{}));});
-  Hooks.on('combatTurnChange',(combat,prior,current)=>{void advanceTimers(combat,prior,current);void dispatch({type:'combatTurnChange',documentUuid:combat.uuid,actorUuid:combat.combatants.get(prior.combatantId)?.actor?.uuid??null,itemUuid:null,changedPaths:['round','turn'],round:current.round,combatId:combat.id,combatantId:prior.combatantId,buffState:null});});
+  Hooks.on('combatTurnChange',(combat,prior,current)=>{
+    void advanceTimers(combat,prior,current);
+    // Foundry v13 may provide incomplete prior turn history immediately after
+    // reconnect. Do not let event dispatch itself fail on a null prior state.
+    void dispatch({type:'combatTurnChange',documentUuid:combat.uuid,
+      actorUuid:combat.combatants.get(prior?.combatantId)?.actor?.uuid??null,
+      itemUuid:null,changedPaths:['round','turn'],round:current?.round??combat.round,
+      combatId:combat.id,combatantId:prior?.combatantId??null,buffState:null});
+  });
+  // A fresh client can miss its first combatTurnChange after F5. The document
+  // update is authoritative: recheck persisted ABSOLUTE phase deadlines once
+  // the Combat's round/turn changes, independent of transition history.
+  // resumeDueTimers and advanceTimers use the same serialized write queue.
+  Hooks.on('updateCombat',(combat,changes)=>{
+    if (combat?.id && (Object.hasOwn(changes??{},'round') ||
+      Object.hasOwn(changes??{},'turn'))) {
+      void resumeDueTimers();
+    }
+  });
   Hooks.on('deleteCombat',combat=>{if(!enabled()||!leader())return;void appendQueue('__pf1_timer_write__',async()=>{const old=getTimers();if(old.some(t=>t.combatId===combat.id))await game.settings.set(NS,TIMERS,old.filter(t=>t.combatId!==combat.id));});});
 }
 Hooks.once('init',()=>{
