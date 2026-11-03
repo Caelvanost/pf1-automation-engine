@@ -1,4 +1,4 @@
-# PF1 Automation Engine v1.8.0 — Technical Guide (English)
+# PF1 Automation Engine v1.9.0 — Technical Guide (English)
 
 **Target environment:** Foundry Virtual Tabletop **v13.351**; Pathfinder 1st Edition system **11.11**.  
 **Module ID:** `pf1-automation-engine`.  
@@ -6,7 +6,7 @@
 
 > **Design contract:** Game Masters decide which spells, feats, traits, and class features need automation. They attach JavaScript to the *existing PF1 Item* on the relevant character sheet. The module provides lifecycle events, approved effect distribution, precise turn deadlines, persistent game-time durations, and cleanup; the Item script decides all PF1 rules.
 
-This document describes the API **as implemented in v1.8.0**. It is not a promise that every native PF1 spell or action is automatically supported. Start with [PF1 Item Script Recipes](PF1-ITEM-SCRIPT-RECIPES.md) if you want copy-and-adapt examples.
+This document describes the API **as implemented in v1.9.0**, including the v1.9.0 native PF1 actor-rest event bridge. It is not a promise that every native PF1 spell or action is automatically supported. Start with [PF1 Item Script Recipes](PF1-ITEM-SCRIPT-RECIPES.md) if you want copy-and-adapt examples.
 
 ## Contents
 
@@ -25,12 +25,13 @@ This document describes the API **as implemented in v1.8.0**. It is not a promis
 13. [Debugging and recovery](#13-debugging-and-recovery)
 14. [Integration and regression checklist](#14-integration-and-regression-checklist)
 15. [Source layout and further reading](#15-source-layout-and-further-reading)
+16. [Native PF1 actor rest — v1.9.0](#16-native-pf1-actor-rest--v190)
 
 ## 1. What this module does and does not do
 
 **It does:**
 
-- Let approved scripts associated with PF1 Items run on selected Foundry events.
+- Let approved scripts associated with PF1 Items run on selected Foundry and **native PF1 actor-rest** events.
 - Create tracked copies of an approved PF1 **buff Item** or Foundry **ActiveEffect** on selected actors.
 - Expire those copies together, at a precise turn boundary or after an elapsed game-time duration.
 - Track elapsed time across exploration, Foundry combat rounds, page reloads, and ordinary GM handoffs.
@@ -580,4 +581,48 @@ Test new Item scripts in a **copy of the world** and document the results. At mi
 
 For practical snippets, see [PF1 Item Script Recipes](PF1-ITEM-SCRIPT-RECIPES.md). Existing French-language references remain available in [API-GENERIQUE.md](../API-GENERIQUE.md), [API-EXPIRATIONS.md](../API-EXPIRATIONS.md), [API-EFFETS-GROUPES.md](../API-EFFETS-GROUPES.md), [API-DUREES.md](../API-DUREES.md), and [API-SCRIPTS-OBJET.md](../API-SCRIPTS-OBJET.md).
 
-**Compatibility discipline:** this guide documents current v1.8.0 behavior. Any future actor-sheet scripting UI, universal player-side timer relay, automatic caster-level formula parsing or spell database would be a separate feature, not part of this API.
+## 16. Native PF1 actor rest — v1.9.0
+
+The engine now accepts two additional `generic.register()` event names:
+
+- `pf1PreActorRest` — an observational callback with a **synchronous before-rest snapshot** captured before native PF1 writes.
+- `pf1ActorRest` — an observational callback after PF1 has applied the actor's native rest and daily-recharge changes; receives **before and after** snapshots.
+
+The initiating client may be a player. Rest notifications are relayed to the elected GM, which resolves the actor, checks relay ownership and dispatches only existing registered Item scripts. Notifications are deduplicated per rest/phase and serialized per actor. No kineticist/Burn rules are part of the runtime.
+
+### Register an eight-hour full-rest callback (GM setup)
+
+~~~js
+const api = game.modules.get("pf1-automation-engine").api.generic;
+const feature = game.actors.getName("EXAMPLE CHARACTER")
+  .items.getName("EXAMPLE FEATURE");
+
+await api.register({
+  id: "complete-rest:" + feature.uuid,
+  on: "pf1ActorRest",
+  itemUuid: feature.uuid,
+  scriptCategory: "use",
+  scriptId: "Repos complet",
+  filter: {
+    actorUuid: feature.actor.uuid,
+    rest: { minHours: 8, restoreHealth: true, restoreDailyUses: true }
+  }
+});
+~~~
+
+The Script Call should inspect `event.rest.hours`, `event.rest.kind`,
+`event.rest.atLeastEightHours`, `event.rest.isFullRest`,
+`event.rest.before`, `event.rest.after` and
+`event.rest.nativeUpdates`. The classification reflects the native rest
+**options**; it does not determine when a specific class feature recovers.
+
+**Prevent double healing:** the module does not modify health. The PF1 post-rest
+script must not zero all nonlethal damage or apply the native rest's healing
+again. An ability that must selectively remove its own nonlethal damage needs
+source-specific attribution tracked by the Item's own script.
+
+**Limits:** native rest events are transient, not persistent timers; an absent GM may miss a player's rest. The synchronous pre-hook cannot wait for the asynchronously relayed Item callback, so it is not suitable as a native veto. The socket's claimed user ID is not cryptographically authenticated. Test ownership and GM failover in a trusted table.
+
+**Full documentation:** [Native PF1 Rest Hooks](PF1-NATIVE-REST.md) contains the native hook signatures, full event schema, rest-kind table, filters, and a Burn Item registration example.
+
+**Compatibility discipline:** this guide documents current v1.9.0 behavior. Any future actor-sheet scripting UI, universal player-side timer relay, automatic caster-level formula parsing or spell database would be a separate feature, not part of this API.
