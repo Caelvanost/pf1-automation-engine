@@ -113,17 +113,31 @@ async function effectValidateRequest(data, requester, socketOrigin) {
     throw Error('Le demandeur ne possède pas le personnage source.');
   }
   const combat=data.combatId ? game.combats.get(data.combatId) : game.combat;
-  const combatant=effectFindCombatant(source,combat,data.combatantId);
-  const timing=data.timing ?? 'endOfCurrentTurn';
-  if (!['endOfCurrentTurn','startOfNextTurn','endOfNextTurn','turnStart','turnEnd'].includes(timing)) {
-    throw Error(`Moment d’expiration invalide : ${timing}`);
-  }
-  const occurrences=data.occurrences ?? 1;
-  if (!Number.isInteger(occurrences) || occurrences < 1 || occurrences > 10000) {
-    throw Error('Occurrences invalides (1–10000).');
-  }
-  if (timing === 'endOfCurrentTurn' && combat.combatant?.id !== combatant.id) {
-    throw Error('L’expiration en fin du tour actuel exige que ce soit le tour du lanceur.');
+  const durationMode=data.duration != null;
+  let combatant=null, timing=null, occurrences=null;
+  if (durationMode) {
+    if (data.timing != null) throw Error('Choisir duration OU timing, pas les deux.');
+    const scale={seconds:1,rounds:6,minutes:60,hours:3600};
+    const duration=data.duration;
+    if (!duration || typeof duration!=='object' || Array.isArray(duration) ||
+        !Object.hasOwn(scale,duration.unit) || !Number.isSafeInteger(duration.value) ||
+        duration.value<1 || duration.value*scale[duration.unit]>31536000) {
+      throw Error('Durée invalide : value positif et unit seconds|rounds|minutes|hours.');
+    }
+    if (!game.modules.get(EFFECT_NS)?.api?.duration) throw Error('API de durée v1.8.0 indisponible.');
+  } else {
+    combatant=effectFindCombatant(source,combat,data.combatantId);
+    timing=data.timing ?? 'endOfCurrentTurn';
+    if (!['endOfCurrentTurn','startOfNextTurn','endOfNextTurn','turnStart','turnEnd'].includes(timing)) {
+      throw Error(`Moment d’expiration invalide : ${timing}`);
+    }
+    occurrences=data.occurrences ?? 1;
+    if (!Number.isInteger(occurrences) || occurrences < 1 || occurrences > 10000) {
+      throw Error('Occurrences invalides (1–10000).');
+    }
+    if (timing === 'endOfCurrentTurn' && combat.combatant?.id !== combatant.id) {
+      throw Error('L’expiration en fin du tour actuel exige que ce soit le tour du lanceur.');
+    }
   }
   const template=await fromUuid(data.templateUuid);
   if (!effectOwnedBy(template,source)) throw Error('Le modèle doit appartenir à l’acteur source.');
@@ -133,8 +147,9 @@ async function effectValidateRequest(data, requester, socketOrigin) {
   }
   const unique=[...new Set(data.targetUuids)];
   const targets=[];
-  const scene=typeof combat.scene === 'string' ? game.scenes?.get(combat.scene) :
-    (combat.scene ?? game.scenes?.get(combat.sceneId) ?? canvas.scene);
+  const scene=combat ? (typeof combat.scene === 'string' ? game.scenes?.get(combat.scene) :
+    (combat.scene ?? game.scenes?.get(combat.sceneId) ?? game.scenes?.active ?? canvas.scene)) :
+    (game.scenes?.active ?? canvas.scene);
   for (const uuid of unique) {
     const actor=await effectResolveActor(uuid);
     if (!actor) throw Error(`Bénéficiaire introuvable : ${uuid}`);
@@ -143,7 +158,8 @@ async function effectValidateRequest(data, requester, socketOrigin) {
     }
     targets.push(actor);
   }
-  return {source,template,targets,combat,combatant,timing,occurrences};
+  return {source,template,targets,combat,combatant,timing,occurrences,
+    duration:durationMode ? {value:data.duration.value,unit:data.duration.unit} : null};
 }
 function effectDocumentFor(actor,copy) {
   if (copy.documentType === 'Item') return actor.items?.get(copy.documentId);
@@ -191,7 +207,9 @@ async function effectExpireGroupInternal(groupId, fromTimer=false) {
   if (!fromTimer) {
     // Do not hold the group write queue while awaiting the timer write queue:
     // a concurrent due timer may be waiting on this group queue.
-    void game.modules.get(EFFECT_NS).api.generic.cancelTimer(session.timerId)
+    const api=game.modules.get(EFFECT_NS).api;
+    const timerService=session.duration ? api.duration : api.generic;
+    void timerService.cancelTimer(session.timerId)
       .catch(error=>console.error(`${EFFECT_NS} | Annulation du minuteur échouée`,error));
   }
   if (pending.length) throw Error(`Nettoyage incomplet : ${pending.length} objet(s) temporairement indisponible(s).`);
@@ -208,6 +226,12 @@ async function effectCanExpireGroup(groupId) {
   for (const copy of session.copies ?? []) {
     if (!await effectResolveActor(copy.actorUuid)) return false;
   }
+  return true;
+}
+function effectValidateDurationGroupTimer(groupId) {
+  effectRequireLeader();
+  const group=effectGroups()[groupId];
+  if (!group?.duration) throw Error('Groupe de durée non enregistré.');
   return true;
 }
 function effectValidateGroupTimer(groupId,combatId,combatantId) {
@@ -233,7 +257,7 @@ async function effectApplyInternal(data,requester,socketOrigin=false) {
   // Serialize all world-ledger writes and template clones on the elected GM.
   await effectStopByKeyInternal(ctx.source.uuid,data.key);
   const id=foundry.utils.randomID();
-  const timerId=`effect-group:${id}`;
+  const timerId=`${ctx.duration?'duration-group':'effect-group'}:${id}`;
   const copies=[];
   try {
     for (const target of ctx.targets) {
@@ -269,13 +293,18 @@ async function effectApplyInternal(data,requester,socketOrigin=false) {
       }
     }
     const session={id,key:data.key,sourceUuid:ctx.source.uuid,templateUuid:ctx.template.uuid,
-      combatId:ctx.combat.id,combatantId:ctx.combatant.id,timerId,
-      timing:ctx.timing,occurrences:ctx.occurrences,copies};
+      combatId:ctx.duration?null:ctx.combat.id,combatantId:ctx.combatant?.id??null,timerId,
+      timing:ctx.timing,occurrences:ctx.occurrences,duration:ctx.duration,copies};
     await game.settings.set(EFFECT_NS,GROUPS_SETTING,{...effectGroups(),[id]:session});
-    await game.modules.get(EFFECT_NS).api.generic.scheduleTurn({
-      id:timerId,effectGroupId:id,combatId:ctx.combat.id,
-      combatantId:ctx.combatant.id,timing:ctx.timing,occurrences:ctx.occurrences
-    });
+    const modApi=game.modules.get(EFFECT_NS).api;
+    if (ctx.duration) {
+      await modApi.duration.schedule({id:timerId,effectGroupId:id,duration:ctx.duration});
+    } else {
+      await modApi.generic.scheduleTurn({
+        id:timerId,effectGroupId:id,combatId:ctx.combat.id,
+        combatantId:ctx.combatant.id,timing:ctx.timing,occurrences:ctx.occurrences
+      });
+    }
     console.info(`${EFFECT_NS} | Groupe ${id} appliqué à ${copies.length} bénéficiaire(s).`);
     return {applied:true,groupId:id,targetCount:copies.length,timerId};
   } catch(error) {
@@ -283,7 +312,8 @@ async function effectApplyInternal(data,requester,socketOrigin=false) {
     const pending=await effectDeleteCopies(copies,id);
     const groups={...effectGroups()};
     if (pending.length) groups[id]={id,key:data.key,sourceUuid:ctx.source.uuid,
-      combatId:ctx.combat.id,combatantId:ctx.combatant.id,timerId,copies:pending,pendingCleanup:true};
+      combatId:ctx.duration?null:ctx.combat.id,combatantId:ctx.combatant?.id??null,
+      duration:ctx.duration,timerId,copies:pending,pendingCleanup:true};
     else delete groups[id];
     await game.settings.set(EFFECT_NS,GROUPS_SETTING,groups);
     throw error;
@@ -307,9 +337,13 @@ async function effectExtendInternal(data,requester,socketOrigin=false) {
   if (!group) throw Error(`Aucun groupe actif à prolonger : ${data.key}.`);
   // Do not hold effectQueue here: timer expiration acquires the timer queue
   // BEFORE the group queue. Extending uses the timer queue only.
-  const extension=await game.modules.get(EFFECT_NS).api.generic.extendTimer(group.timerId,{rounds:data.rounds});
+  const api=game.modules.get(EFFECT_NS).api;
+  const extension=group.duration
+    ? await api.duration.extendTimer(group.timerId,{duration:{value:data.rounds,unit:'rounds'}})
+    : await api.generic.extendTimer(group.timerId,{rounds:data.rounds});
   return {extended:true,groupId:group.id,targetCount:group.copies?.length??0,
-    rounds:data.rounds,targetRound:extension.targetRound,timerId:group.timerId};
+    rounds:data.rounds,targetRound:extension.targetRound??null,
+    remainingSeconds:extension.remainingSeconds??null,timerId:group.timerId};
 }
 async function effectStopInternal(data,requester,socketOrigin) {
   if (!effectEnabled() || !effectIsLeader()) throw Error('Le MJ responsable est indisponible.');
@@ -332,8 +366,13 @@ function effectRequest(op,data) {
   if (op === 'apply') {
     payload.templateUuid=effectUuid(data.templateUuid ?? data.template);
     payload.targetUuids=(data.targets ?? []).map(effectUuid);
-    payload.timing=data.timing ?? 'endOfCurrentTurn';
-    payload.occurrences=data.occurrences ?? 1;
+    if (data.duration != null) {
+      payload.duration=data.duration;
+      if (data.timing != null) payload.timing=data.timing;
+    } else {
+      payload.timing=data.timing ?? 'endOfCurrentTurn';
+      payload.occurrences=data.occurrences ?? 1;
+    }
   } else if (op === 'extend') {
     payload.rounds=data.rounds ?? 1;
   }
@@ -391,7 +430,8 @@ Hooks.once('ready',()=>{
     listGroups:()=>foundry.utils.deepClone(Object.values(effectGroups())),
     expireGroup:effectExpireGroup,
     canExpireGroup:effectCanExpireGroup,
-    validateGroupTimer:effectValidateGroupTimer
+    validateGroupTimer:effectValidateGroupTimer,
+    validateDurationGroupTimer:effectValidateDurationGroupTimer
   });
   mod.api.effectGroups=api;
   game.socket.on(EFFECT_SOCKET,data=>{if(data?.channel===EFFECT_CHANNEL)void effectHandleSocket(data);});

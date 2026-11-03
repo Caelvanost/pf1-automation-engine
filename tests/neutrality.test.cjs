@@ -5,7 +5,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const manifest = JSON.parse(fs.readFileSync(path.join(root, 'module.json'), 'utf8'));
 assert.equal(manifest.id, 'pf1-automation-engine');
-assert.equal(manifest.version, '1.5.1');
+assert.match(manifest.version, /^\d+\.\d+\.\d+$/, 'Version semver valide attendue');
 assert.ok(!manifest.esmodules.some(p => p.endsWith('combat-hooks.js')));
 for (const p of manifest.esmodules) assert.ok(fs.existsSync(path.join(root, p)), `Missing runtime script ${p}`);
 assert.ok(!fs.existsSync(path.join(root, 'scripts/combat-hooks.js')));

@@ -75,7 +75,7 @@ function setup(shared={}) {
     await Hooks.fire('combatTurnChange',combat,before,{round,turn,combatantId:combat.combatant.id});
     await settle();
   }
-  return {start,settle,transition,api:()=>mod.api,game,actors,template,combat,storage,docs,scene,users,sockets,
+  return {start,settle,transition,Hooks,api:()=>mod.api,game,actors,template,combat,storage,docs,scene,users,sockets,
     currentCopies:()=>actors[1].items.size+actors[2].items.size};
 }
 async function test() {
@@ -148,6 +148,54 @@ async function test() {
   assert.equal(gm.api().effectGroups.listGroups()[0].id,oldGroup,'group identity preserved');
   assert.equal(s.currentCopies(),1,'no extra buff copy after player extension');
   await assert.rejects(()=>gm.api().effectGroups.extendGroup({actor:s.actors[0],key:'missing-group',rounds:1}),/Aucun groupe/);
+  // Regression reported in Foundry v13: after F5 in round 2, the first
+  // end-of-bard-turn sometimes arrives without usable turn history. Absolute
+  // round deadlines must still expire on updateCombat (not on rewind/replay).
+  const interrupted=setup();
+  await interrupted.start();
+  await interrupted.api().effectGroups.approveTemplate(interrupted.template.uuid);
+  await interrupted.api().effectGroups.applyGroup({
+    actor:interrupted.actors[0],key:'inspire-courage',
+    templateUuid:interrupted.template.uuid,
+    targets:[interrupted.actors[1],interrupted.actors[2]],
+    timing:'endOfNextTurn'
+  });
+  await interrupted.transition(2,0);
+  const restored=setup({
+    storage:interrupted.storage,docs:interrupted.docs,actors:interrupted.actors,
+    combat:interrupted.combat,scene:interrupted.scene,users:interrupted.users
+  });
+  await restored.start();
+  assert.equal(restored.api().generic.listTimers()[0].targetRound,2);
+  assert.equal(restored.currentCopies(),2);
+  // A non-turn update must not expire the buff.
+  await restored.Hooks.fire('updateCombat',restored.combat,{name:'renamed'});
+  await restored.settle();
+  assert.equal(restored.currentCopies(),2);
+  // First transition after F5 may have incomplete prior metadata.
+  restored.combat.round=2;restored.combat.turn=1;
+  restored.combat.combatant=restored.combat.turns[1];
+  await restored.Hooks.fire('combatTurnChange',restored.combat,
+    {round:null,turn:null,combatantId:null},
+    {round:2,turn:1,combatantId:'bard'});
+  await restored.Hooks.fire('updateCombat',restored.combat,{turn:1});
+  await restored.settle();
+  assert.equal(restored.currentCopies(),2,'not expired at start of bard turn');
+  restored.combat.round=3;restored.combat.turn=0;
+  restored.combat.combatant=restored.combat.turns[0];
+  await restored.Hooks.fire('combatTurnChange',restored.combat,
+    {round:null,turn:null,combatantId:null},
+    {round:3,turn:0,combatantId:'npc'});
+  await restored.Hooks.fire('updateCombat',restored.combat,{round:3,turn:0});
+  await restored.settle();
+  assert.equal(restored.currentCopies(),0,
+    'updateCombat expires group exactly at end of bard round 2 after F5');
+  assert.equal(restored.api().generic.listTimers().length,0);
+  assert.equal(restored.api().effectGroups.listGroups().length,0);
+  // Duplicate hooks after the expiration are harmless.
+  await restored.Hooks.fire('updateCombat',restored.combat,{round:3});
+  await restored.settle();
+  assert.equal(restored.currentCopies(),0);
   console.log('v1.7.1: F5, round extension, player socket, originals, legacy recovery OK');
 }
 test().catch(e=>{console.error(e);process.exitCode=1});
