@@ -119,10 +119,12 @@ async function runRest(origin,opts,newHealth=0,newDaily=5,duplicate=false){
   const changes = {system:{attributes:{hp:{value:30,nonlethal:newHealth}}}};
   const itemChanges = [{_id:"F",system:{uses:{value:newDaily}}}];
   await origin.Hooks.fire("pf1PreActorRest",actor,opts,changes,itemChanges);
-  // Simulate PF1 applying its own actor/item changes, then the post hook.
-  actor.system.attributes.hp.value=30;
-  actor.system.attributes.hp.nonlethal=newHealth;
-  actor.system.resources.daily.value=newDaily;
+  // Simulate PF1 applying only the subsystems enabled in its rest options.
+  if (opts.restoreHealth === true) {
+    actor.system.attributes.hp.value=30;
+    actor.system.attributes.hp.nonlethal=newHealth;
+  }
+  if (opts.restoreDailyUses === true) actor.system.resources.daily.value=newDaily;
   await origin.Hooks.fire("pf1ActorRest",actor,opts,changes,itemChanges);
   if(duplicate){
     await origin.Hooks.fire("pf1ActorRest",actor,opts,changes,itemChanges);
@@ -235,6 +237,31 @@ async function runRest(origin,opts,newHealth=0,newDaily=5,duplicate=false){
   calls.length=0;
   await runRest(player,{hours:8,restoreHealth:true,restoreDailyUses:true,longTermCare:false});
   assert.equal(calls.length,3,"new elected GM handles player native rest");
+
+  // A native rest is a distinct event, and must not be dropped while an
+  // unrelated actor-update subscription is executing asynchronously.
+  let signalSlowStart;
+  const slowStarted = new Promise(resolve => {signalSlowStart=resolve;});
+  let releaseSlow;
+  const slowDone = new Promise(resolve => {releaseSlow=resolve;});
+  feature.scriptCalls.contents.push({
+    id:"slow-script",category:"use",name:"Slow resource sync",
+    async execute(){signalSlowStart();await slowDone;}
+  });
+  await secondGM.api().register({
+    id:"slow-sync",on:"updateActor",itemUuid:feature.uuid,
+    scriptCategory:"use",scriptId:"slow-script",
+    filter:{actorUuid:actor.uuid}
+  });
+  void secondGM.Hooks.fire("updateActor",actor,
+    {system:{attributes:{hp:{value:1}}}},{});
+  await slowStarted;
+  calls.length=0;
+  await runRest(player,{hours:8,restoreHealth:true,restoreDailyUses:true,longTermCare:false});
+  assert.equal(calls.length,0,"rest waits while the actor's other script is in flight");
+  releaseSlow();
+  await settle();
+  assert.equal(calls.length,3,"pre and post rest callbacks are not lost while actor was busy");
 
   // Strict validation: rest predicates only on rest events.
   await assert.rejects(()=>secondGM.api().register({
