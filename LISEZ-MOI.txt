@@ -1,4 +1,4 @@
-PF1 AUTOMATION ENGINE v1.5.1
+PF1 AUTOMATION ENGINE v1.6.0
 =================================
 Foundry VTT v13.351 / Pathfinder 1e 11.11
 
@@ -22,3 +22,7 @@ Voir MIGRATION-V1.5.md et API-DECOUVERTE.md pour les instructions.
 Depuis v1.5.1 : les anciens hooks et macros spécifiques à une classe
 ont été retirés. Seuls les mécanismes de surveillance génériques
 et les scripts portés par les objets PF1 assurent ces comportements.
+
+NOUVEAU v1.6.0 : api.generic.scheduleTurn / expireEffectAt,
+expirations au début/à la fin du tour (y compris le tour suivant).
+Voir API-EXPIRATIONS.md pour les exemples et les tests Foundry.
