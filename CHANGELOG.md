@@ -1,3 +1,11 @@
+## v1.8.0 — Durées monde/combat
+- Nouveau registre persistant `durationRegistry` et API `api.duration` pour les durées en secondes, rounds PF1 (6 s), minutes et heures.
+- Échéances observant `updateWorldTime`, le Combat Tracker, les changements de rencontre et les F5 ; aucun changement de l'horloge du monde.
+- Gestion des buffs natifs PF1, ActiveEffects, scripts de nettoyage PF1, effets multicibles approuvés même hors combat et prolongation sans réappliquer.
+- Décompte commun en combat : `max(rounds × 6 s, delta du temps du monde)` pour éviter un double décompte d'un même intervalle.
+- Compatibilité v1.7.1 : minuteurs de phase inchangés ; groupes historiques inchangés.
+- Tests `duration.test.cjs` et `duration-group.test.cjs` ajoutés à la CI Windows.
+
 # Changelog
 
 ## 1.7.1 — Échéances fixes et prolongation des groupes

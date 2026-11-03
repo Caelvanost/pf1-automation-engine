@@ -27,6 +27,8 @@ jobs:
           node tests/turn-phases.test.cjs
           node tests/effect-groups.test.cjs
           node tests/extension-f5.test.cjs
+          node tests/duration.test.cjs
+          node tests/duration-group.test.cjs
 
       - name: Validate Foundry package
         shell: powershell
@@ -39,6 +41,7 @@ jobs:
           try {
             if ($null -eq $archive.GetEntry('module.json')) { throw 'module.json is not at ZIP root.' }
             if ($null -eq $archive.GetEntry('scripts/effect-groups.js')) { throw 'Missing multi-target effect service.' }
+            if ($null -eq $archive.GetEntry('scripts/duration-manager.js')) { throw 'Missing world-time duration manager.' }
             if ($null -eq $archive.GetEntry('API-EXPIRATIONS.md')) { throw 'Missing turn expiry documentation.' }
             if ($null -ne $archive.GetEntry('scripts/combat-hooks.js')) { throw 'Removed class-specific combat hook still packaged.' }
             if ($null -ne $archive.GetEntry('macros/enregistrer-cold-adaptation.js')) { throw 'Removed class-specific example macro still packaged.' }

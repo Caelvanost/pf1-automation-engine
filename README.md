@@ -11,3 +11,7 @@ Le module ne contient aucune règle spécifique aux classes. Toutes les règles 
 Pour les expirations de phase, voir [API-EXPIRATIONS.md](API-EXPIRATIONS.md). Pour l’installation et la migration des identifiants historiques, voir [MIGRATION-V1.5.md](MIGRATION-V1.5.md).
 
 **v1.7.1** : chaque expiration de tour dispose d’une échéance de round persistante (`targetRound`). Les scripts PF1 peuvent prolonger les groupes avec `extendGroup({actor,key,rounds:1})` sans recréer les buffs.
+
+## v1.8.0 — Durées universelles
+
+Les durées observant `game.time.worldTime` et les rounds en combat sont documentées dans [API-DUREES.md](API-DUREES.md). Le module ne met jamais le temps en pause et ne modifie jamais l'heure du monde ; Seasons & Stars reste l'autorité du calendrier. Les APIs existantes de tours précis restent inchangées.

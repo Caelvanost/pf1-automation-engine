@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "Moteur générique d’automatisations PF1 : événements, scripts natifs, effets temporaires et découverte approuvée par MJ.",
-  "version": "1.7.1",
+  "description": "Moteur PF1 générique : événements, effets multicibles, expirations en combat et durées dans le temps du monde.",
+  "version": "1.8.0",
   "authors": [
     {
       "name": "Module personnalisé"
@@ -29,6 +29,7 @@
     "scripts/effect-manager.js",
     "scripts/auto-discovery.js",
     "scripts/effect-groups.js",
-    "scripts/generic-automation.js"
+    "scripts/generic-automation.js",
+    "scripts/duration-manager.js"
   ]
 }
