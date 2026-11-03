@@ -1,17 +1,66 @@
-# PF1 Automation Engine v1.7.1
+# PF1 Automation Engine — v1.8.0
 
-Foundry VTT v13.351 · Pathfinder 1e 11.11.
+**Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
-Moteur générique : événements persistants, scripts PF1 isolés, découverte des automatisations approuvées, expirations de tour et **groupes d’effets temporaires sur plusieurs acteurs** (ActiveEffects et buffs natifs PF1).
+A lightweight, **rules-neutral automation engine** for Pathfinder 1e. It is deliberately **not** a universal spell or class-feature implementation.
 
-Le module ne contient aucune règle spécifique aux classes. Toutes les règles sont dans les capacités PF1.
+## Philosophy: automate only what your table uses
 
-**Nouveau :** [API-EFFETS-GROUPES.md](API-EFFETS-GROUPES.md) (approbation d’un modèle par le MJ, `api.effectGroups.applyGroup()`, `stopGroup()`, `extendGroup()` et expirations programmées).
+The GM adds JavaScript to the **native PF1 Script Calls** of the **Spell** or **Class Feature** Items on the players' character sheets (**Advanced → Script Calls**, French UI: *Avancé → Appel de script*). These Item scripts implement their own Pathfinder rules, decide which targets are legal, and call the Engine for generic services such as:
 
-Pour les expirations de phase, voir [API-EXPIRATIONS.md](API-EXPIRATIONS.md). Pour l’installation et la migration des identifiants historiques, voir [MIGRATION-V1.5.md](MIGRATION-V1.5.md).
+- **Managed buffs/ActiveEffects** applied to one or several beneficiaries from a GM-approved actor-owned template.
+- **Precise turn deadlines** (start/end of a particular combatant's turn), persistent across reloads.
+- **Elapsed game-time durations** (seconds, rounds, minutes, hours) spanning combat and exploration.
+- **Event-driven automations** linked to a named PF1 Item Script Call.
+- **GM approval, persistent registries, controlled player requests and one elected GM** when multiple GMs are connected.
 
-**v1.7.1** : chaque expiration de tour dispose d’une échéance de round persistante (`targetRound`). Les scripts PF1 peuvent prolonger les groupes avec `extendGroup({actor,key,rounds:1})` sans recréer les buffs.
+No spell catalogue, class-specific handler, or exhaustive rule database is bundled. An ordinary GM can configure **only the spells/features actually needed in their campaign**, without modifying module source code.
 
-## v1.8.0 — Durées universelles
+## English documentation
 
-Les durées observant `game.time.worldTime` et les rounds en combat sont documentées dans [API-DUREES.md](API-DUREES.md). Le module ne met jamais le temps en pause et ne modifie jamais l'heure du monde ; Seasons & Stars reste l'autorité du calendrier. Les APIs existantes de tours précis restent inchangées.
+**Start here:**
+
+- **[Technical Guide — architecture, complete API reference, permissions, persistence and debugging](docs/TECHNICAL-GUIDE.md)**
+- **[PF1 Item Script Recipes — 12 practical recipes for spells, class abilities, buffs, duration timers, maintenance and cleanup](docs/PF1-ITEM-SCRIPT-RECIPES.md)**
+
+The technical guide explains why direct world-registry timer writes are reserved for the elected GM, while player-used spells should ordinarily call `api.effectGroups.applyGroup()` with a pre-approved template. The recipes include examples for both paths.
+
+## Quick start
+
+1. Install the Engine from the Foundry ZIP in `Data/modules/pf1-automation-engine/`; `module.json` must be at the folder root. Restart Foundry and enable the module.
+2. On the actor's sheet, open the Spell or Class Feature Item and create a native PF1 **Use** or **After Use** Script Call.
+3. For a timed bonus, create an actor-owned **buff Item** or ActiveEffect template with the actual PF1 modifiers, then have the **elected GM** approve its UUID via `api.effectGroups.approveTemplate()`.
+4. In the spell/feature Item's script, call `api.effectGroups.applyGroup({actor,key,templateUuid,targets,duration})` or the precise-turn `timing` variant. Test using the actual player account.
+5. Check the active groups/timers in the console; see the [recipes](docs/PF1-ITEM-SCRIPT-RECIPES.md).
+
+~~~js
+// Browser console: diagnostics
+const mod = game.modules.get("pf1-automation-engine");
+console.log({ version: mod?.version, leader: mod?.api?.generic?.isLeader() });
+console.table(mod?.api?.effectGroups?.listGroups() ?? []);
+console.table(mod?.api?.duration?.listTimers() ?? []);
+console.table(mod?.api?.generic?.listTimers() ?? []);
+~~~
+
+**Permissions:** `duration.schedule()`, `generic.scheduleTurn()`, event registration and template approvals are GM-only. Player-originated `effectGroups` requests are validated by the elected GM. A `submitted:true` response means a request was sent, **not** that it succeeded.
+
+**Clock:** Foundry/Seasons & Stars owns `game.time.worldTime`. The Engine observes this clock but never advances, pauses or resumes it. One PF1 round is six seconds.
+
+## Existing French technical references
+
+The earlier API notes remain available as additional implementation references:
+
+- [Generic events and timers](API-GENERIQUE.md)
+- [World-time and combat durations v1.8.0](API-DUREES.md)
+- [Multi-target effect groups](API-EFFETS-GROUPES.md)
+- [Precise turn expiration](API-EXPIRATIONS.md)
+- [PF1 native Item Script Calls](API-SCRIPTS-OBJET.md)
+- [Namespace migration](MIGRATION-V1.5.md)
+
+Some historical documents retain their original version headers; the English guides above describe the integrated **v1.8.0** implementation.
+
+## Contributing / building
+
+The Windows build script is `build_release.ps1`. GitHub Actions runs the Node regression suite and produces an installable Foundry ZIP on pull requests or manual workflow runs. Developers should keep class, spell, ancestry and archetype rules **out of the Engine**; those belong in actor-owned PF1 Item scripts and templates.
+
+**Compatibility:** target versions are Foundry v13.351 and PF1 11.11. The Engine was tested in a live world for duration expiry, F5 recovery, combat/exploration transitions, extension, precise post-F5 turn expiration, and a two-GM handoff. Other combinations and exceptional edge cases should be validated before use in a live campaign.
