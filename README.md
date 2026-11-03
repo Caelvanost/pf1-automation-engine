@@ -1,55 +1,11 @@
-# PF1 Automation Engine
+# PF1 Automation Engine v1.7.0
 
-Foundry VTT v13.351 · Pathfinder 1e 11.11
+Foundry VTT v13.351 · Pathfinder 1e 11.11.
 
-**Version 1.6.0 : moteur universel, nettoyage des éléments spécifiques aux classes.**
+Moteur générique : événements persistants, scripts PF1 isolés, découverte des automatisations approuvées, expirations de tour et **groupes d’effets temporaires sur plusieurs acteurs** (ActiveEffects et buffs natifs PF1).
 
-L’ancien identifiant `pf1-combat-automation` n’est plus utilisé par le module. Le nouveau dossier d’installation doit impérativement être `Data/modules/pf1-automation-engine/`.
+Le module ne contient aucune règle spécifique aux classes. Toutes les règles sont dans les capacités PF1.
 
-**Avant l’installation :** sauvegarder le monde, désactiver l’ancien module, extraire le ZIP dans le nouveau dossier, puis activer PF1 Automation Engine. Seul le MJ principal copie les paramètres et flags historiques au premier chargement. Les anciens enregistrements sont conservés pour le retour arrière.
+**Nouveau :** [API-EFFETS-GROUPES.md](API-EFFETS-GROUPES.md) (approbation d’un modèle par le MJ, `api.effectGroups.applyGroup()`, `stopGroup()` et expirations programmées).
 
-Voir [MIGRATION-V1.5.md](MIGRATION-V1.5.md) pour les consignes détaillées et les limitations concernant les références codées dans les capacités PF1.
-
-## Construire le ZIP Windows
-
-Depuis la racine du dépôt :
-
-```powershell
-.\build_release.bat
-```
-
-Ou directement :
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_release.ps1
-```
-
-L’archive est produite sous `dist/pf1-automation-engine-v1.6.0.zip`. Le numéro de version provient de `module.json`. Le script exclut les fichiers Git et les outils de développement, vérifie les chemins du manifeste et contrôle la syntaxe JavaScript si Node.js est installé.
-
-## Tests
-
-```powershell
-node tests/discovery.test.cjs
-node tests/migration.test.cjs
-node tests/neutrality.test.cjs
-node tests/turn-phases.test.cjs
-```
-
-## Nettoyage v1.5.1
-
-Le script d’expiration propre à une classe et la macro de test correspondante ont été supprimés. Les scripts de classe restent exclusivement dans les fiches PF1. Les expirations doivent être déclarées via le moteur générique (`schedule`) et un script d’objet ; les anciens flags ne sont pas effacés automatiquement.
-
-Voir [CHANGELOG.md](CHANGELOG.md).
-
-## Documentation
-
-- [MIGRATION-V1.5.md](MIGRATION-V1.5.md)
-- [API-DECOUVERTE.md](API-DECOUVERTE.md)
-- [API-GENERIQUE.md](API-GENERIQUE.md)
-- [API-SCRIPTS-OBJET.md](API-SCRIPTS-OBJET.md)
-
-**Les tests d’intégration en multijoueur sous Foundry réel restent à effectuer avant fusion.**
-
-## Expirations par phase de tour (v1.6.0)
-
-`api.generic.scheduleTurn(...)` et `api.generic.expireEffectAt(...)` permettent d'exécuter un script PF1 ou de désactiver un buff/ActiveEffect à la **fin du tour actuel**, au **début du prochain tour** ou à la **fin du prochain tour**. Consultez [API-EXPIRATIONS.md](API-EXPIRATIONS.md) pour les exemples et précautions. Cette version ne change aucune règle de classe et conserve les API précédentes.
+Pour les expirations de phase, voir [API-EXPIRATIONS.md](API-EXPIRATIONS.md). Pour l’installation et la migration des identifiants historiques, voir [MIGRATION-V1.5.md](MIGRATION-V1.5.md).

@@ -220,8 +220,18 @@ async function scheduleTurn(data) {
   const timing = data.timing ?? 'startOfNextTurn';
   const {phase,amount} = phaseConfig(timing,combat,combattant,data.occurrences ?? 1);
   const effectMode = data.effectUuid !== undefined && data.effectUuid !== null;
+  const groupMode = data.effectGroupId !== undefined && data.effectGroupId !== null;
+  if (effectMode && groupMode) throw Error('Choisir un effet OU un groupe, jamais les deux.');
   let target;
-  if (effectMode) {
+  if (groupMode) {
+    if (!safeText(data.effectGroupId,100) || data.itemUuid || data.actionId || data.scriptId) {
+      throw Error('Une expiration de groupe exige effectGroupId seul.');
+    }
+    const groups = game.modules.get(NS)?.api?.effectGroups;
+    if (!groups?.validateGroupTimer) throw Error('Gestionnaire de groupes indisponible.');
+    groups.validateGroupTimer(data.effectGroupId, combat.id, combattant.id);
+    target = {effectGroupId:data.effectGroupId};
+  } else if (effectMode) {
     if (!safeText(data.effectUuid,400) || data.itemUuid || data.scriptId || data.actionId) {
       throw Error('Une expiration d’effet exige effectUuid, sans script associé.');
     }
@@ -283,6 +293,10 @@ function phaseHit(t,prior,current) {
 
 async function canExecuteTimer(t) {
   try {
+    if (t.effectGroupId) {
+      const groups=game.modules.get(NS)?.api?.effectGroups;
+      return !!groups && await groups.canExpireGroup(t.effectGroupId);
+    }
     if (t.effectUuid) {
       const effect=await fromUuid(t.effectUuid);
       return isExpirable(effect) && !!actorFor(effect);
@@ -299,6 +313,13 @@ async function canExecuteTimer(t) {
 
 async function executeTimer(t,combat) {
   if (!leader() || !enabled()) return;
+  if (t.effectGroupId) {
+    const groups=game.modules.get(NS)?.api?.effectGroups;
+    if (!groups?.expireGroup) throw Error('Service de groupes temporairement indisponible.');
+    await groups.expireGroup(t.effectGroupId,{fromTimer:true});
+    log('Groupe expiré',t.id,t.effectGroupId,t.phase);
+    return;
+  }
   if (t.effectUuid) {
     const effect=await fromUuid(t.effectUuid);
     if (!isExpirable(effect)) return;
@@ -343,7 +364,19 @@ async function runDueTimers(list,combat,forceWrite=false) {
     else keep.push(timer);
   }
   if (ready.length || forceWrite) await game.settings.set(NS,TIMERS,keep);
-  for (const timer of ready) await executeTimer(timer,combat);
+  const retry=[];
+  for (const timer of ready) {
+    try { await executeTimer(timer,combat); }
+    catch(error) {
+      console.error(`${NS} | Expiration ${timer.id} à réessayer`,error);
+      if (timer.effectGroupId) retry.push({...timer,due:true});
+    }
+  }
+  if (retry.length) {
+    // This code already runs inside the timer write queue; do not queue recursively.
+    const current=getTimers();
+    await game.settings.set(NS,TIMERS,[...current,...retry.filter(t=>!current.some(x=>x.id===t.id))]);
+  }
 }
 async function advanceTimers(combat,prior,current) {
   if (!leader()||!enabled()) return;

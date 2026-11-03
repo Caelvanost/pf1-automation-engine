@@ -123,6 +123,7 @@ Hooks.once('ready', () => {
     stopEffect: options => publicRequest('stop', options)
   };
   game.socket.on(SOCKET, data => {
+    if (data?.channel === 'pf1ae-effect-groups-v1') return;
     if (!isPrimaryGM() || !data?.requestId || handled.has(data.requestId)) return;
     handled.add(data.requestId);
     if (handled.size > 1000) handled.clear();

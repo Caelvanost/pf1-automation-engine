@@ -1,3 +1,14 @@
+# Changelog
+
+## 1.7.0 — Effets temporaires multi-bénéficiaires
+
+- API générique `api.effectGroups` : modèles approuvés par le MJ, applications à plusieurs acteurs, gestion des copies de buffs natifs PF1 et ActiveEffects.
+- Un groupe d’effets = un minuteur précis attaché au tour du lanceur (`endOfCurrentTurn`, `startOfNextTurn`, `endOfNextTurn`, `turnStart`, `turnEnd`).
+- Envoi d’une demande non privilégiée par socket depuis le client joueur ; vérification de propriété et bénéficiaires par le MJ responsable.
+- Nettoyage des copies marquées seulement, restauration après F5 et nettoyage de combat.
+- Préservation des anciennes API `startEffect`, `stopEffect`, `schedule`, `scheduleTurn`, `expireEffectAt`.
+- Tests Node : `tests/effect-groups.test.cjs`.
+
 # Journal des modifications
 
 ## 1.6.0 — Expirations déterministes par phase de tour

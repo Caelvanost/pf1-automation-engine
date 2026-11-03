@@ -1,3 +1,9 @@
+PF1 Automation Engine v1.7.0 — Foundry VTT 13.351 / PF1 11.11
+
+Nouveau service de groupes d’effets : voir API-EFFETS-GROUPES.md.
+Pour installer, extraire le ZIP dans Data/modules/pf1-automation-engine/ avec module.json directement à la racine.
+Préserver une sauvegarde du monde, tester les buffs natifs avant d’utiliser en campagne.
+
 PF1 AUTOMATION ENGINE v1.6.0
 =================================
 Foundry VTT v13.351 / Pathfinder 1e 11.11
