@@ -8,6 +8,7 @@ const EVENT_TYPES = new Set(['updateActor','updateItem','createItem','deleteItem
 const REST_EVENTS = new Set(['pf1PreActorRest','pf1ActorRest']);
 const activeRuns = new Set();
 const activeActorRuns = new Set();
+const activeActorCompletion = new Map();
 const processed = new Set();
 const queues = new Map();
 const uid = () => foundry.utils.randomID();
@@ -99,9 +100,21 @@ async function runHandler(entry, ev) {
   const actor = actorFor(item) ?? (entry.actorUuid ? await fromUuid(entry.actorUuid) : null);
   if (!actor) {console.warn(NS,'Actor de script introuvable',entry.id);return;}
   // Script code is GM-approved. Never accept arbitrary code in event payload.
+  // Rest notifications must NOT be lost when PF1's own actor update has
+  // another registered callback in flight. Regular update hooks still use
+  // the existing recursion guard.
+  if (REST_EVENTS.has(ev.type)) {
+    while (activeActorRuns.has(actor.uuid)) {
+      const pending=activeActorCompletion.get(actor.uuid);
+      if (!pending) break;
+      await pending;
+    }
+  }
   if (activeActorRuns.has(actor.uuid)) {log('Cycle d’acteur évité',actor.uuid);return;}
   activeRuns.add(key);
   activeActorRuns.add(actor.uuid);
+  let releaseActor;
+  activeActorCompletion.set(actor.uuid,new Promise(resolve => {releaseActor=resolve;}));
   try {
     const scriptEvent = Object.freeze(clone(serialize(ev)));
     if (entry.scriptId) {
@@ -116,11 +129,16 @@ async function runHandler(entry, ev) {
       await fn.call(null, actor, item, scriptEvent, game.modules.get(NS).api.generic, actor.getActiveTokens?.()[0] ?? null, game, canvas, ui, ChatMessage, foundry);
     }
     log('Script exécuté',entry.id,ev.type);
-  } catch(err) {console.error(`${NS} | Échec script ${entry.id}`,err);} finally {activeRuns.delete(key);activeActorRuns.delete(actor.uuid);}
+  } catch(err) {console.error(`${NS} | Échec script ${entry.id}`,err);} finally {
+    activeRuns.delete(key);
+    activeActorRuns.delete(actor.uuid);
+    activeActorCompletion.delete(actor.uuid);
+    releaseActor?.();
+  }
 }
 async function dispatch(ev) {
   if (!enabled() || !leader()) return;
-  if (ev.actorUuid && activeActorRuns.has(ev.actorUuid)) return;
+  if (ev.actorUuid && activeActorRuns.has(ev.actorUuid) && !REST_EVENTS.has(ev.type)) return;
   const discovery = game.modules.get(NS)?.api?.discovery;
   await discovery?.ensureScanned();
   const matched = [...getRegistry(), ...(discovery?.listApproved() ?? [])].filter(r=>isMatch(r,ev));
