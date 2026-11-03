@@ -1,4 +1,4 @@
-# API générique — PF1 Automation Engine 1.5.1
+# API générique — PF1 Automation Engine 1.6.0
 
 Compatible Foundry VTT 13 / Pathfinder 1. Aucun traitement propre à une classe dans `generic-automation.js`.
 
@@ -15,11 +15,13 @@ Dans Configuration des modules, les options de monde **Activer les automatisatio
 const api = game.modules.get('pf1-automation-engine')?.api?.generic;
 ```
 
-Toutes les opérations d'écriture de déclarations (`register`, `unregister`, `schedule`, `cancelTimer`) sont **réservées au MJ principal actif**. C'est volontaire : un script persisté est exécuté avec les permissions de ce MJ. Aucun script ne peut être fourni en clair dans une déclaration. Les scripts exécutés doivent exister sur un Item PF1 et être approuvés par le MJ : scripts d’action (`actionId`) ou appels de script natifs (`scriptCategory`, `scriptId`). 
+Toutes les opérations d'écriture de déclarations (`register`, `unregister`, `schedule`, `scheduleTurn`, `expireEffectAt`, `cancelTimer`) sont **réservées au MJ principal actif**. C'est volontaire : un script persisté est exécuté avec les permissions de ce MJ. Aucun script ne peut être fourni en clair dans une déclaration. Les scripts exécutés doivent exister sur un Item PF1 et être approuvés par le MJ : scripts d’action (`actionId`) ou appels de script natifs (`scriptCategory`, `scriptId`). 
 
 - `await api.register({ id, on, itemUuid, actionId, actorUuid?, filter? })` : ajoute ou remplace une surveillance persistante.
 - `await api.unregister(id)` : supprime une surveillance.
 - `await api.schedule({id,itemUuid,actionId,actorUuid?,combatId?,combatantId?,unit:'rounds'|'turns',amount})` : ajoute/remplace une expiration persistante.
+- `await api.scheduleTurn({id,timing,combatantId,...})` : cible le début/fin exact d’un tour avec un script PF1 ou un effet direct.
+- `await api.expireEffectAt({id,effectUuid,timing,combatantId,...})` : désactive un buff PF1 ou un ActiveEffect à un moment précis.
 - `await api.cancelTimer(id)` : annule l'expiration.
 - `api.listEvents()` et `api.listTimers()` : listes en lecture seule (copies).
 - `api.isLeader()` : booléen.
@@ -95,3 +97,7 @@ Le script d'action `Expiration` doit restaurer lui-même l'état voulu. Le moteu
 - Le gestionnaire de scripts ne peut pas garantir l'absence de toute double écriture sous déconnexions/réconnexions simultanées de MJ : les paramètres world ne sont pas transactionnels. En cas de changement de MJ principal au milieu d'une exécution, surveiller les logs.
 - Le moteur ne modifie pas les calculs des capacités et ne garantit pas qu'une action PF1 préexistante expose son script dans un des champs pris en charge ; voir diagnostic navigateur.
 - Les logs détaillés sont désactivés par défaut. Les erreurs de script restent affichées dans la console.
+
+### Expirations précises (v1.6.0)
+
+Consulter [API-EXPIRATIONS.md](API-EXPIRATIONS.md) pour les cinq timings, les exemples de scripts PF1, les buffs, les ActiveEffects, les garanties et les limites de sécurité.
