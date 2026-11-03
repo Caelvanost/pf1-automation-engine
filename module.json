@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "Moteur PF1 générique : événements, effets multicibles, expirations en combat et durées dans le temps du monde.",
-  "version": "1.8.0",
+  "description": "Generic Pathfinder 1e automation engine: events, native actor rest, multi-target effects, combat expirations and world-time durations.",
+  "version": "1.9.0",
   "authors": [
     {
       "name": "Module personnalisé"
@@ -30,6 +30,7 @@
     "scripts/auto-discovery.js",
     "scripts/effect-groups.js",
     "scripts/generic-automation.js",
-    "scripts/duration-manager.js"
+    "scripts/duration-manager.js",
+    "scripts/rest-automation.js"
   ]
 }
