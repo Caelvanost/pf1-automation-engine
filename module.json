@@ -2,7 +2,7 @@
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
   "description": "Moteur générique d’automatisations PF1 : événements, scripts natifs, effets temporaires et découverte approuvée par MJ.",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "authors": [
     {
       "name": "Module personnalisé"
