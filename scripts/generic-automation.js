@@ -191,6 +191,39 @@ function isExpirable(doc) {
   return doc?.documentName === 'ActiveEffect' || (doc?.documentName === 'Item' && doc.type === 'buff');
 }
 
+/**
+ * Absolute, durable round deadline for phase timers. It is calculated ONCE
+ * from the casting turn and is never derived from the combat's current round
+ * again on reconnect. A remaining-hit counter alone can lose a transition
+ * while no elected GM client is listening.
+ */
+function targetPhaseRound(combat, combattant, phase, amount, createdTurn=combat.turn, createdRound=combat.round) {
+  const index = combat.turns?.findIndex(c=>c.id===combattant.id) ?? -1;
+  if (index<0 || !Number.isInteger(createdTurn) || !Number.isInteger(createdRound)) return null;
+  const active = index===createdTurn;
+  const laterThisRound = index>createdTurn;
+  const first = phase==='turnStart'
+    ? createdRound+(active || !laterThisRound ? 1 : 0)
+    : createdRound+(!active && !laterThisRound ? 1 : 0);
+  return first + amount - 1;
+}
+/** Safely backfill an absolute deadline for phase timers written in v1.6/v1.7. */
+function getTargetRound(timer,combat) {
+  if (Number.isInteger(timer.targetRound)) return timer.targetRound;
+  if (timer.unit!=='phase' || !Number.isInteger(timer.createdRound) || !Number.isInteger(timer.createdTurn)) return null;
+  const combattant=combat?.combatants?.get(timer.combatantId);
+  if (!combattant) return null;
+  return targetPhaseRound(combat,combattant,timer.phase,timer.amount,timer.createdTurn,timer.createdRound);
+}
+function pastTargetPhase(timer,combat) {
+  const target=getTargetRound(timer,combat);
+  if (!Number.isInteger(target) || !combat?.started) return false;
+  if (combat.round>target) return true;
+  if (combat.round<target) return false;
+  const index=combat.turns?.findIndex(c=>c.id===timer.combatantId) ?? -1;
+  return index>=0 && Number.isInteger(combat.turn) &&
+    (timer.phase==='turnStart' ? combat.turn>=index : combat.turn>index);
+}
 function phaseConfig(timing, combat, combattant, occurrences) {
   if (!TURN_TIMINGS.has(timing)) throw Error(`Moment d'expiration inconnu : ${timing}`);
   const active = combat.combatant?.id === combattant.id;
@@ -262,6 +295,7 @@ async function scheduleTurn(data) {
     id:data.id,unit:'phase',timing,phase,amount,remaining:amount,
     combatId:combat.id,combatantId:combattant.id,
     createdRound:combat.round,createdTurn:combat.turn,
+    targetRound:targetPhaseRound(combat,combattant,phase,amount),
     lastPosition:`${combat.round}:${combat.turn}`,
     ...target
   };
@@ -269,6 +303,34 @@ async function scheduleTurn(data) {
     const old=getTimers();
     await game.settings.set(NS,TIMERS,[...old.filter(t=>t.id!==timer.id),timer]);
     return timer.id;
+  });
+}
+
+/** Extend a pending phase timer without creating new effects or resetting its anchor. */
+async function extendTimer(id,{rounds=1}={}) {
+  requireGM();
+  if (!safeText(id,100) || !Number.isInteger(rounds) || rounds<1 || rounds>10000) {
+    throw Error('Identifiant de minuteur ou nombre de rounds invalide.');
+  }
+  return appendQueue('__pf1_timer_write__',async()=>{
+    const timers=getTimers();
+    const index=timers.findIndex(t=>t.id===id);
+    if (index<0) throw Error(`Minuteur à prolonger introuvable : ${id}`);
+    const timer=timers[index];
+    if (timer.unit!=='phase' || timer.due) throw Error('Seul un minuteur de phase non expiré peut être prolongé.');
+    const combat=game.combats.get(timer.combatId);
+    if (!combat?.started || !combat.combatants.get(timer.combatantId)) throw Error('Combat ou combattant de référence introuvable.');
+    const prior=getTargetRound(timer,combat);
+    if (!Number.isInteger(prior) || pastTargetPhase(timer,combat)) {
+      throw Error('Échéance déjà passée ou non reconstructible.');
+    }
+    const targetRound=prior+rounds;
+    if (targetRound>100000000) throw Error('Échéance trop lointaine.');
+    // The current copies, group identity and template approval remain untouched.
+    const updated={...timer,targetRound,remaining:Math.max(1,Number(timer.remaining)||1)+rounds};
+    const next=[...timers];next[index]=updated;
+    await game.settings.set(NS,TIMERS,next);
+    return {extended:true,id,rounds,targetRound,effectGroupId:timer.effectGroupId??null};
   });
 }
 
@@ -389,6 +451,21 @@ async function advanceTimers(combat,prior,current) {
     let changed=false;
     for (const t of old) {
       if(t.combatId!==combat.id || t.due || t.lastPosition===cursor) {updated.push(t);continue;}
+      if (t.unit==='phase') {
+        // For phase expirations, an absolute round is authoritative. Unlike a
+        // relative hit-counter this cannot restart or drift after an F5.
+        const target=getTargetRound(t,combat);
+        if (Number.isInteger(target)) {
+          const hit=phaseHit(t,prior,current);
+          const boundaryRound=t.phase==='turnEnd'?prior.round:current.round;
+          const due=(hit && boundaryRound>=target) || current.round>target;
+          const next={...t,targetRound:target,lastPosition:cursor,
+            remaining:due?0:Math.max(1,target-combat.round+(t.phase==='turnEnd'?1:0))};
+          if (due) next.due=true;
+          updated.push(next);changed=true;
+          continue;
+        }
+      }
       const decrement=t.unit==='phase'?Number(phaseHit(t,prior,current)):
         t.unit==='rounds'?Math.max(0,current.round-prior.round):
           (prior.combatantId===t.combatantId?1:0);
@@ -408,7 +485,23 @@ async function resumeDueTimers() {
   return appendQueue('__pf1_timer_write__',async()=>{
     if (!leader() || !enabled()) return;
     const list=getTimers();
-    if (list.some(t=>t.due)) await runDueTimers(list,null);
+    // Reconstruct old pending timers and detect expirations whose boundary
+    // elapsed while no elected GM was running. Never restart from the round
+    // currently shown by the Combat Tracker after a page reload.
+    let modified=false;
+    const checked=list.map(t=>{
+      if (t.due || t.unit!=='phase') return t;
+      const combat=game.combats.get(t.combatId);
+      if (!combat?.started) return t;
+      const targetRound=getTargetRound(t,combat);
+      if (!Number.isInteger(targetRound)) return t;
+      const due=pastTargetPhase({...t,targetRound},combat);
+      if (t.targetRound===targetRound && !due) return t;
+      modified=true;
+      return {...t,targetRound,...(due?{due:true,remaining:0}:{})};
+    });
+    if (modified) await game.settings.set(NS,TIMERS,checked);
+    if (checked.some(t=>t.due)) await runDueTimers(checked,null);
   });
 }
 function install() {
@@ -429,7 +522,7 @@ Hooks.once('init',()=>{
 });
 Hooks.once('ready',async()=>{
   game.modules.get(NS).api ??= {};
-  game.modules.get(NS).api.generic = Object.freeze({register,unregister,schedule,scheduleTurn,expireEffectAt,cancelTimer,listEvents:()=>clone(getRegistry()),listTimers:()=>clone(getTimers()),isLeader:leader,validateRule,validateTarget:async r=>{const i=await fromUuid(r.itemUuid);if(i?.documentName!=='Item')throw Error('Objet de script introuvable');return resolveTarget(i,r);}});
+  game.modules.get(NS).api.generic = Object.freeze({register,unregister,schedule,scheduleTurn,expireEffectAt,extendTimer,cancelTimer,listEvents:()=>clone(getRegistry()),listTimers:()=>clone(getTimers()),isLeader:leader,validateRule,validateTarget:async r=>{const i=await fromUuid(r.itemUuid);if(i?.documentName!=='Item')throw Error('Objet de script introuvable');return resolveTarget(i,r);}});
   try { await game.modules.get(NS).api.migration?.whenReady(); }
   catch(error) { console.error(`${NS} | Automatisations suspendues : échec de migration`, error); return; }
   await game.modules.get(NS).api.discovery?.scan();

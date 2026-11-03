@@ -1,4 +1,4 @@
-# PF1 Automation Engine v1.7.0 — Effets multi-bénéficiaires
+# PF1 Automation Engine v1.7.1 — Effets multi-bénéficiaires
 
 **Environnement ciblé :** Foundry VTT 13.351 · Pathfinder 1e 11.11.
 
@@ -42,10 +42,15 @@ const result = await groups.applyGroup({
 // Stopper plus tôt (par exemple un script de désactivation de capacité)
 await groups.stopGroup({ actor, key: 'temporary-bonus' });
 
+// Prolonger le groupe existant d'un round, sans toucher à ses copies.
+await groups.extendGroup({ actor, key: 'temporary-bonus', rounds: 1 });
+
 // Diagnostics
 console.table(groups.listGroups());
 console.table(mod.api.generic.listTimers());
 ```
+
+`extendGroup()` ajoute les rounds demandés à **l'échéance existante** : il ne crée aucun nouveau buff, n'exécute aucun script de bascule et ne remplace pas les bénéficiaires. Le groupe doit être encore actif et son minuteur non expiré. Cette action est transmise au MJ responsable lorsqu'elle est utilisée par un joueur propriétaire de l'acteur source ; le résultat `submitted: true` ne confirme que l'envoi. Elle ne consomme ni action ni ressource PF1 : le script de la capacité reste responsable de ces règles.
 
 Un autre appel `applyGroup()` avec la **même** paire `(sourceUuid, key)` remplace le groupe précédent. Des clés différentes peuvent coexister. Les effets ajoutés sur les cibles ne sont jamais supprimés en masse : le moteur vérifie leur `flags.pf1-automation-engine.effectGroupId` avant chaque suppression.
 
@@ -125,3 +130,35 @@ if (result.submitted) {
 6. Répéter avec deux MJ et un joueur ; vérifier qu'un seul MJ crée et supprime les copies.
 7. Modifier volontairement un modèle après son approbation : son utilisation doit être refusée jusqu'à une nouvelle approbation par le MJ.
 8. Tester `stopGroup()` avant échéance et une cible momentanément indisponible, puis vérifier `listGroups()` et `listTimers()`.
+
+## Prolonger la représentation avec une action libre (v1.7.1)
+
+Exemple de script PF1 natif « Maintenir » sur la capacité du barde, **distinct** du script qui déclenche le chant :
+
+```js
+const caster = item?.actor ?? actor;
+if (!caster) throw Error('Lanceur introuvable.');
+const result = await game.modules.get('pf1-automation-engine')
+  .api.effectGroups.extendGroup({
+    actor: caster,
+    key: 'inspire-courage',   // clé identique à celle d'applyGroup()
+    rounds: 1                // ajout à la date de fin existante
+  });
+if (result.submitted) ui.notifications.info('Prolongation demandée au MJ.');
+else console.log('Expiration reportée au round',result.targetRound);
+```
+
+Si le groupe devait expirer à la fin du tour du barde au round 2, cette action le repousse à la **fin du tour du barde au round 3**. Le buff reste présent sans interruption sur les mêmes bénéficiaires. Ne pas rappeler `applyGroup()` pour maintenir un effet existant : cela supprimerait les copies puis les recréerait.
+
+La capacité doit gérer le coût en rounds/jour de la représentation et les conditions d'utilisation de l'action libre conformément aux règles PF1. Le moteur ne modélise aucune capacité de classe.
+
+### Débogage
+
+```js
+const mod = game.modules.get('pf1-automation-engine');
+console.table(mod.api.generic.listTimers().filter(t=>t.effectGroupId).map(t=>({
+  id:t.id, roundInitial:t.createdRound, roundCible:t.targetRound,
+  restant:t.remaining, expire:t.due??false
+})));
+console.table(mod.api.effectGroups.listGroups());
+```

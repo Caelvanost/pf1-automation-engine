@@ -1,34 +1,9 @@
-PF1 Automation Engine v1.7.0 — Foundry VTT 13.351 / PF1 11.11
+PF1 Automation Engine v1.7.1 — Foundry VTT 13.351 / PF1 11.11
 
-Nouveau service de groupes d’effets : voir API-EFFETS-GROUPES.md.
-Pour installer, extraire le ZIP dans Data/modules/pf1-automation-engine/ avec module.json directement à la racine.
-Préserver une sauvegarde du monde, tester les buffs natifs avant d’utiliser en campagne.
+Correctifs : expiration fixe au round d'origine, fiable après F5 ;
+prolongation d'un groupe d'effets sans recréer ses buffs.
+Voir API-EFFETS-GROUPES.md et API-EXPIRATIONS.md.
 
-PF1 AUTOMATION ENGINE v1.6.0
-=================================
-Foundry VTT v13.351 / Pathfinder 1e 11.11
-
-Identifiant : pf1-automation-engine
-Dossier d'installation : Data/modules/pf1-automation-engine/
-
-ATTENTION : migration depuis l'ancien module pf1-combat-automation.
-Faire une sauvegarde du monde et désactiver l'ancien module.
-Ne pas activer les deux modules en même temps.
-
-Après le premier démarrage, le MJ principal transfère les paramètres
-et les flags historiques sans supprimer les anciennes données.
-Les macros du monde avec des références littérales sont mises à jour
-avec copie de leurs commandes précédentes. Les scripts PF1 embarqués
-dans les objets ne sont pas réécrits.
-
-API : game.modules.get('pf1-automation-engine').api
-
-Voir MIGRATION-V1.5.md et API-DECOUVERTE.md pour les instructions.
-
-Depuis v1.5.1 : les anciens hooks et macros spécifiques à une classe
-ont été retirés. Seuls les mécanismes de surveillance génériques
-et les scripts portés par les objets PF1 assurent ces comportements.
-
-NOUVEAU v1.6.0 : api.generic.scheduleTurn / expireEffectAt,
-expirations au début/à la fin du tour (y compris le tour suivant).
-Voir API-EXPIRATIONS.md pour les exemples et les tests Foundry.
+Installation : extraire le ZIP dans Data/modules/pf1-automation-engine/
+(module.json doit se trouver directement à la racine du dossier).
+Sauvegarder le monde et désactiver l'ancien module avant installation.

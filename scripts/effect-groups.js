@@ -289,6 +289,28 @@ async function effectApplyInternal(data,requester,socketOrigin=false) {
     throw error;
   }
 }
+/** Extend the existing group's timer without touching any beneficiary copies. */
+async function effectExtendInternal(data,requester,socketOrigin=false) {
+  if (!effectEnabled() || !effectIsLeader()) throw Error('Le MJ responsable est indisponible.');
+  if (!effectValidKey(data?.key)) throw Error('Clé de groupe invalide.');
+  if (!Number.isInteger(data.rounds) || data.rounds<1 || data.rounds>10000) {
+    throw Error('Prolongation attendue : de 1 à 10000 rounds.');
+  }
+  const source=await effectResolveActor(data.sourceUuid);
+  if (!source) throw Error('Acteur source introuvable.');
+  const directGM=!socketOrigin && requester?.isGM && effectIsLeader();
+  if (!directGM && !source.testUserPermission?.(requester,'OWNER')) {
+    throw Error('Vous ne possédez pas ce personnage.');
+  }
+  const group=Object.values(effectGroups()).find(g=>
+    g.sourceUuid===source.uuid && g.key===data.key && !g.pendingCleanup);
+  if (!group) throw Error(`Aucun groupe actif à prolonger : ${data.key}.`);
+  // Do not hold effectQueue here: timer expiration acquires the timer queue
+  // BEFORE the group queue. Extending uses the timer queue only.
+  const extension=await game.modules.get(EFFECT_NS).api.generic.extendTimer(group.timerId,{rounds:data.rounds});
+  return {extended:true,groupId:group.id,targetCount:group.copies?.length??0,
+    rounds:data.rounds,targetRound:extension.targetRound,timerId:group.timerId};
+}
 async function effectStopInternal(data,requester,socketOrigin) {
   if (!effectEnabled() || !effectIsLeader()) throw Error('Le MJ responsable est indisponible.');
   if (!effectValidKey(data?.key)) throw Error('Clé invalide.');
@@ -312,9 +334,13 @@ function effectRequest(op,data) {
     payload.targetUuids=(data.targets ?? []).map(effectUuid);
     payload.timing=data.timing ?? 'endOfCurrentTurn';
     payload.occurrences=data.occurrences ?? 1;
+  } else if (op === 'extend') {
+    payload.rounds=data.rounds ?? 1;
   }
   if (effectIsLeader()) {
-    return effectQueue(()=>op==='apply' ? effectApplyInternal(payload,game.user,false) : effectStopInternal(payload,game.user,false));
+    return op==='extend'
+      ? effectExtendInternal(payload,game.user,false)
+      : effectQueue(()=>op==='apply' ? effectApplyInternal(payload,game.user,false) : effectStopInternal(payload,game.user,false));
   }
   if (!effectPrimaryGM()) throw Error('Un MJ doit être connecté pour appliquer des effets.');
   // This is a request, not an acknowledgement of successful application.
@@ -328,9 +354,10 @@ async function effectHandleSocket(data) {
   effectSeenRequests.add(data.requestId);
   if (effectSeenRequests.size > 2000) effectSeenRequests.clear();
   const requester=game.users.get(data.userId);
-  if (!requester?.active || !['apply','stop'].includes(data.op)) return;
+  if (!requester?.active || !['apply','stop','extend'].includes(data.op)) return;
   try {
-    await effectQueue(()=>data.op==='apply' ? effectApplyInternal(data,requester,true) : effectStopInternal(data,requester,true));
+    if (data.op==='extend') await effectExtendInternal(data,requester,true);
+    else await effectQueue(()=>data.op==='apply' ? effectApplyInternal(data,requester,true) : effectStopInternal(data,requester,true));
   } catch(error) {
     console.error(`${EFFECT_NS} | Demande d’effet refusée : ${error.message}`,error);
   }
@@ -357,6 +384,7 @@ Hooks.once('ready',()=>{
   const api=Object.freeze({
     applyGroup:data=>effectRequest('apply',data),
     stopGroup:data=>effectRequest('stop',data),
+    extendGroup:data=>effectRequest('extend',data),
     approveTemplate:effectApproveTemplate,
     revokeTemplate:effectRevokeTemplate,
     listApprovedTemplates:()=>Object.keys(effectApprovals()),
