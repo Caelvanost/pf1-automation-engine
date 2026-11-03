@@ -81,7 +81,10 @@ async function test(){
   assert.equal(gm.api().duration.listTimers()[0].remainingSeconds,12);
   assert.deepEqual(copies.map(c=>c.activations),[[true],[true]],'extension must not toggle buffs');
 
-  // F5: a newly loaded MJ must find the same group and the same deadline.
+  // F5 disconnects the old browser: its socket listener must be removed.
+  // Otherwise this harness would simulate two concurrent sessions with the
+  // SAME elected GM user id, which Foundry does not retain across an F5.
+  world.socket.clear();
   const reload=createClient(world,world.users[0]);await reload.start();
   assert.equal(reload.api().effectGroups.listGroups().length,1);
   await reload.tick(11);assert.deepEqual(copies.map(c=>c.deleted),[undefined,undefined]);
