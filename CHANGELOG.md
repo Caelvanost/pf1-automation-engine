@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.1 — Échéances fixes et prolongation des groupes
+
+- Les minuteurs de phase enregistrent désormais un `targetRound` calculé au déclenchement, qui ne change pas avec F5.
+- Reconstitution et reprise des minuteurs v1.6/v1.7 encore en cours à partir du round/tour de création.
+- `api.generic.extendTimer(id,{rounds:1})` : décaler une échéance existante, sans la réinitialiser (MJ responsable).
+- `api.effectGroups.extendGroup({actor,key,rounds:1})` : prolonger le groupe sans réappliquer, désactiver ou recréer ses buffs. Autorisé depuis un personnage joueur sous contrôle du MJ via socket.
+- Test automatisé : fin du tour du barde après rechargement en début de round, prolongation puis F5, migration des échéances existantes.
+
+
+
 ## 1.7.0 — Effets temporaires multi-bénéficiaires
 
 - API générique `api.effectGroups` : modèles approuvés par le MJ, applications à plusieurs acteurs, gestion des copies de buffs natifs PF1 et ActiveEffects.

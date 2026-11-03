@@ -26,7 +26,7 @@ jobs:
           node tests/neutrality.test.cjs
           node tests/turn-phases.test.cjs
           node tests/effect-groups.test.cjs
-          node tests/turn-phases.test.cjs
+          node tests/extension-f5.test.cjs
 
       - name: Validate Foundry package
         shell: powershell

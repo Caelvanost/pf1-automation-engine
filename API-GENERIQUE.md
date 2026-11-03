@@ -15,7 +15,7 @@ Dans Configuration des modules, les options de monde **Activer les automatisatio
 const api = game.modules.get('pf1-automation-engine')?.api?.generic;
 ```
 
-Toutes les opérations d'écriture de déclarations (`register`, `unregister`, `schedule`, `scheduleTurn`, `expireEffectAt`, `cancelTimer`) sont **réservées au MJ principal actif**. C'est volontaire : un script persisté est exécuté avec les permissions de ce MJ. Aucun script ne peut être fourni en clair dans une déclaration. Les scripts exécutés doivent exister sur un Item PF1 et être approuvés par le MJ : scripts d’action (`actionId`) ou appels de script natifs (`scriptCategory`, `scriptId`). 
+Toutes les opérations d'écriture de déclarations (`register`, `unregister`, `schedule`, `scheduleTurn`, `expireEffectAt`, `extendTimer`, `extendTimer`, `cancelTimer`) sont **réservées au MJ principal actif**. C'est volontaire : un script persisté est exécuté avec les permissions de ce MJ. Aucun script ne peut être fourni en clair dans une déclaration. Les scripts exécutés doivent exister sur un Item PF1 et être approuvés par le MJ : scripts d’action (`actionId`) ou appels de script natifs (`scriptCategory`, `scriptId`). 
 
 - `await api.register({ id, on, itemUuid, actionId, actorUuid?, filter? })` : ajoute ou remplace une surveillance persistante.
 - `await api.unregister(id)` : supprime une surveillance.
@@ -105,3 +105,7 @@ Consulter [API-EXPIRATIONS.md](API-EXPIRATIONS.md) pour les cinq timings, les ex
 ## Groupes d’effets multi-cibles (v1.7.0)
 
 Voir [API-EFFETS-GROUPES.md](API-EFFETS-GROUPES.md) pour l’approbation MJ des modèles, l’application sécurisée depuis une capacité PF1 et le nettoyage automatique à une échéance de tour via `api.effectGroups.applyGroup()` et `stopGroup()`.
+
+### Extension de minuteur (v1.7.1)
+
+`await api.extendTimer(timerId,{rounds:1})` décale une échéance de phase existante d'un round. Cet appel est **réservé au MJ responsable** ; dans un script de PJ, préférer la requête autorisée `game.modules.get('pf1-automation-engine').api.effectGroups.extendGroup({actor,key,rounds:1})`. Ni les copies d'effets ni la liste des bénéficiaires ne sont modifiées.

@@ -119,3 +119,21 @@ Il reste possible de cibler une action PF1 ancienne en remplaçant `scriptCatego
 ## Expirations de groupes (v1.7.0)
 
 Le service `api.effectGroups` construit un unique minuteur de phase pour un groupe de copies multi-bénéficiaires. Le champ interne `effectGroupId` est réservé aux minuteries créées/validées par ce service côté MJ. Pour activer ce service depuis une capacité PF1, utiliser `api.effectGroups.applyGroup()` plutôt que programmer manuellement une expiration par cible. Voir [API-EFFETS-GROUPES.md](API-EFFETS-GROUPES.md).
+
+## Correctif v1.7.1 — stabilité après F5, échéance et prolongation
+
+Les expirations de phase possèdent un `targetRound` fixé au moment de la programmation. Exemple : un buff créé pendant le tour du barde au round 1 avec `endOfNextTurn` expire à **la fin du tour de ce barde au round 2**, même lorsque Foundry est rechargé après le début du round 2. Le moteur n'interprète pas ce round courant comme le nouveau round de création.
+
+Les minuteurs enregistrés dans les versions antérieures et non expirés sont reconstruits au chargement depuis leurs champs persistés `createdRound`, `createdTurn`, `phase`, `amount` et le combattant de référence, lorsque cet acteur est encore dans le combat.
+
+Un MJ responsable peut décaler une échéance de phase non expirée :
+
+```js
+await game.modules.get('pf1-automation-engine').api.generic.extendTimer(
+  timerId, {rounds: 1}
+);
+```
+
+Ce décalage est **additif à la date d'expiration**, sans réinitialisation. Pour un **groupe d'effets**, préférer `api.effectGroups.extendGroup({actor,key,rounds:1})`, qui accepte les demandes des joueurs contrôlant l'acteur source. L'extension n'exécute aucun script de bascule et ne recrée pas les buffs. Le MJ responsable demeure l'unique client autorisé à écrire `timerRegistry`.
+
+Limites : les tours sans combattant identifiable, des changements d'initiative exceptionnels et les retours manuels de round peuvent nécessiter une intervention du MJ. Les positions et échéances sont évaluées avec l'ordre des combattants dans le combat actif ; aucun tour manqué n'est inventé.
