@@ -99,8 +99,10 @@ function restSend(payload) {
       console.warn(REST_NS + " | Rest notification too large; ignored.");
       return;
     }
-    if (restLeader()) void restProcess(payload, false);
-    else game.socket.emit(REST_SOCKET, payload);
+    if (restLeader()) {
+      void restProcess(payload, false).catch(err =>
+        console.error(REST_NS + " | Local rest dispatch failed", err));
+    } else game.socket.emit(REST_SOCKET, payload);
   } catch (err) { console.error(REST_NS + " | Rest bridge error", err); }
 }
 function restOnPre(actor, options, updateData, itemUpdates) {
@@ -136,6 +138,12 @@ async function restProcess(payload, socketOrigin) {
       !restValidText(payload.restId, 80) ||
       !restValidText(payload.actorUuid) ||
       !restValidText(payload.requesterId, 100)) return;
+  // Queue BEFORE asynchronous fromUuid resolution. Even if pre-rest document
+  // lookup takes longer than post-rest lookup, per-actor order is preserved.
+  return restQueue(payload.actorUuid, () => restProcessSerial(payload, socketOrigin));
+}
+async function restProcessSerial(payload, socketOrigin) {
+  if (!restEnabled() || !restLeader()) return;
   const requester = game.users.get(payload.requesterId);
   if (!requester?.active) return;
   const actor = await fromUuid(payload.actorUuid);
@@ -178,16 +186,14 @@ async function restProcess(payload, socketOrigin) {
       truncated: payload.planned?.truncated === true
     }
   };
-  return restQueue(actor.uuid, async () => {
-    if (!restEnabled() || !restLeader()) return;
-    const generic = game.modules.get(REST_NS)?.api?.generic;
-    if (!generic?._dispatchRestEvent) return;
-    await generic._dispatchRestEvent({
-      type: payload.phase === "pre" ? "pf1PreActorRest" : "pf1ActorRest",
-      document: actor, documentUuid: actor.uuid, actorUuid: actor.uuid,
-      itemUuid: null, changedPaths: [], buffState: null,
-      round: null, combatId: null, combatantId: null, rest
-    });
+  if (!restEnabled() || !restLeader()) return;
+  const generic = game.modules.get(REST_NS)?.api?.generic;
+  if (!generic?._dispatchRestEvent) return;
+  await generic._dispatchRestEvent({
+    type: payload.phase === "pre" ? "pf1PreActorRest" : "pf1ActorRest",
+    document: actor, documentUuid: actor.uuid, actorUuid: actor.uuid,
+    itemUuid: null, changedPaths: [], buffState: null,
+    round: null, combatId: null, combatantId: null, rest
   });
 }
 Hooks.once("init", () => {
