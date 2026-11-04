@@ -48,7 +48,7 @@ function effectTemplateKind(template) {
   if (template.parent?.documentName === 'Actor') return 'actorBuff';
   // fromUuid() must resolve the actual pack document. An embedded or world
   // Item with a misleading .pack value or name is not a Compendium template.
-  if (/^Compendium\\.[^.]+\\.[^.]+\\.Item\\.[^.]+$/.test(template.uuid)) {
+  if (/^Compendium\.[^.]+\.[^.]+\.Item\.[^.]+$/.test(template.uuid)) {
     return 'compendiumBuff';
   }
   return null;
