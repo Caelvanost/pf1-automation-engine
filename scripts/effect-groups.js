@@ -1,6 +1,7 @@
 /**
  * PF1 Automation Engine — generic, GM-approved, multi-target effects (v1.7.0).
- * A source actor may copy an approved ActiveEffect or a PF1 Item buff to allies.
+ * A source actor may copy an approved ActiveEffect, actor-owned PF1 Item buff,
+ * or GM-approved PF1 buff from a Compendium to allies.
  * The elected GM owns the world ledger and a single turn-phase expiration.
  * No character class, spell or feat rules live here.
  */
@@ -37,6 +38,90 @@ function isEffectTemplate(doc) {
   return doc?.documentName === 'ActiveEffect' ||
     (doc?.documentName === 'Item' && doc.type === 'buff');
 }
+/** Only top-level Compendium Item documents may be shared between source actors. */
+function effectTemplateKind(template) {
+  if (!template?.uuid || typeof template.toObject !== 'function') return null;
+  if (template.documentName === 'ActiveEffect' && template.parent?.documentName === 'Actor') {
+    return 'activeEffect';
+  }
+  if (template.documentName !== 'Item' || template.type !== 'buff') return null;
+  if (template.parent?.documentName === 'Actor') return 'actorBuff';
+  // fromUuid() must resolve the actual pack document. An embedded or world
+  // Item with a misleading .pack value or name is not a Compendium template.
+  if (/^Compendium\\.[^.]+\\.[^.]+\\.Item\\.[^.]+$/.test(template.uuid)) {
+    return 'compendiumBuff';
+  }
+  return null;
+}
+function effectDebug(event, details={}) {
+  if (game.settings.get(EFFECT_NS,'genericDebug')) {
+    console.debug(`${EFFECT_NS} | effectGroups:${event}`,details);
+  }
+}
+const EFFECT_VOLATILE_ROOT_KEYS = new Set([
+  '_id','_stats','ownership','folder','sort','pack'
+]);
+/**
+ * Exact, canonical content fingerprint. Unlike a truncated hash, the full
+ * comparison cannot silently accept collisions. Includes all Item/AE fields
+ * except volatile top-level document identity/ownership/sorting metadata.
+ * Script Calls inside .system and embedded effects remain fully covered.
+ */
+function effectCanonical(value) {
+  if (Array.isArray(value)) return value.map(effectCanonical);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.keys(value).sort()
+        .filter(k=>value[k] !== undefined)
+        .map(k=>[k,effectCanonical(value[k])])
+    );
+  }
+  return value;
+}
+function effectRelevantData(template) {
+  const raw=template.toObject();
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw Error('Modèle invalide : toObject() ne renvoie pas des données Item/ActiveEffect.');
+  }
+  return effectCanonical(Object.fromEntries(
+    Object.entries(raw).filter(([key])=>!EFFECT_VOLATILE_ROOT_KEYS.has(key))
+  ));
+}
+/** FNV-1a 64-bit: compact diagnostic hash; exact fingerprint is authoritative. */
+function effectContentHash(fingerprint) {
+  let hash=0xcbf29ce484222325n;
+  const mask=0xffffffffffffffffn;
+  for (let i=0;i<fingerprint.length;i++) {
+    hash=((hash ^ BigInt(fingerprint.charCodeAt(i))) * 0x100000001b3n) & mask;
+  }
+  return 'fnv1a64:' + hash.toString(16).padStart(16,'0');
+}
+function effectApprovalRecord(template, kind) {
+  const fingerprint=JSON.stringify(effectRelevantData(template));
+  return {
+    uuid:template.uuid,
+    templateType:kind,
+    hash:effectContentHash(fingerprint),
+    hashAlgorithm:'fnv1a64-v1;exact-canonical-json',
+    fingerprint
+  };
+}
+function effectTemplateCopy(template) {
+  const copy=foundry.utils.deepClone(template.toObject());
+  // Preserve PF1 system.actions and system.scriptCalls IDs, but do not reuse
+  // a world/pack document ID or embedded root ownership/provenance metadata.
+  for (const key of EFFECT_VOLATILE_ROOT_KEYS) delete copy[key];
+  if (Array.isArray(copy.effects)) {
+    // Embedded ActiveEffect IDs must be generated anew for the new Item.
+    for (const effect of copy.effects) if (effect && typeof effect === 'object') delete effect._id;
+  }
+  copy.flags ??= {};
+  // A copied Compendium UUID is not an actor Item's permanent origin.
+  if (copy.flags.core && typeof copy.flags.core === 'object') {
+    delete copy.flags.core.sourceId;
+  }
+  return copy;
+}
 function effectValidKey(key) {
   return typeof key === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(key);
 }
@@ -51,22 +136,29 @@ async function effectResolveActor(uuid) {
   return effectActor(doc);
 }
 function effectFingerprint(template) {
-  // Exact content match, not a weak hash. Includes native PF1 script calls.
+  // Legacy v1.9.x record: exact content of actor-owned template.
   return JSON.stringify({uuid:template.uuid,content:template.toObject()});
 }
 function effectOwnedBy(template, actor) {
-  return isEffectTemplate(template) &&
-    template.parent?.documentName === 'Actor' &&
-    template.parent.uuid === actor.uuid;
+  const kind=effectTemplateKind(template);
+  return kind === 'compendiumBuff' || (
+    (kind === 'actorBuff' || kind === 'activeEffect') &&
+    template.parent?.uuid === actor.uuid
+  );
 }
 async function effectApproveTemplate(templateUuid) {
   effectRequireLeader();
-  const template = await fromUuid(effectUuid(templateUuid));
-  if (!isEffectTemplate(template) || template.parent?.documentName !== 'Actor') {
-    throw Error('Le modèle doit être un ActiveEffect ou un buff PF1 appartenant à un acteur.');
+  const uuid=effectUuid(templateUuid);
+  const template=typeof uuid === 'string' ? await fromUuid(uuid) : null;
+  const kind=effectTemplateKind(template);
+  if (!kind) {
+    effectDebug('template-rejected',{uuid,reason:'not an actor-owned buff/AE or Compendium buff'});
+    throw Error('Modèle refusé : ActiveEffect d’acteur, buff PF1 embarqué ou buff PF1 de Compendium requis.');
   }
-  const approvals={...effectApprovals(),[template.uuid]:effectFingerprint(template)};
+  const record=effectApprovalRecord(template,kind);
+  const approvals={...effectApprovals(),[template.uuid]:record};
   await game.settings.set(EFFECT_NS,TEMPLATES_SETTING,approvals);
+  effectDebug('template-approved',{uuid:template.uuid,kind,hash:record.hash});
   return template.uuid;
 }
 async function effectRevokeTemplate(templateUuid) {
@@ -78,9 +170,36 @@ async function effectRevokeTemplate(templateUuid) {
 }
 function effectCheckApproval(template) {
   const approved=effectApprovals()[template.uuid];
-  if (!approved || approved !== effectFingerprint(template)) {
-    throw Error(`Modèle ${template.name} non approuvé ou modifié depuis son approbation MJ.`);
+  const kind=effectTemplateKind(template);
+  if (!kind) {
+    effectDebug('template-rejected',{uuid:template?.uuid,reason:'invalid template kind'});
+    throw Error('Modèle refusé : type incompatible (buff PF1 ou ActiveEffect d’acteur requis).');
   }
+  if (!approved) {
+    effectDebug('template-rejected',{uuid:template.uuid,kind,reason:'not approved'});
+    throw Error(`Modèle ${template.name} non approuvé par le MJ.`);
+  }
+  // Old actor-owned approvals are preserved without a world-setting migration.
+  if (typeof approved === 'string') {
+    if (kind !== 'compendiumBuff' && approved === effectFingerprint(template)) {
+      effectDebug('template-legacy-approved',{uuid:template.uuid,kind});
+      return;
+    }
+  } else if (approved && typeof approved === 'object') {
+    const actual=effectApprovalRecord(template,kind);
+    if (approved.uuid === actual.uuid &&
+        approved.templateType === actual.templateType &&
+        approved.hash === actual.hash &&
+        approved.fingerprint === actual.fingerprint) {
+      effectDebug('template-verified',{uuid:template.uuid,kind,hash:actual.hash});
+      return;
+    }
+    effectDebug('template-modified',{uuid:template.uuid,kind,
+      approvedHash:approved.hash,currentHash:actual.hash});
+    throw Error(`Modèle ${template.name} modifié depuis son approbation MJ : nouvelle approbation requise.`);
+  }
+  effectDebug('template-modified',{uuid:template.uuid,kind,reason:'legacy approval mismatch'});
+  throw Error(`Modèle ${template.name} non approuvé ou modifié depuis son approbation MJ.`);
 }
 function effectFindCombatant(actor, combat, combatantId) {
   if (!combat?.started) throw Error('Un combat démarré est nécessaire.');
@@ -139,9 +258,26 @@ async function effectValidateRequest(data, requester, socketOrigin) {
       throw Error('L’expiration en fin du tour actuel exige que ce soit le tour du lanceur.');
     }
   }
-  const template=await fromUuid(data.templateUuid);
-  if (!effectOwnedBy(template,source)) throw Error('Le modèle doit appartenir à l’acteur source.');
+  const template=typeof data.templateUuid === 'string' && data.templateUuid.length<=400
+    ? await fromUuid(data.templateUuid) : null;
+  if (!template) {
+    effectDebug('template-rejected',{uuid:data.templateUuid,reason:'UUID not resolvable'});
+    throw Error('Modèle introuvable : UUID invalide ou document supprimé.');
+  }
+  const templateKind=effectTemplateKind(template);
+  if (!templateKind) {
+    effectDebug('template-rejected',{uuid:data.templateUuid,reason:'non-buff or unsupported document'});
+    throw Error('Modèle refusé : utiliser un buff PF1 (Actor ou Compendium) ou un ActiveEffect d’acteur.');
+  }
+  if (!effectOwnedBy(template,source)) {
+    effectDebug('template-rejected',{uuid:data.templateUuid,kind:templateKind,reason:'other actor owner'});
+    throw Error('Le modèle embarqué doit appartenir à l’acteur source (les buffs de Compendium sont partagés).');
+  }
   effectCheckApproval(template);
+  // Snapshot once after approval, before any asynchronous removal or clone.
+  // This avoids applying a mutated template to later targets in the same group.
+  const templateData=effectTemplateCopy(template);
+  effectDebug('template-resolved',{uuid:template.uuid,kind:templateKind,sourceUuid:source.uuid});
   if (!Array.isArray(data.targetUuids) || !data.targetUuids.length || data.targetUuids.length>EFFECT_MAX_TARGETS) {
     throw Error(`Le nombre de bénéficiaires doit être compris entre 1 et ${EFFECT_MAX_TARGETS}.`);
   }
@@ -158,7 +294,7 @@ async function effectValidateRequest(data, requester, socketOrigin) {
     }
     targets.push(actor);
   }
-  return {source,template,targets,combat,combatant,timing,occurrences,
+  return {source,template,templateKind,templateData,targets,combat,combatant,timing,occurrences,
     duration:durationMode ? {value:data.duration.value,unit:data.duration.unit} : null};
 }
 function effectDocumentFor(actor,copy) {
@@ -261,8 +397,7 @@ async function effectApplyInternal(data,requester,socketOrigin=false) {
   const copies=[];
   try {
     for (const target of ctx.targets) {
-      const copy=ctx.template.toObject();
-      delete copy._id;
+      const copy=foundry.utils.deepClone(ctx.templateData);
       copy.flags ??= {};
       // Do not propagate discovery declarations, legacy managed markers or
       // privileged internal flags from the model to a recipient copy.
@@ -278,6 +413,8 @@ async function effectApplyInternal(data,requester,socketOrigin=false) {
         created=docs[0];
         if (!created) throw Error(`Impossible de créer le buff chez ${target.name}.`);
         copies.push({actorUuid:target.uuid,documentId:created.id,documentType:'Item'});
+        effectDebug('copy-created',{kind:ctx.templateKind,sourceTemplate:ctx.template.uuid,
+          targetUuid:target.uuid,copyUuid:created.uuid,groupId:id});
         if (typeof created.setActive === 'function') {
           await created.setActive(true,{[EFFECT_NS]:{skip:true}});
         } else {
@@ -290,6 +427,8 @@ async function effectApplyInternal(data,requester,socketOrigin=false) {
         created=docs[0];
         if (!created) throw Error(`Impossible de créer l’ActiveEffect chez ${target.name}.`);
         copies.push({actorUuid:target.uuid,documentId:created.id,documentType:'ActiveEffect'});
+        effectDebug('copy-created',{kind:ctx.templateKind,sourceTemplate:ctx.template.uuid,
+          targetUuid:target.uuid,copyUuid:created.uuid,groupId:id});
       }
     }
     const session={id,key:data.key,sourceUuid:ctx.source.uuid,templateUuid:ctx.template.uuid,
@@ -308,6 +447,9 @@ async function effectApplyInternal(data,requester,socketOrigin=false) {
     console.info(`${EFFECT_NS} | Groupe ${id} appliqué à ${copies.length} bénéficiaire(s).`);
     return {applied:true,groupId:id,targetCount:copies.length,timerId};
   } catch(error) {
+    effectDebug('clone-failed',{kind:ctx.templateKind,uuid:ctx.template.uuid,
+      groupId:id,error:error?.message});
+    console.error(`${EFFECT_NS} | Erreur de clonage ${ctx.templateKind} : ${ctx.template.uuid}`,error);
     // Rollback best-effort: preserve recorded copies if some could not be removed.
     const pending=await effectDeleteCopies(copies,id);
     const groups={...effectGroups()};
