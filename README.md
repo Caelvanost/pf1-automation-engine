@@ -1,4 +1,4 @@
-# PF1 Automation Engine — v1.12.0
+# PF1 Automation Engine — v1.12.1
 
 **Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
@@ -50,6 +50,14 @@ console.table(mod?.api?.generic?.listTimers() ?? []);
 **Permissions:** `duration.schedule()`, `generic.scheduleTurn()`, event registration and template approvals are GM-only. Player-originated `effectGroups` requests are validated by the elected GM. A `submitted:true` response means a request was sent, **not** that it succeeded.
 
 **Clock:** Foundry/Seasons & Stars owns `game.time.worldTime`. The Engine observes this clock but never advances, pauses or resumes it. One PF1 round is six seconds.
+
+## Native action card save reference fix — v1.12.1
+
+The native PF1 saving throw button normally forwards the source Action ChatMessage UUID in the `reference` roll option. `saveOverrides` now resolves that message directly during `pf1PreActorRollSave` (no HTML dependency). It verifies `itemSource`, `actionSource`, `save.type` and `save.dc`, then delegates one native save to the elected GM.
+
+When a public save is **improved** by an override, the Engine persists the per-target effective result on the originating action ChatMessage and displays it beside the corresponding target. The genuine PF1 roll is never altered. Private/blind saves never write their totals to a public card. A guarded wrapper for older `targetSavingThrowClick` implementations logs the actual native handler call without replacing the original function's behavior.
+
+See [Native Save Context](docs/NATIVE-SAVE-CONTEXT.md) for test instructions and limitations. The final UI requires acceptance testing in the actual PF1 11.11 installation.
 
 ## Native PF1 action-card saving throws — v1.12.0
 
