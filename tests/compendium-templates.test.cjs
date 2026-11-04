@@ -228,7 +228,7 @@ async function testCompendium(){
   assert.notEqual(after.fingerprint,before.fingerprint);
   await reload.api().effectGroups.applyGroup({
     actor:source,key:"reapproved-pack",templateUuid:pack.uuid,targets:[ally1],
-    timing:"endOfCurrentTurn"
+    timing:"startOfNextTurn"
   });
   assert.equal(ally1.items.size,1);
   await reload.api().effectGroups.stopGroup({actor:source,key:"reapproved-pack"});
@@ -241,7 +241,7 @@ async function testCompendium(){
   pack.raw.ownership.default=2;
   await reload.api().effectGroups.applyGroup({
     actor:source,key:"metadata-change",templateUuid:pack.uuid,targets:[ally1],
-    timing:"endOfCurrentTurn"
+    timing:"startOfNextTurn"
   });
   await reload.api().effectGroups.stopGroup({actor:source,key:"metadata-change"});
   await reload.wait();
@@ -254,12 +254,12 @@ async function testCompendium(){
   await assert.rejects(()=>reload.api().effectGroups.approveTemplate(invalidPack.uuid),/Modèle refusé/);
   await assert.rejects(()=>reload.api().effectGroups.applyGroup({
     actor:source,key:"nonbuff",templateUuid:invalidPack.uuid,
-    targets:[ally1],timing:"endOfCurrentTurn"
+    targets:[ally1],timing:"startOfNextTurn"
   }),/Modèle refusé/);
   await assert.rejects(()=>reload.api().effectGroups.approveTemplate("Compendium.unknown.pack.Item.missing"),/Modèle refusé/);
   await assert.rejects(()=>reload.api().effectGroups.applyGroup({
     actor:source,key:"missing",templateUuid:"Compendium.unknown.pack.Item.missing",
-    targets:[ally1],timing:"endOfCurrentTurn"
+    targets:[ally1],timing:"startOfNextTurn"
   }),/Modèle introuvable/);
 
   // Existing ACTOR buff approvals can still be read in the v1.9 legacy format.
@@ -272,7 +272,7 @@ async function testCompendium(){
     {...registry,[actorBuff.uuid]:oldFingerprint});
   const legacy=await reload.api().effectGroups.applyGroup({
     actor:source,key:"legacy-actor-buff",templateUuid:actorBuff.uuid,
-    targets:[ally1],timing:"endOfCurrentTurn"
+    targets:[ally1],timing:"startOfNextTurn"
   });
   assert.equal(legacy.applied,true);
   await reload.api().effectGroups.stopGroup({actor:source,key:"legacy-actor-buff"});
@@ -309,9 +309,15 @@ async function testCompendium(){
   ally2.failCreation=false;
 
   // No world Item or other Actor's buff is a freely transferable template.
-  const wrongOwner=e.actors.templates.buffTemplate;
+  const wrongOwner={
+    id:"foreign",uuid:ally1.uuid+".Item.foreign",documentName:"Item",
+    type:"buff",name:"Foreign Actor Buff",parent:ally1,
+    toObject(){return {_id:this.id,name:this.name,type:this.type,system:{active:false},flags:{}};}
+  };
+  e.documents.set(wrongOwner.uuid,wrongOwner);
+  await reload.api().effectGroups.approveTemplate(wrongOwner.uuid);
   await assert.rejects(()=>reload.api().effectGroups.applyGroup({
-    actor:ally1,key:"foreign-actor",templateUuid:wrongOwner.uuid,
+    actor:source,key:"foreign-actor",templateUuid:wrongOwner.uuid,
     targets:[ally2],timing:"endOfCurrentTurn"
   }),/doit appartenir/);
 
