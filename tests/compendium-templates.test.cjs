@@ -220,7 +220,7 @@ async function testCompendium(){
   pack.raw.flags.example.approved=false;
   await assert.rejects(()=>reload.api().effectGroups.applyGroup({
     actor:source,key:"changed-pack",templateUuid:pack.uuid,targets:[ally1],
-    timing:"endOfCurrentTurn"
+    timing:"startOfNextTurn"
   }),/modifié depuis son approbation/);
   assert.equal(ally1.items.size,0);
   await reload.api().effectGroups.approveTemplate(pack.uuid);
