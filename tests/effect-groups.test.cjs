@@ -6,6 +6,7 @@ const path = require('node:path');
 const root=path.resolve(__dirname,'..');
 const groupSource=fs.readFileSync(path.join(root,'scripts/effect-groups.js'),'utf8');
 const engineSource=fs.readFileSync(path.join(root,'scripts/generic-automation.js'),'utf8');
+const saveSource=fs.readFileSync(path.join(root,'scripts/save-overrides.js'),'utf8');
 const NS='pf1-automation-engine';
 let uid=0;
 function makeHarness(shared) {
@@ -42,6 +43,7 @@ function makeHarness(shared) {
     foundry:{utils:{deepClone:structuredClone,randomID:()=>`id-${++uid}`}},console:{log:(...x)=>log.push(x),info:(...x)=>log.push(x),warn:(...x)=>log.push(x),debug:(...x)=>log.push(x),error:(...x)=>log.push(x)}};
   vm.runInNewContext(groupSource,ctx,{filename:'effect-groups.js'});
   vm.runInNewContext(engineSource,ctx,{filename:'generic-automation.js'});
+  vm.runInNewContext(saveSource,ctx,{filename:'save-overrides.js'});
   async function wait(){for(let i=0;i<20;i++)await new Promise(r=>setTimeout(r,0));}
   async function start(){await Hooks.fire('init');await Hooks.fire('ready');await wait();}
   async function transition(round,turn,previous,next){
@@ -112,7 +114,21 @@ async function test(){
   assert.equal(r.applied,true);assert.equal(r.targetCount,2);
   assert.equal(e.actors[1].effects.size,1);assert.equal(e.actors[2].effects.size,1);
   assert.equal(api.generic.listTimers().length,1);
+
+  // A generic override registered for the active effect group must be
+  // removed by the REAL effectGroups expiration path (not a mock).
+  await api.saveOverrides.register({
+    actor:e.actors[0],key:'test-save',groupKey:'test',
+    range:30,rangeUnits:'ft',requiresHearing:true,
+    appliesTo:{magical:true,sonic:true,languageDependent:true},
+    mode:'higher-result',
+    replacement:{type:'actorFlag',namespace:'world',
+      key:'testPerform',path:'checkTotal'}
+  });
+  assert.equal(api.saveOverrides.list().length,1);
   await e.transition(1,1,'A','B');
+  assert.equal(api.saveOverrides.list().length,0,
+    'expiring group removes related saving throw override rule');
   assert.equal(e.actors[1].effects.size,0,'first ally cleaned at end of caster turn');
   assert.equal(e.actors[2].effects.size,0,'second ally cleaned at end of caster turn');
   assert.equal(api.generic.listTimers().length,0);
