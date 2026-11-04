@@ -173,7 +173,8 @@ async function settle(){for(let i=0;i<30;i++)await new Promise(r=>setTimeout(r,0
   assert.equal(otherSave.getFlag(NS,'saveOverride').effectiveTotal,23);
   assert.equal(summaries.length,2);
   assert.equal(summaries[1].blind,true);
-  assert.deepEqual(summaries[1].whisper,['GM']);
+  assert.equal(summaries[1].whisper?.length,1);
+  assert.equal(summaries[1].whisper?.[0],'GM');
   // A new client after F5 can recover from persisted source card metadata.
   const reloaded=client(users[2]);await reloaded.start();
   await renderButton(reloaded,card,p1,'rollSavingThrow');
