@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "Generic PF1 automation engine: native rest, approved Actor/Compendium buff templates, multi-target effects and persistent duration/turn timers.",
-  "version": "1.10.0",
+  "description": "Generic PF1 automation: actor/Compendium buff groups, native rest, persistent durations and GM-resolved saving throw replacements.",
+  "version": "1.11.0",
   "authors": [
     {
       "name": "Module personnalisé"
@@ -31,6 +31,7 @@
     "scripts/effect-groups.js",
     "scripts/generic-automation.js",
     "scripts/duration-manager.js",
-    "scripts/rest-automation.js"
+    "scripts/rest-automation.js",
+    "scripts/save-overrides.js"
   ]
 }
