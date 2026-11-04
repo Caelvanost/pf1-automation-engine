@@ -1,4 +1,4 @@
-# PF1 Automation Engine v1.11.0 — Technical Guide (English)
+# PF1 Automation Engine v1.11.1 — Technical Guide (English)
 
 **Target environment:** Foundry Virtual Tabletop **v13.351**; Pathfinder 1st Edition system **11.11**.  
 **Module ID:** `pf1-automation-engine`.  
@@ -642,3 +642,8 @@ The Compendium path is available to **player-originated effect-group requests** 
 ## 18. Saving throw override engine — v1.11.0
 
 The engine exports `api.saveOverrides.register`, `unregister`, `getApplicable`, `resolve`, `rollWithContext` and `requestRepeatSave`. Rules are persistent and data-only (Actor flag provider, structured descriptors and group key); only the elected GM performs effective-result resolution. The service watches PF1's native pre/post save hooks but **requires explicit source Item provenance** because the native post-hook supplies actor/result/save-type, not an originating Item. PF1 has already rolled when the post-hook fires; the engine shows and publishes an **effective comparison**, never a native bonus or retroactive mutation of PF1's die result. Lifecycle hooks on `effectGroups` remove attached registrations upon expiration/stop. For the exact Countersong Script Call, hearing/distance behavior, security notes and examples, read [Saving Throw Overrides](SAVE-OVERRIDES.md).
+
+
+### v1.11.1 compatibility fix
+
+PF1 `FeatModel.abilityType:"su"` is magical, and `BaseItemModel.tags` is read as a Set/Array/Object/String. Save predicates support explicit `anyOf` and `allOf`; existing `sonic:true` / `languageDependent:true` booleans retain OR semantics. `rollWithContext()` now waits for the elected GM and returns both the normal and effective totals instead of only a native ChatMessage. See [Saving Throw Overrides](SAVE-OVERRIDES.md).
