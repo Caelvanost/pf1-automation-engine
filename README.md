@@ -1,4 +1,4 @@
-# PF1 Automation Engine — v1.9.0
+# PF1 Automation Engine — v1.10.0
 
 **Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
@@ -8,7 +8,7 @@ A lightweight, **rules-neutral automation engine** for Pathfinder 1e. It is deli
 
 The GM adds JavaScript to the **native PF1 Script Calls** of the **Spell** or **Class Feature** Items on the players' character sheets (**Advanced → Script Calls**, French UI: *Avancé → Appel de script*). These Item scripts implement their own Pathfinder rules, decide which targets are legal, and call the Engine for generic services such as:
 
-- **Managed buffs/ActiveEffects** applied to one or several beneficiaries from a GM-approved actor-owned template.
+- **Managed buffs/ActiveEffects** applied to one or several beneficiaries from an approved Actor-owned template **or a PF1 buff stored directly in a Compendium**.
 - **Precise turn deadlines** (start/end of a particular combatant's turn), persistent across reloads.
 - **Elapsed game-time durations** (seconds, rounds, minutes, hours) spanning combat and exploration.
 - **Event-driven automations** linked to a named PF1 Item Script Call.
@@ -24,8 +24,9 @@ No spell catalogue, class-specific handler, or exhaustive rule database is bundl
 - **[Technical Guide — architecture, complete API reference, permissions, persistence and debugging](docs/TECHNICAL-GUIDE.md)**
 - **[PF1 Item Script Recipes — 12 practical recipes for spells, class abilities, buffs, duration timers, maintenance and cleanup](docs/PF1-ITEM-SCRIPT-RECIPES.md)**
 - **[Native PF1 Rest Hooks — actor rest events, complete vs partial rest, before/after state, Burn registration](docs/PF1-NATIVE-REST.md)**
+- **[Compendium Buff Templates — GM approval, content fingerprints and caster Item Script Calls](docs/COMPENDIUM-BUFF-TEMPLATES.md)**
 
-The technical guide explains why direct world-registry timer writes are reserved for the elected GM, while player-used spells should ordinarily call `api.effectGroups.applyGroup()` with a pre-approved template. The recipes include examples for both paths.
+The technical guide explains why direct world-registry timer writes are reserved for the elected GM, while player-used spells should ordinarily call `api.effectGroups.applyGroup()` with a pre-approved Actor or Compendium buff template. The recipes include examples for both paths.
 
 ## Quick start
 
@@ -47,6 +48,14 @@ console.table(mod?.api?.generic?.listTimers() ?? []);
 **Permissions:** `duration.schedule()`, `generic.scheduleTurn()`, event registration and template approvals are GM-only. Player-originated `effectGroups` requests are validated by the elected GM. A `submitted:true` response means a request was sent, **not** that it succeeded.
 
 **Clock:** Foundry/Seasons & Stars owns `game.time.worldTime`. The Engine observes this clock but never advances, pauses or resumes it. One PF1 round is six seconds.
+
+## Approved Compendium buff templates — new in v1.10.0
+
+An elected GM can now approve a PF1 `buff` stored in a Compendium. A player's PF1 Spell or Class Feature Script Call can then use its canonical `Compendium.scope.pack.Item.id` UUID directly in `effectGroups.applyGroup()`. No technical buff is required on the caster. Existing actor-owned templates and ActiveEffects work as before.
+
+Every application resolves the current pack item and verifies its **exact canonical content fingerprint**; changing the template after approval requires new GM approval. The group creates tracked, embedded PF1 buff copies on each target and reuses the existing extension, expiry, cleanup, multiplayer and F5 behavior.
+
+**[See the full Compendium template guide](docs/COMPENDIUM-BUFF-TEMPLATES.md).**
 
 ## PF1 native rest — new in v1.9.0
 
