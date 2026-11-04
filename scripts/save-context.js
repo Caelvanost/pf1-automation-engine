@@ -14,6 +14,8 @@
 const SC_NS='pf1-automation-engine';
 const SC_MAX_CLICK_AGE=120000;
 const SC_CURRENT=[];
+const SC_RENDERED = new WeakSet();
+const SC_WRAPPED = [];
 const scLog=(name,data={})=>{
   if(game.modules.get(SC_NS)?.active && game.settings.get(SC_NS,'genericDebug'))
     console.debug('[PF1AE][SaveContext] '+name,data);
@@ -54,14 +56,63 @@ function scFromActionUse(actionUse) {
   return scContext(actionUse.item,actionUse.action,dc);
 }
 function scFromMessage(message) {
+  if(!message)return null;
   const existing=message.getFlag?.(SC_NS,'saveContext');
-  if(existing && typeof existing==='object' &&
-      typeof existing.sourceItemUuid==='string' &&
-      scSaveType(existing.saveType) && existing.sourceActionId)return existing;
-  const item=message.itemSource;
-  const action=message.actionSource;
-  const data=scContext(item,action,message.system?.save?.dc);
-  return data;
+  if(scNormalizeContext(existing))return scNormalizeContext(existing);
+  // PF1 ChatMessagePF.actionSource/itemSource are authoritative. When
+  // a player cannot resolve a GM-owned Item, the card still stores native
+  // structured Item/Action IDs and the source's speaker Actor identity.
+  const item=message.itemSource??null;
+  const action=message.actionSource??null;
+  const native=message.system??{};
+  const itemId=item?.id??native.item?.id;
+  const actionId=action?.id??native.action?.id;
+  const actor= item?.actor ?? (typeof ChatMessage?.getSpeakerActor==='function'
+    ? ChatMessage.getSpeakerActor(message.speaker) : null);
+  const actorUuid=actor?.uuid??(
+    typeof native.actor==='string' &&
+      (native.actor.startsWith('Actor.') || native.actor.includes('.Actor.'))
+      ?native.actor:null);
+  const sourceItemUuid=item?.uuid??(actorUuid && itemId ? actorUuid+'.Item.'+itemId : null);
+  const saveType=scSaveType(native.save?.type??action?.save?.type);
+  const dc=native.save?.dc??action?.save?.dc??null;
+  if(!actorUuid||!sourceItemUuid||!actionId||!saveType)return null;
+  return scNormalizeContext({sourceActorUuid:actorUuid,
+    sourceItemUuid,sourceActionId:actionId,saveType,saveDC:dc});
+}
+function scMessageFromReference(reference) {
+  if(!reference)return null;
+  if(reference.documentName==='ChatMessage')return reference;
+  if(typeof reference!=='string'||reference.length>400)return null;
+  // Native PF1: reference = cm.uuid (typically ChatMessage.<id>).
+  const id=reference.startsWith('ChatMessage.') ? reference.slice('ChatMessage.'.length)
+    : (/^[A-Za-z0-9]{16,24}$/.test(reference)?reference:null);
+  if(!id)return null;
+  return game.messages?.get(id)??null;
+}
+/** Synchronous and deterministic: no browser DOM or click timing required. */
+function scFromNativeSaveOptions(actor,saveType,options) {
+  if(!scEnabled()||!options?.reference)return null;
+  const message=scMessageFromReference(options.reference);
+  if(!message) {
+    scLog('Native save reference could not be resolved',{reference:options.reference,actor:actor?.uuid});
+    return null;
+  }
+  const context=scNormalizeContext(scFromMessage(message));
+  if(!context || context.saveType!==scSaveType(saveType)){
+    scLog('Native source card missing or save type mismatch',{messageId:message.id,saveType});
+    return null;
+  }
+  scLog('Native PF1 save action intercepted',{messageId:message.id,actorUuid:actor.uuid});
+  scLog('Message: '+message.id);
+  scLog('Action source: '+(message.actionSource?.name??message.itemSource?.name??'unknown'));
+  scLog('Item UUID: '+context.sourceItemUuid);
+  scLog('Action ID: '+context.sourceActionId);
+  scLog('Save: '+context.saveType);
+  scLog('DC: '+context.saveDC);
+  scLog('Targets: '+JSON.stringify(message.system?.targets??[]));
+  scLog('Source context restored',{actorUuid:actor.uuid,sourceMessageId:message.id,...context});
+  return {sourceMessageId:message.id,...context};
 }
 function scNormalizeContext(context) {
   if(!context || typeof context!=='object')return null;
@@ -144,17 +195,54 @@ function scIsSaveButton(event) {
   }
   return null;
 }
+function scRenderTargetResults(message, html) {
+  if(!html?.querySelectorAll)return;
+  const results=message.getFlag?.(SC_NS,'targetSaveResults')??[];
+  if(!Array.isArray(results))return;
+  for(const targetRow of html.querySelectorAll('.attack-targets .target[data-uuid]')){
+    const uuid=targetRow.dataset?.uuid;
+    const entry=results.find(r=>r.targetUuid===uuid)??null;
+    if(!entry||entry.display!==true||!Number.isFinite(entry.effectiveTotal))continue;
+    const selector='.saving-throws [data-save="'+entry.saveType+'"], .saving-throws [data-saving-throw="'+entry.saveType+'"]';
+    const saveNode=targetRow.querySelector(selector);
+    if(!saveNode)continue;
+    // This is a display value for the matched target, not a change to the
+    // RollPF formula or ChatMessage roll. It survives re-render/F5.
+    let value=saveNode.querySelector('.value');
+    if(!value && typeof document!=='undefined' && document.createElement) {
+      value=saveNode.querySelector('.pf1ae-effective-result');
+      if(!value) {
+        value=document.createElement('span');
+        value.classList.add('pf1ae-effective-result');
+        saveNode.append(value);
+      }
+    }
+    if(!value)continue;
+    value.textContent=String(entry.effectiveTotal);
+    value.setAttribute('title','Effective saving throw: '+entry.effectiveTotal+
+      ' (native roll '+entry.normalTotal+')');
+    value.dataset.pf1aeEffective='true';
+    scLog('Target card result displayed',{targetUuid:uuid,
+      normalTotal:entry.normalTotal,effectiveTotal:entry.effectiveTotal});
+  }
+}
+function scRenderMessage(message,html) {
+  if(!scEnabled())return;
+  scRenderTargetResults(message,html);
+}
 function scOnRendered(message,html) {
   if(!scEnabled()||!html?.addEventListener)return;
+  scRenderMessage(message,html);
+  // The render listener is only the fallback for older PF1 workflows.
+  // Native roll options.reference is the primary, exact source correlation.
   const context=scNormalizeContext(scFromMessage(message));
-  if(!context)return;
+  if(!context||SC_RENDERED.has(html))return;
+  SC_RENDERED.add(html);
   scLog('Source message detected',{messageId:message.id});
   scLog('Item: '+(message.itemSource?.name??'unknown'));
   scLog('Item UUID: '+context.sourceItemUuid);
   scLog('Action ID: '+context.sourceActionId);
   scLog('Save: '+context.saveType+' DC '+(context.saveDC??'?'));
-  // Native button events bubble. Capturing the click before PF1's normal
-  // listener starts allows the engine's pre-roll hook to correlate metadata.
   html.addEventListener('click',event=>{
     const clicked=scIsSaveButton(event);
     if(!clicked)return;
@@ -166,9 +254,80 @@ function scOnRendered(message,html) {
     scLog('Native PF1 save button detected',{messageId:message.id,saveType:context.saveType,
       sourceItemUuid:context.sourceItemUuid,sourceActionId:context.sourceActionId,
       allowedActors:[...actors]});
-    // Never preventDefault, stopPropagation, call rollSavingThrow, or change
-    // the native event: all roll options remain exclusively owned by PF1.
   },true);
+}
+/**
+ * Wrapper for diagnostic visibility only. The actual provenance flows through
+ * rollOptions.reference, which is preserved by the original PF1 handler.
+ * This does not replace native callbacks or alter their results.
+ */
+function scTrackNativeCall(label,args) {
+  // Only a compatibility fallback. PF1 rollOptions.reference is the primary
+  // source, independent of the exact native handler or its return shape.
+  let cm=null,actors=new Set();
+  if(label==='targetSavingThrowClick') {
+    cm=args.find(a=>a?.documentName==='ChatMessage' ||
+      (a?.itemSource && a?.actionSource))??null;
+    const specific=args.find(a=>a?.documentName==='Actor'&&a.uuid);
+    if(specific)actors.add(specific.uuid);
+    const token=args.find(a=>a?.actor?.documentName==='Actor'&&a.uuid);
+    if(token)actors.add(token.actor.uuid);
+  } else {
+    const button=args[1];
+    const id=button?.closest?.('.chat-message[data-message-id]')?.dataset?.messageId;
+    cm=id?game.messages?.get(id):null;
+    const targetUuid=button?.closest?.('[data-uuid]')?.dataset?.uuid;
+    if(targetUuid){
+      const token=typeof fromUuidSync==='function'?fromUuidSync(targetUuid):null;
+      if(token?.actor?.uuid)actors.add(token.actor.uuid);
+    }
+    if(!actors.size) {
+      for(const t of canvas?.tokens?.controlled??[])if(t.actor?.uuid)actors.add(t.actor.uuid);
+      if(!actors.size && game.user?.character?.uuid)actors.add(game.user.character.uuid);
+    }
+  }
+  const context=scNormalizeContext(scFromMessage(cm));
+  if(!context||!actors.size)return;
+  SC_CURRENT.push({context,sourceMessageId:cm.id,
+    expires:Date.now()+Math.min(SC_MAX_CLICK_AGE,30000),actors,used:new Set()});
+  if(SC_CURRENT.length>16)SC_CURRENT.shift();
+  scLog('Source message detected',{id:cm.id});
+  scLog('Item: '+(cm.itemSource?.name??'unknown'));
+  scLog('Item UUID: '+context.sourceItemUuid);
+  scLog('Action ID: '+context.sourceActionId);
+  scLog('Save: '+context.saveType+' DC '+context.saveDC);
+  scLog('Targets: '+JSON.stringify([...actors]));
+}
+function scWrap(object,key,label) {
+  const original=object?.[key];
+  if(typeof original!=='function'||original.__pf1aeWrapped)return false;
+  const wrapped=function(...args){
+    scLog(label+' intercepted',{argumentsCount:args.length});
+    try {scTrackNativeCall(label,args);}
+    catch(error){scLog('Native handler context tracing failed',{error:error.message});}
+    return original.apply(this,args);
+  };
+  Object.defineProperty(wrapped,'__pf1aeWrapped',{value:true});
+  try {
+    object[key]=wrapped;
+    if(object[key]!==wrapped)return false;
+    SC_WRAPPED.push({object,key,original,wrapped});
+    scLog(label+' wrapper installed',{arity:original.length});
+    return true;
+  } catch(error){scLog(label+' cannot be wrapped',{reason:error.message});return false;}
+}
+function scInstallNativeWrappers() {
+  // v11.10 API: targetSavingThrowClick(...). Some PF1 builds use the newer
+  // Action chat handler. Do not guess parameters: delegate ALL original args.
+  const old=globalThis.pf1?.utils?.chat;
+  const newActions=globalThis.pf1?.chat?.Actions;
+  const matched=scWrap(old,'targetSavingThrowClick','targetSavingThrowClick') ||
+    scWrap(newActions,'onRollSave','Actions.onRollSave');
+  if(!matched)scLog('No exported native save handler to wrap: reference hook remains active');
+}
+function scRestoreNativeWrappers() {
+  for(const entry of SC_WRAPPED.splice(0))if(entry.object[entry.key]===entry.wrapped)
+    entry.object[entry.key]=entry.original;
 }
 function scConsume(actor,saveType) {
   if(!scEnabled()||!actor?.uuid)return null;
@@ -188,12 +347,24 @@ Hooks.once('init',()=>{
   Hooks.on('pf1PreDisplayActionUse',scOnPreAction);
   Hooks.on('preCreateChatMessage',scOnPreCreateMessage);
   Hooks.on('renderChatMessageHTML',scOnRendered);
+  Hooks.on('updateChatMessage',(message)=>{
+    if(message.getFlag?.(SC_NS,'targetSaveResults') && typeof document!=='undefined') {
+      // The native chat app normally re-renders after message.update().
+      // Also refresh the current node for installations whose chat cards
+      // are updated in-place rather than recreated.
+      for(const el of document.querySelectorAll(`.chat-message[data-message-id="${message.id}"]`))
+        scRenderTargetResults(message,el);
+    }
+  });
 });
 Hooks.once('ready',()=>{
   const mod=game.modules.get(SC_NS);
   if(!mod)return;
   mod.api??={};
+  scInstallNativeWrappers();
   mod.api.saveContext=Object.freeze({
+    _fromNativeSaveOptions:scFromNativeSaveOptions,
+    _restoreWrappers:scRestoreNativeWrappers,
     _consumeForNativeSave:scConsume,
     fromMessage:message=>scNormalizeContext(scFromMessage(message))
   });
