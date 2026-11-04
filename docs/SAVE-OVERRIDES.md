@@ -1,4 +1,4 @@
-# Saving Throw Overrides — PF1 Automation Engine v1.11.0
+# Saving Throw Overrides — PF1 Automation Engine v1.11.1
 
 **Target:** Foundry VTT 13.351 / Pathfinder 1e system 11.11.
 
@@ -46,6 +46,41 @@ Available after Foundry's `ready` hook:
 | `api.saveOverrides.reconcile()` | Delete orphan rules lacking active groups | Elected GM only |
 
 `register()` accepts **data**, never JavaScript function predicates or callbacks. It does not serialize function closures from the client; such callbacks could not survive F5 and would be unsafe to run on another GM. Use an actor flag for dynamic replacement.
+
+## v1.11.1 — Captivating Song / Supernatural (Su) fix
+
+PF1 11.11's `FeatModel.abilityType` is the structured source of `su`, `sp`, `ex` and `na`; `BaseItemModel.tags` is a `Set` of free-text tags. The engine now uses `item.system.abilityType === "su"` for magical status and reads `item.system.tags` correctly, including serialized arrays, objects, and delimited strings. It **never parses descriptions** to decide magical/sonic status.
+
+The final generic predicate format is:
+
+~~~js
+appliesTo: {
+  magical: true,
+  anyOf: ["sonic", "languageDependent"]
+}
+~~~
+
+`magical` is mandatory for this Countersong rule. The two descriptors form an **OR** group. `allOf` is also supported when a different ability genuinely needs several properties simultaneously. Existing v1.11.0 registrations with `sonic:true, languageDependent:true` are still treated as `sonic OR languageDependent`, so the bard's current Script Call need not be changed immediately.
+
+**`rollWithContext()` now awaits the elected-GM result.** It returns a result containing `nativeResult`, `processed`, `normalTotal`, `effectiveTotal`, `changed`, `candidates` and `winner`. For an eligible Harpy `Captivating Song` (`system.abilityType:"su"`, `system.tags:new Set(["sonic","mind-affecting","charm"])`) and an active Countersong flag at **10**, a normal Will roll of **7** yields `effectiveTotal:10`. A normal Will roll of **17** yields `effectiveTotal:17`; an unrelated Su ability without sonic/language tags is not eligible.
+
+Example target-owner call:
+
+~~~js
+const {normalTotal,effectiveTotal,processed,nativeResult} =
+  await api.saveOverrides.rollWithContext({
+    actor: targetActor,
+    saveType: "will",
+    sourceItemUuid: captivatingSong.uuid,
+    options: {}
+  });
+console.log({normalTotal,effectiveTotal,processed});
+// {normalTotal:7,effectiveTotal:10,processed:true}
+~~~
+
+The normal PF1 ChatMessage still shows the **authentic roll of 7**. One additional Engine summary says **Result used: 10** and the original ChatMessage stores `flags.pf1-automation-engine.saveOverride.effectiveTotal:10`. Other PF1 action resolution code must read the resulting effective total if it decides success/failure *after* the native roll; the module does **not** retroactively change a PF1 spell's already-resolved outcome.
+
+Debug mode prefixes every detailed decision with `[PF1AE][SaveOverride]`: source item UUID, normalized Su/magical/tags, each rule checked and rejected, source/target token, distance, hearing collision, dynamic flag and final totals. The server validates the original chat message using Foundry v13 `message.author`.
 
 ## 1. Register Countersong on the bard's PF1 Item
 
