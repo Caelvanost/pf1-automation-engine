@@ -1,4 +1,30 @@
-# Native Pathfinder 1e Action Card Saving Throw Context (v1.12.0)
+# Native PF1 save-reference integration — v1.12.1
+
+**Source inspection:** PF1 11.11 TypeDoc publishes `targetSavingThrowClick(cm, html, token, actor, event)`. A public PF1 source mirror dated March 9, 2026 implements `Actions.onRollSave(event, target)` instead; it calls `actor.rollSavingThrow(saveId, {event, dc, reference: cm.uuid})` for one target and for each controlled actor. Because the installation-specific version of the user's PF1 files was not accessible, the module uses the native **`rollOptions.reference`** rather than relying on either handler name.
+
+The `pf1PreActorRollSave` hook receives these options before PF1's native d20 roll. It resolves the ChatMessage using `reference`, retrieves `message.itemSource`, `message.actionSource` and the modern `message.system.save` data (with native `item.id/action.id` and speaker/actor fallback), then carries exact provenance to `saveOverrides`. The GM re-reads and verifies the source message independently.
+
+Once the GM resolves an improved public saving throw, the source Action ChatMessage receives an array of per-token results under `flags.pf1-automation-engine.targetSaveResults`. The target panel renderer displays `effectiveTotal` in the matching `data-uuid` and `data-save` element, without altering the underlying roll. Only improved, non-private/non-blind saves are written to public source cards; other rolls leave the card untouched. Multiple target entries are updated serially. An optional compatibility wrapper logs calls to `targetSavingThrowClick` or `Actions.onRollSave` if they are exported as mutable properties, and always delegates to the original function.
+
+**Important:** the code of the actual PF1 system installed on the user's computer was not available. Source-derived signatures are grounded in the public docs and mirrored code, but the live chat update must be retested in Foundry 13/PF1 11.11 before considering the feature verified. If the system uses a different target-result template, the stored effective result remains correct while the visual renderer may require adapting to the live markup.
+
+### Native event debug logs
+
+```text
+[PF1AE][SaveContext] targetSavingThrowClick intercepted
+[PF1AE][SaveContext] Native PF1 save action intercepted
+[PF1AE][SaveContext] Source context restored
+[PF1AE][SaveOverride] Source context restored
+[PF1AE][SaveOverride] Save detected
+[PF1AE][SaveOverride] Dynamic replacement resolved: 23
+[PF1AE][SaveOverride] Normal save: 16
+[PF1AE][SaveOverride] Effective result: 23
+[PF1AE][SaveOverride] Action card target result updated
+```
+
+For source cards, inspect `card.getFlag("pf1-automation-engine", "targetSaveResults")`. For the saved ChatMessage, inspect `saveMessage.getFlag("pf1-automation-engine", "saveOverride")`.
+
+# Native Pathfinder 1e Action Card Saving Throw Context (v1.12.1)
 
 **Target:** Foundry VTT 13.351 / PF1 11.11. This is a module-only extension of the existing saveOverrides resolver. It does not change PF1 system files, Harpy Items or bardic Script Calls.
 
