@@ -340,7 +340,7 @@ async function effectDeleteCopies(copies, groupId) {
   }
   return pending;
 }
-async function effectExpireGroupInternal(groupId, fromTimer=false) {
+async function effectExpireGroupInternal(groupId, fromTimer=false, preserveSaveOverrides=false) {
   const ledger=effectGroups();
   const session=ledger[groupId];
   if (!session) return false;
@@ -352,11 +352,13 @@ async function effectExpireGroupInternal(groupId, fromTimer=false) {
   // A rule tied to this group must stop influencing saves as soon as its
   // managed copies expire or are stopped. The registry is also checked
   // dynamically, so a cleanup failure never makes an orphan rule effective.
-  try {
-    await game.modules.get(EFFECT_NS)?.api?.saveOverrides?._onGroupRemoved?.(
-      session.sourceUuid,session.key);
-  } catch(error) {
-    console.warn(EFFECT_NS + ' | Save override cleanup deferred',error);
+  if (!preserveSaveOverrides) {
+    try {
+      await game.modules.get(EFFECT_NS)?.api?.saveOverrides?._onGroupRemoved?.(
+        session.sourceUuid,session.key);
+    } catch(error) {
+      console.warn(EFFECT_NS + ' | Save override cleanup deferred',error);
+    }
   }
   if (!fromTimer) {
     // Do not hold the group write queue while awaiting the timer write queue:
@@ -397,11 +399,11 @@ function effectValidateGroupTimer(groupId,combatId,combatantId) {
   }
   return true;
 }
-async function effectStopByKeyInternal(sourceUuid,key) {
+async function effectStopByKeyInternal(sourceUuid,key,preserveSaveOverrides=false) {
   const entries=Object.values(effectGroups()).filter(g=>g.sourceUuid===sourceUuid && g.key===key);
   let count=0;
   for (const group of entries) {
-    await effectExpireGroupInternal(group.id,false);
+    await effectExpireGroupInternal(group.id,false,preserveSaveOverrides);
     count++;
   }
   return count;
@@ -409,7 +411,10 @@ async function effectStopByKeyInternal(sourceUuid,key) {
 async function effectApplyInternal(data,requester,socketOrigin=false) {
   const ctx=await effectValidateRequest(data,requester,socketOrigin);
   // Serialize all world-ledger writes and template clones on the elected GM.
-  await effectStopByKeyInternal(ctx.source.uuid,data.key);
+  // Reapplying the SAME source/group key is a replacement, not a true stop.
+  // Keep its save-overrides registration across the replacement. A failed
+  // application still leaves the rule inert until a valid group exists.
+  await effectStopByKeyInternal(ctx.source.uuid,data.key,true);
   const id=foundry.utils.randomID();
   const timerId=`${ctx.duration?'duration-group':'effect-group'}:${id}`;
   const copies=[];
