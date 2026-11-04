@@ -2,7 +2,7 @@
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
   "description": "Generic PF1 automation: actor/Compendium buff groups, native rest, persistent durations and GM-resolved saving throw replacements.",
-  "version": "1.11.0",
+  "version": "1.11.1",
   "authors": [
     {
       "name": "Module personnalisé"
