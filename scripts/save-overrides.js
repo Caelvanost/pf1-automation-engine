@@ -17,6 +17,7 @@ const SO_CHANNEL = 'pf1ae-save-overrides-v1';
 const SO_SOCKET = 'module.' + SO_NS;
 const SO_CACHE_LIMIT = 200;
 const soPreRolls = new Map();
+const soPendingRollResolutions = new Map();
 const soQueue = new Map();
 let soWriteTail=Promise.resolve();
 
@@ -512,7 +513,22 @@ async function soProcessRoll(data,requester,remote=false) {
   if(remote && !actor.testUserPermission?.(requester,'OWNER'))return;
   if(!requester?.active)return;
   return soActorQueue(actor.uuid,async()=>{
-    if(soDone().includes(data.messageId))return;
+    if(soDone().includes(data.messageId)) {
+      const original=game.messages?.get(data.messageId);
+      const saved=original?.getFlag?.(SO_NS,'saveOverride');
+      if(saved && Number.isFinite(saved.effectiveTotal)) {
+        return {
+          normalTotal:saved.normalTotal,effectiveTotal:saved.effectiveTotal,
+          changed:saved.effectiveTotal>saved.normalTotal,
+          winner:saved.winner??null,
+          candidates:saved.candidates??[],
+          saveType:data.saveType,sourceItemUuid:data.sourceItemUuid,
+          targetActorUuid:actor.uuid
+        };
+      }
+      soLog('Roll already processed',{messageId:data.messageId});
+      return null;
+    }
     // Message arrives asynchronously at clients; retry a few times.
     let message=null;
     for(let n=0;n<8;n++){
@@ -520,12 +536,26 @@ async function soProcessRoll(data,requester,remote=false) {
       if(message)break;
       await new Promise(resolve=>setTimeout(resolve,120));
     }
-    if(!message)return;
+    if(!message) {
+      soLog('Roll rejected: chat message not found',{messageId:data.messageId});
+      return null;
+    }
     const senderId=message.author?.id??null;
-    if(senderId!==requester.id)return;
-    if(message.speaker?.actor && message.speaker.actor!==actor.id)return;
+    if(senderId!==requester.id) {
+      soLog('Roll rejected: ChatMessage author mismatch',{
+        messageId:message.id,author:senderId,requester:requester.id});
+      return null;
+    }
+    if(message.speaker?.actor && message.speaker.actor!==actor.id) {
+      soLog('Roll rejected: ChatMessage speaker Actor mismatch',{
+        messageId:message.id,speaker:message.speaker?.actor,actor:actor.id});
+      return null;
+    }
     const normal=soMessageTotal(message);
-    if(normal===null)return;
+    if(normal===null) {
+      soLog('Roll rejected: ChatMessage has no finite roll total',{messageId:message.id});
+      return null;
+    }
     const decision=await soResolve({
       targetActorUuid:actor.uuid,saveType:data.saveType,
       sourceItemUuid:data.sourceItemUuid,targetTokenUuid:data.targetTokenUuid,
@@ -543,7 +573,8 @@ async function soProcessRoll(data,requester,remote=false) {
         normalTotal:decision.normalTotal,
         effectiveTotal:decision.effectiveTotal,
         saveType:decision.saveType,sourceItemUuid:decision.sourceItemUuid,
-        winner:decision.winner?.id??null
+        winner:decision.winner?.id??null,
+        candidates:decision.candidates
       };
       try {
         await message.setFlag?.(SO_NS,'saveOverride',metadata);
@@ -555,6 +586,7 @@ async function soProcessRoll(data,requester,remote=false) {
       Hooks.callAll('pf1aeSaveOverrideResolved',actor,decision,message);
       await soSummary(message,decision,actor);
     }
+    return decision;
   });
 }
 function soStorePre(actor,options,saveType) {
@@ -571,6 +603,7 @@ function soStorePre(actor,options,saveType) {
     Date.now()-p.createdAt<30000);
   queue.push({
     sourceItemUuid:extra.sourceItemUuid,createdAt:Date.now(),
+    helper:extra.helper===true,
     tokenUuid:options.token?.uuid??actor.token?.uuid??null
   });
   soPreRolls.set(key,queue.slice(-20));
@@ -582,6 +615,7 @@ function soReadPost(actor,result,saveType) {
   const pending=queue.shift();
   if(!queue.length)soPreRolls.delete(key);
   if(!pending || Date.now()-pending.createdAt>30000)return;
+  if(pending.helper) return; // rollWithContext explicitly awaits the GM decision.
   const messageId=result?.id??null;
   if(!messageId)return; // Non-chat result: manual GM resolve remains available.
   const payload={
@@ -596,8 +630,22 @@ function soReadPost(actor,result,saveType) {
 }
 const soSeenRequests=new Set();
 async function soHandleSocket(data) {
-  if(!soLeader()||!soEnabled()||data?.channel!==SO_CHANNEL ||
-     !soText(data.requestId,100)||soSeenRequests.has(data.requestId))return;
+  if(!soEnabled()||data?.channel!==SO_CHANNEL||
+     !soText(data.requestId,100))return;
+  // A response is consumed only by its original client's matching pending
+  // request, never by other clients. Only the currently elected GM can
+  // create a matching positive result under the normal trusted-table model.
+  if(data.op==='roll-result') {
+    if(data.recipientId!==game.user.id)return;
+    const pending=soPendingRollResolutions.get(data.requestId);
+    if(!pending)return;
+    if(data.senderId!==pending.leaderId)return;
+    clearTimeout(pending.timer);
+    soPendingRollResolutions.delete(data.requestId);
+    pending.resolve(data.decision??null);
+    return;
+  }
+  if(!soLeader()||soSeenRequests.has(data.requestId))return;
   soSeenRequests.add(data.requestId);
   if(soSeenRequests.size>2000)soSeenRequests.clear();
   const requester=game.users.get(data.userId);
@@ -605,14 +653,44 @@ async function soHandleSocket(data) {
   try {
     if(data.op==='register')await soRegisterInternal(data,requester,true);
     if(data.op==='unregister')await soUnregisterInternal(data,requester,true);
-    if(data.op==='roll')await soProcessRoll(data,requester,true);
+    if(data.op==='roll') {
+      const decision=await soProcessRoll(data,requester,true);
+      game.socket.emit(SO_SOCKET,{
+        channel:SO_CHANNEL,op:'roll-result',
+        requestId:data.requestId,recipientId:requester.id,
+        senderId:game.user.id,decision:decision?soClone(decision):null
+      });
+    }
   } catch(error) {
     console.error('[PF1AE][SaveOverride] Request rejected: '+error.message,error);
+    if(data.op==='roll')game.socket.emit(SO_SOCKET,{
+      channel:SO_CHANNEL,op:'roll-result',
+      requestId:data.requestId,recipientId:requester.id,
+      senderId:game.user.id,decision:null
+    });
   }
 }
-/** Roll with unambiguous item-origin metadata in the PF1 pre-save options.
- * This runs on the client allowed to roll for the target; it never adds any
- * bonus or changes the PF1 d20 result.
+/** Await elected-GM validation and comparison for a newly completed chat roll. */
+async function soAwaitResolution(payload) {
+  if(soLeader())return soProcessRoll(payload,game.user,false);
+  const gm=[...game.users].filter(u=>u.active&&u.isGM)
+    .sort((a,b)=>a.id.localeCompare(b.id))[0];
+  if(!gm)throw Error('No elected GM is connected to resolve the save.');
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>{
+      soPendingRollResolutions.delete(payload.requestId);
+      reject(Error('Save override resolution timed out waiting for the elected GM.'));
+    },10000);
+    soPendingRollResolutions.set(payload.requestId,{
+      resolve,reject,timer,leaderId:gm.id
+    });
+    game.socket.emit(SO_SOCKET,payload);
+  });
+}
+/**
+ * Roll natively, then await the elected GM's authoritative effective total.
+ * Return BOTH the original PF1 ChatMessage and effective decision. Never
+ * alter the original die, PF1 roll formula, or already-finished PF1 outcomes.
  */
 async function soRollWithContext(data) {
   const actor=data?.actor;
@@ -622,11 +700,37 @@ async function soRollWithContext(data) {
   if(!soSaveId(data.saveType)||!soText(data.sourceItemUuid)) {
     throw Error('Save type and source Item UUID are required.');
   }
-  // Players need not be able to read a restricted source Compendium. The
-  // elected GM resolves and validates this UUID authoritatively post-roll.
   const options={...(data.options??{}),
-    pf1aeSave:{sourceItemUuid:data.sourceItemUuid}};
-  return actor.rollSavingThrow(data.saveType,options);
+    pf1aeSave:{sourceItemUuid:data.sourceItemUuid,helper:true}};
+  const nativeResult=await actor.rollSavingThrow(data.saveType,options);
+  if(!nativeResult)return {
+    nativeResult:null,processed:false,reason:'native save cancelled'
+  };
+  const originalMessage=game.messages?.get(nativeResult.id)??nativeResult;
+  if(!soText(originalMessage?.id,100) ||
+     (originalMessage.documentName&&originalMessage.documentName!=='ChatMessage')) {
+    return {
+      nativeResult,processed:false,reason:'native save did not create a chat message',
+      normalTotal:soMessageTotal(nativeResult),effectiveTotal:null
+    };
+  }
+  const payload={
+    channel:SO_CHANNEL,op:'roll',userId:game.user.id,
+    requestId:foundry.utils.randomID(),actorUuid:actor.uuid,
+    saveType:data.saveType,sourceItemUuid:data.sourceItemUuid,
+    targetTokenUuid:options.token?.uuid??actor.token?.uuid??null,
+    messageId:originalMessage.id
+  };
+  const decision=await soAwaitResolution(payload);
+  if(!decision) {
+    soLog('Roll was not resolved by elected GM',{
+      messageId:originalMessage.id,sourceItemUuid:data.sourceItemUuid});
+    return {
+      nativeResult,processed:false,reason:'GM could not validate the native chat roll',
+      normalTotal:soMessageTotal(originalMessage),effectiveTotal:null
+    };
+  }
+  return {nativeResult,processed:true,...decision};
 }
 async function soRepeatSave(data) {
   soRequireGM();
