@@ -54,10 +54,11 @@ function soRequireGM() {
 const SO_DESCRIPTOR_NAMES = new Set(['sonic','languageDependent','magical']);
 function soNormalizeTag(tag) {
   if (typeof tag !== 'string') return null;
-  const simple=tag.toLowerCase().replace(/[^a-z]/g,'');
+  const raw=tag.toLowerCase().trim();
+  const simple=raw.replace(/[^a-z]/g,'');
   if(simple==='sonic')return 'sonic';
   if(simple==='languagedependent'||simple==='language')return 'language-dependent';
-  return simple||null;
+  return raw.replace(/\s+/g,'-')||null;
 }
 function soNormalizedDescriptors(data) {
   if(data==null)return [];
