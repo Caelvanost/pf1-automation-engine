@@ -333,27 +333,58 @@ function soWallsBlock(source,target,type) {
 }
 function soReadFlag(actor,replacement) {
   const root=actor.getFlag?.(replacement.namespace,replacement.key);
-  if(!root || typeof root!=='object') return null;
+  if(!root || typeof root!=='object') {
+    soLog('Dynamic replacement unavailable: missing Actor flag',{
+      actor:actor.uuid,namespace:replacement.namespace,key:replacement.key});
+    return null;
+  }
   const raw=replacement.path.split('.').reduce((a,k)=>a?.[k],root);
-  return typeof raw==='number' && Number.isFinite(raw) ? raw : null;
+  if(typeof raw!=='number'||!Number.isFinite(raw)) {
+    soLog('Dynamic replacement unavailable: flag path is not a finite number',{
+      actor:actor.uuid,path:replacement.path,raw});
+    return null;
+  }
+  soLog('Dynamic replacement resolved: '+raw,{
+    actor:actor.uuid,namespace:replacement.namespace,
+    flag:replacement.key,path:replacement.path});
+  return raw;
 }
 async function soFindCandidates(data) {
   if(!soEnabled()||!soLeader())return [];
   const target=await fromUuid(data.targetActorUuid);
   const item=await fromUuid(data.sourceItemUuid);
   if(target?.documentName!=='Actor'||item?.documentName!=='Item'||
-     !soSaveId(data.saveType))return [];
+     !soSaveId(data.saveType)) {
+    soLog('Save rejected: missing Actor, source Item or valid saving throw',{
+      actorUuid:data?.targetActorUuid,sourceItemUuid:data?.sourceItemUuid,
+      saveType:data?.saveType});
+    return [];
+  }
   const traits=soTraits(item);
   if(!traits)return [];
-  soLog('Save detected',{target:target.uuid,save:data.saveType,
-    sourceItem:item.uuid,traits});
+  soLog('Save detected',{target:target.uuid,save:data.saveType});
+  soLog('Source: '+item.name,{uuid:item.uuid});
+  soLog('Source UUID: '+item.uuid);
+  soLog('Source ability type: '+(traits.abilityType??'unknown'));
+  soLog('Source tags: '+traits.descriptors.join(', '));
+  soLog('Context',{magical:traits.magical,sonic:traits.sonic,
+    languageDependent:traits.languageDependent});
   const scene=game.scenes?.active??canvas.scene;
   const targetToken=soTokenFromActor(target,scene,data.targetTokenUuid??null);
-  if(!targetToken)return [];
-  const rules=soRegistry().sort((a,b)=>b.priority-a.priority||a.id.localeCompare(b.id));
+  if(!targetToken) {
+    soLog('Save rejected: target token not in active scene',{
+      target:target.uuid,scene:scene?.id,
+      tokenUuid:data.targetTokenUuid??null});
+    return [];
+  }
+  const rules=soRegistry().slice().sort((a,b)=>b.priority-a.priority||a.id.localeCompare(b.id));
   const applicable=[];
   for(const rule of rules) {
-    if(!soGroupsFor(rule).length)continue;
+    soLog('Checking rule: '+rule.key,{ruleId:rule.id,groupKey:rule.groupKey});
+    if(!soGroupsFor(rule).length) {
+      soLog('Rule rejected: linked effect group is not active',{rule:rule.id});
+      continue;
+    }
     const predicate=soMatchesPredicate(traits,rule.appliesTo);
     soLog('Source predicate: '+(predicate.ok?'PASS':'FAIL'),{
       rule:rule.id,reason:predicate.reason,
@@ -365,27 +396,47 @@ async function soFindCandidates(data) {
       continue;
     }
     const source=await fromUuid(rule.sourceActorUuid);
-    if(source?.documentName!=='Actor')continue;
+    if(source?.documentName!=='Actor') {
+      soLog('Rule rejected: source Actor not found',{rule:rule.id});
+      continue;
+    }
+    soLog('Target deafened: '+soDeaf(target),{target:target.uuid});
     if(rule.requiresHearing && soDeaf(target)) {
-      soLog('Hearing check: deafened',{target:target.uuid,rule:rule.id});
+      soLog('Rule rejected: target cannot hear source (deafened)',{rule:rule.id});
       continue;
     }
     const sourceToken=soTokenFromActor(source,scene);
-    if(!sourceToken)continue;
+    soLog('Source token: '+(sourceToken?.uuid??'missing'));
+    soLog('Target token: '+(targetToken?.uuid??'missing'));
+    if(!sourceToken) {
+      soLog('Rule rejected: source token not in active scene',{rule:rule.id});
+      continue;
+    }
     if(source.uuid!==target.uuid) {
       const threshold=soRangeToScene(rule.range,rule.rangeUnits,scene);
       const distance=soDistance(sourceToken,targetToken,scene);
+      soLog('Range check: '+(distance!==null&&threshold!==null&&distance<=threshold?'PASS':'FAIL'),{
+        rule:rule.id,distance,maximumDistance:threshold,sceneUnits:scene.grid?.units});
       if(threshold===null||distance===null||distance>threshold) {
-        soLog('Target out of range or distance unavailable',{rule:rule.id,distance,threshold});
+        soLog('Rule rejected: target out of range or distance unavailable',{
+          rule:rule.id,distance,maximumDistance:threshold});
         continue;
       }
-      soLog('Target in range',{rule:rule.id,distance,threshold});
       if(rule.requiresHearing) {
         const blocked=soWallsBlock(sourceToken,targetToken,'sound');
-        if(blocked!==false)continue; // Unknown collision API => fail closed.
-        soLog('Hearing check passed',{rule:rule.id});
+        soLog('Hearing collision: '+(blocked===null?'unknown':blocked?'blocked':'clear'),{
+          rule:rule.id});
+        if(blocked!==false) {
+          soLog('Rule rejected: target cannot hear source (sound blocked or unknown)',{
+            rule:rule.id});
+          continue;
+        }
+        soLog('Hearing check: PASS',{rule:rule.id});
       }
-      if(rule.requiresSight && soWallsBlock(sourceToken,targetToken,'sight')!==false)continue;
+      if(rule.requiresSight && soWallsBlock(sourceToken,targetToken,'sight')!==false) {
+        soLog('Rule rejected: sight blocked or unknown',{rule:rule.id});
+        continue;
+      }
     }
     const value=soReadFlag(source,rule.replacement);
     if(value===null)continue;
@@ -408,6 +459,9 @@ async function soResolve(data) {
     a.id.localeCompare(b.id))[0]??null;
   const effective=Math.max(normal,...candidates.map(c=>c.value));
   const changed=effective>normal;
+  soLog('Normal save: '+normal);
+  soLog('Replacement value: '+(winner?.value??'none'));
+  soLog('Effective result: '+effective);
   soLog('Resolved',{normal,replacement:winner?.value??null,effective,candidates:candidates.length});
   return {normalTotal:normal,effectiveTotal:effective,changed,
     winner:changed?winner:null,candidates,saveType:data.saveType,
@@ -467,7 +521,7 @@ async function soProcessRoll(data,requester,remote=false) {
       await new Promise(resolve=>setTimeout(resolve,120));
     }
     if(!message)return;
-    const senderId=message.user?.id??message.user;
+    const senderId=message.author?.id??null;
     if(senderId!==requester.id)return;
     if(message.speaker?.actor && message.speaker.actor!==actor.id)return;
     const normal=soMessageTotal(message);
