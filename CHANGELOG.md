@@ -1,3 +1,14 @@
+## v1.10.0 — Approved PF1 buff templates from Compendiums
+
+- `api.effectGroups.approveTemplate()` accepts actor-owned ActiveEffects, actor-owned PF1 buffs, and Compendium PF1 `buff` Items.
+- New approval records store template UUID, source type, diagnostic hash, and exact canonical content fingerprint. Changes to `name`, `type`, `system`, `effects`, `flags` or other relevant content invalidate approval until reapproved.
+- Legacy v1.9 Actor template fingerprint-string approvals remain valid.
+- `applyGroup()` resolves Compendium templates with `fromUuid()`, snapshots sanitized `toObject()` once, and creates separately tracked, natively activated PF1 embedded buff copies on each target.
+- Pack identity/ownership metadata and nested embedded ActiveEffect IDs are not cloned; PF1 action and Script Call IDs are retained.
+- Existing source ownership checks, player socket authorization, `extendGroup()`, `stopGroup()`, phase expirations, F5 recovery and safe rollback are preserved.
+- New debug categories for approval, modified templates, source type, copies and cloning errors.
+- Adds `tests/compendium-templates.test.cjs` and Compendium coverage in duration-group tests and CI. See `docs/COMPENDIUM-BUFF-TEMPLATES.md`.
+
 ## v1.9.0 — Native Pathfinder 1e actor rest hooks (experimental)
 
 - Generic events `pf1PreActorRest` and `pf1ActorRest` can now be registered through `api.generic.register()` or approved Item discovery declarations.
