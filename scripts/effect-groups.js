@@ -349,6 +349,15 @@ async function effectExpireGroupInternal(groupId, fromTimer=false) {
   if (pending.length) next[groupId]={...session,copies:pending,pendingCleanup:true};
   else delete next[groupId];
   await game.settings.set(EFFECT_NS,GROUPS_SETTING,next);
+  // A rule tied to this group must stop influencing saves as soon as its
+  // managed copies expire or are stopped. The registry is also checked
+  // dynamically, so a cleanup failure never makes an orphan rule effective.
+  try {
+    await game.modules.get(EFFECT_NS)?.api?.saveOverrides?._onGroupRemoved?.(
+      session.sourceUuid,session.key);
+  } catch(error) {
+    console.warn(EFFECT_NS + ' | Save override cleanup deferred',error);
+  }
   if (!fromTimer) {
     // Do not hold the group write queue while awaiting the timer write queue:
     // a concurrent due timer may be waiting on this group queue.
