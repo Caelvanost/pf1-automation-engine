@@ -430,12 +430,18 @@ async function soProcessRoll(data,requester,remote=false) {
 }
 function soStorePre(actor,options,saveType) {
   if(!soEnabled()||!soSaveId(saveType))return;
-  const extra=options?.pf1aeSave;
-  if(!soText(extra?.sourceItemUuid))return; // No origin => no guesses.
   const key=actor.uuid+':'+saveType;
-  const queue=soPreRolls.get(key)??[];
+  const extra=options?.pf1aeSave;
+  // An unannotated roll breaks the pending annotated sequence, including
+  // a prior roll that was cancelled by PF1 before its post hook.
+  if(!soText(extra?.sourceItemUuid)) {
+    soPreRolls.delete(key);
+    return;
+  }
+  const queue=(soPreRolls.get(key)??[]).filter(p=>
+    Date.now()-p.createdAt<30000);
   queue.push({
-    sourceItemUuid:extra.sourceItemUuid,
+    sourceItemUuid:extra.sourceItemUuid,createdAt:Date.now(),
     tokenUuid:options.token?.uuid??actor.token?.uuid??null
   });
   soPreRolls.set(key,queue.slice(-20));
@@ -446,7 +452,7 @@ function soReadPost(actor,result,saveType) {
   const queue=soPreRolls.get(key)??[];
   const pending=queue.shift();
   if(!queue.length)soPreRolls.delete(key);
-  if(!pending)return;
+  if(!pending || Date.now()-pending.createdAt>30000)return;
   const messageId=result?.id??null;
   if(!messageId)return; // Non-chat result: manual GM resolve remains available.
   const payload={
