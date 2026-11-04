@@ -156,6 +156,24 @@ function rule(actor,key='countersong') {
  });
  assert.equal(candidates.length,0,'out-of-range target skipped');
 
+ // Metric scenes use Foundry grid measurements with converted thresholds.
+ scene.grid.units='m';
+ const targetToken=tokens.find(t=>t.actor===actors.target);
+ targetToken.center.x=80; // mock grid reports 8 meters
+ candidates=await gm.api().getApplicable({
+   targetActorUuid:actors.target.uuid,saveType:'will',
+   sourceItemUuid:'Actor.caster.Item.sonic'
+ });
+ assert.equal(candidates.length,1,'8 meters is inside 30 ft range');
+ targetToken.center.x=100; // mock grid reports 10 meters
+ candidates=await gm.api().getApplicable({
+   targetActorUuid:actors.target.uuid,saveType:'will',
+   sourceItemUuid:'Actor.caster.Item.sonic'
+ });
+ assert.equal(candidates.length,0,'10 meters is outside 30 ft range');
+ scene.grid.units='ft';
+ targetToken.center.x=200;
+
  actors.target.statuses.add('deafened');
  candidates=await gm.api().getApplicable({
    targetActorUuid:actors.target.uuid,saveType:'will',
