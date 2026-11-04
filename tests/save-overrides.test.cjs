@@ -73,6 +73,7 @@ function newClient(user){
   const Hooks={
     on(name,fn){hooks.set(name,[...(hooks.get(name)??[]),fn]);},
     once(name,fn){this.on(name,fn);},
+    callAll(name,...args){for(const fn of hooks.get(name)??[])fn(...args);return true;},
     async fire(name,...args){for(const fn of hooks.get(name)??[])await fn(...args);}
   };
   const canvas={
