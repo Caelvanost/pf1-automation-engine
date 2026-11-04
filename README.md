@@ -1,4 +1,4 @@
-# PF1 Automation Engine — v1.11.0
+# PF1 Automation Engine — v1.11.1
 
 **Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
@@ -50,6 +50,12 @@ console.table(mod?.api?.generic?.listTimers() ?? []);
 **Permissions:** `duration.schedule()`, `generic.scheduleTurn()`, event registration and template approvals are GM-only. Player-originated `effectGroups` requests are validated by the elected GM. A `submitted:true` response means a request was sent, **not** that it succeeded.
 
 **Clock:** Foundry/Seasons & Stars owns `game.time.worldTime`. The Engine observes this clock but never advances, pauses or resumes it. One PF1 round is six seconds.
+
+## Save override fix — v1.11.1
+
+PF1 abilities with `system.abilityType === "su"` are magical, and the native PF1 `system.tags` set now supplies sonic/language-dependent descriptors. The API accepts explicit `appliesTo:{magical:true,anyOf:["sonic","languageDependent"]}`, while legacy booleans keep their previous OR behavior.
+
+`rollWithContext()` now **awaits the elected GM** and returns `{nativeResult,processed,normalTotal,effectiveTotal,changed,winner,candidates}`. The native PF1 roll still displays its original value; the module posts one effective-result chat summary and sets the original ChatMessage flag. See [Save Overrides](docs/SAVE-OVERRIDES.md).
 
 ## Saving throw overrides — new in v1.11.0
 
