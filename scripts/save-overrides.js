@@ -510,9 +510,10 @@ async function soRollWithContext(data) {
   if(!soSaveId(data.saveType)||!soText(data.sourceItemUuid)) {
     throw Error('Save type and source Item UUID are required.');
   }
-  const item=await fromUuid(data.sourceItemUuid);
-  if(item?.documentName!=='Item')throw Error('Save origin Item not found.');
-  const options={...(data.options??{}),pf1aeSave:{sourceItemUuid:item.uuid}};
+  // Players need not be able to read a restricted source Compendium. The
+  // elected GM resolves and validates this UUID authoritatively post-roll.
+  const options={...(data.options??{}),
+    pf1aeSave:{sourceItemUuid:data.sourceItemUuid}};
   return actor.rollSavingThrow(data.saveType,options);
 }
 async function soRepeatSave(data) {
