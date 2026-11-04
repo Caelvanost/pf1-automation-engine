@@ -487,6 +487,9 @@ async function soSummary(message,decision,target) {
   return ChatMessage.implementation.create({
     content:lines.join(''),
     speaker:ChatMessage.implementation.getSpeaker({actor:target}),
+    // Preserve original saving throw privacy including blind/GM rolls.
+    whisper:Array.isArray(message?.whisper)?[...message.whisper]:[],
+    blind:message?.blind===true,
     flags:{[SO_NS]:{saveOverride:{
       originalMessageId:message?.id??null,
       normalTotal:decision.normalTotal,
@@ -514,6 +517,23 @@ async function soProcessRoll(data,requester,remote=false) {
   if(remote && !actor.testUserPermission?.(requester,'OWNER'))return;
   if(!requester?.active)return;
   return soActorQueue(actor.uuid,async()=>{
+    if(data.sourceMessageId) {
+      // The GM re-reads persisted PF1 action-card provenance rather than
+      // trusting a socket-supplied Item or Action ID.
+      const card=game.messages?.get(data.sourceMessageId);
+      const context=card && game.modules.get(SO_NS)?.api?.saveContext?.fromMessage(card);
+      if(!context || context.sourceItemUuid!==data.sourceItemUuid ||
+          context.sourceActionId!==data.sourceActionId ||
+          context.saveType!==data.saveType) {
+        soLog('Native save rejected: source card context mismatch',{
+          messageId:data.sourceMessageId,actorUuid:data.actorUuid,
+          claimedItem:data.sourceItemUuid,claimedAction:data.sourceActionId});
+        return null;
+      }
+      soLog('Source context restored',{sourceMessageId:data.sourceMessageId,
+        sourceItemUuid:context.sourceItemUuid,sourceActionId:context.sourceActionId,
+        saveDC:context.saveDC});
+    }
     if(soDone().includes(data.messageId)) {
       const original=game.messages?.get(data.messageId);
       const saved=original?.getFlag?.(SO_NS,'saveOverride');
@@ -569,31 +589,48 @@ async function soProcessRoll(data,requester,remote=false) {
       await game.settings.set(SO_NS,SO_DONE_SETTING,
         [...list,message.id].slice(-SO_CACHE_LIMIT));
     });
-    if(decision.candidates.length) {
+    {
+      // A contextual native save always has a decision flag, even when no
+      // override applies. No extra chat is posted if candidates are empty.
       const metadata={
+        processed:true,
         normalTotal:decision.normalTotal,
         effectiveTotal:decision.effectiveTotal,
+        changed:decision.changed,
         saveType:decision.saveType,sourceItemUuid:decision.sourceItemUuid,
         winner:decision.winner?.id??null,
-        candidates:decision.candidates
+        candidates:decision.candidates,
+        sourceMessageId:data.sourceMessageId??null,
+        sourceActionId:data.sourceActionId??null,
+        saveDC:Number.isFinite(data.saveDC)?data.saveDC:null
       };
       try {
         await message.setFlag?.(SO_NS,'saveOverride',metadata);
       } catch(error) {
         soLog('Could not flag original save message',{id:message.id,error:error.message});
       }
-      // Other integrations may consume the effective result, but PF1 itself
-      // has already finished its normal save calculation at this point.
       Hooks.callAll('pf1aeSaveOverrideResolved',actor,decision,message);
-      await soSummary(message,decision,actor);
+      if(decision.candidates.length)await soSummary(message,decision,actor);
     }
-    return decision;
+    return {...decision,sourceMessageId:data.sourceMessageId??null,
+      sourceActionId:data.sourceActionId??null,
+      saveDC:Number.isFinite(data.saveDC)?data.saveDC:null};
   });
 }
 function soStorePre(actor,options,saveType) {
   if(!soEnabled()||!soSaveId(saveType))return;
   const key=actor.uuid+':'+saveType;
-  const extra=options?.pf1aeSave;
+  // Explicit rollWithContext wins; an ordinary native card button click
+  // supplies its metadata via the context bridge before PF1 rolls.
+  const restored=!options?.pf1aeSave
+    ?game.modules.get(SO_NS)?.api?.saveContext?._consumeForNativeSave(actor,saveType)
+    :null;
+  const extra=options?.pf1aeSave??(restored ?{
+    sourceItemUuid:restored.sourceItemUuid,
+    sourceMessageId:restored.sourceMessageId,
+    sourceActionId:restored.sourceActionId,
+    saveDC:restored.saveDC
+  }:null);
   // An unannotated roll breaks the pending annotated sequence, including
   // a prior roll that was cancelled by PF1 before its post hook.
   if(!soText(extra?.sourceItemUuid)) {
@@ -604,6 +641,9 @@ function soStorePre(actor,options,saveType) {
     Date.now()-p.createdAt<30000);
   queue.push({
     sourceItemUuid:extra.sourceItemUuid,createdAt:Date.now(),
+    sourceMessageId:extra.sourceMessageId??null,
+    sourceActionId:extra.sourceActionId??null,
+    saveDC:Number.isFinite(extra.saveDC)?extra.saveDC:null,
     helper:extra.helper===true,
     tokenUuid:options.token?.uuid??actor.token?.uuid??null
   });
@@ -623,6 +663,9 @@ function soReadPost(actor,result,saveType) {
     channel:SO_CHANNEL,op:'roll',userId:game.user.id,
     requestId:foundry.utils.randomID(),actorUuid:actor.uuid,
     saveType,sourceItemUuid:pending.sourceItemUuid,
+    sourceMessageId:pending.sourceMessageId,
+    sourceActionId:pending.sourceActionId,
+    saveDC:pending.saveDC,
     targetTokenUuid:pending.tokenUuid,messageId
   };
   if(soLeader())void soProcessRoll(payload,game.user).catch(error=>
@@ -773,6 +816,10 @@ Hooks.once('ready',()=>{
     requestRepeatSave:soRepeatSave, // GM explicit, never auto-scans buffs
     list:()=>soClone(soRegistry()),
     reconcile:soReconcile, // elected GM only
+    getResultForMessage:messageId=>{
+      const message=game.messages?.get(messageId);
+      return message?.getFlag?.(SO_NS,'saveOverride')??null;
+    },
     _onGroupRemoved:soOnGroupRemoved
   });
   game.socket.on(SO_SOCKET,data=>{if(data?.channel===SO_CHANNEL)
