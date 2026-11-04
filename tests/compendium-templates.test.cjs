@@ -93,6 +93,7 @@ function makeCombat(actors){
   const combat={id:'C',started:true,round:1,turn:0,combatants:new Map([
     ['A',{id:'A',actor:actors[0]}],['B',{id:'B',actor:actors[1]}]
   ])};
+  combat.turns=[...combat.combatants.values()];
   combat.combatant=combat.combatants.get('A');return combat;
 }
 function makeScene(actors){
