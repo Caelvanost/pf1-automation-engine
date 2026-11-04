@@ -1,4 +1,4 @@
-# PF1 Automation Engine — v1.11.1
+# PF1 Automation Engine — v1.12.0
 
 **Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
@@ -50,6 +50,12 @@ console.table(mod?.api?.generic?.listTimers() ?? []);
 **Permissions:** `duration.schedule()`, `generic.scheduleTurn()`, event registration and template approvals are GM-only. Player-originated `effectGroups` requests are validated by the elected GM. A `submitted:true` response means a request was sent, **not** that it succeeded.
 
 **Clock:** Foundry/Seasons & Stars owns `game.time.worldTime`. The Engine observes this clock but never advances, pauses or resumes it. One PF1 round is six seconds.
+
+## Native PF1 action-card saving throws — v1.12.0
+
+The Engine now preserves the source Item/Action, saving throw type and DC on **native PF1 action chat cards** and restores this context when a player clicks PF1's original save control. All rolling remains native (dialogs, bonuses, conditional modifiers, chat mode, privacy). The already-validated elected-GM `saveOverrides` resolver produces the effective result and at most one summary per save. Manual sheet saves are deliberately unannotated.
+
+**[Native Save Context API, limitations and in-world acceptance instructions](docs/NATIVE-SAVE-CONTEXT.md).** A live check of the installed PF1 11.11 chat control's DOM is required; CI exercises simulated PF1 hooks only.
 
 ## Save override fix — v1.11.1
 
