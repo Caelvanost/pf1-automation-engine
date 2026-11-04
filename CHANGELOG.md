@@ -1,3 +1,45 @@
+## v1.12.1 — Native PF1 source-reference integration hotfix (experimental)
+
+- Restore source provenance from PF1 `rollOptions.reference` during `pf1PreActorRollSave`, using the actual originating Action ChatMessage and its `itemSource`, `actionSource`, `system.save.type` and `system.save.dc`. This no longer depends on a browser click/render hook.
+- Optional reversible compatibility wrappers log `targetSavingThrowClick` or `Actions.onRollSave` and delegate **all native arguments** to the original without changing its output.
+- After GM validation, update the original public Action ChatMessage with a per-target effective saving throw display. Keep the original PF1 dice roll and avoid writing private or blind totals into public flags.
+- Preserve existing manual `rollWithContext`, multi-target/GM relay, source message validation, persistent save deduplication and normal unannotated sheet saves.
+- Add simulated exact Captivating Song Will 16, Countersong 23, target display 23, two different targets, no override, wrapper diagnostic and F5 regressions.
+- **Foundry acceptance pending:** upstream versions expose different native handler names and the live PF1 chat renderer was not available to test here.
+
+## v1.12.0 — Native PF1 action chat-card saving throw context (experimental)
+
+- Preserve source Actor/Item/Action and save type/DC in the native PF1 action ChatMessage through `pf1PreDisplayActionUse` and guarded message creation.
+- Under Foundry v13's `renderChatMessageHTML`, observe the original save-button click in capture phase; never replace PF1 roll handlers or Actor prototypes.
+- Restore the source on native `pf1PreActorRollSave`, then delegate the original `pf1ActorRollSave` to the existing elected-GM resolver.
+- Cross-check the persisted source ChatMessage Item/Action/save identity on the elected GM before applying conditional Countersong.
+- Record normal and effective result even when no override applies (no extra chat). Preserve native whispered/blind visibility on summary messages.
+- Handle multiple targets, independent actors, F5, action IDs, socket deduplication and manual unannotated saves.
+- Add `scripts/save-context.js`, `tests/native-save-context.test.cjs` and `docs/NATIVE-SAVE-CONTEXT.md`.
+- **Limit:** exact PF1 11.11 button DOM compatibility and actual live workflow must be tested in Foundry before merging.
+
+## v1.11.1 — Native PF1 supernatural/sonic save-overrides hotfix
+
+- Resolve PF1 11.11 feat `system.abilityType: "su"` as magical; parse `system.tags` (Set), arrays, objects and strings in addition to structured spell descriptors.
+- Make generic `appliesTo.anyOf` and `appliesTo.allOf` explicit. Existing `{magical:true,sonic:true,languageDependent:true}` registrations retain their OR semantics.
+- `rollWithContext()` awaits elected-GM resolution, returning `normalTotal`, `effectiveTotal`, `nativeResult`, `processed` and winning source. It does not falsify native dice or retroactively alter finished PF1 actions.
+- Add detailed debug logs for source traits, predicate rejection, range, hearing, current Actor flag, normal/effective totals and message-processing failures.
+- Use modern Foundry v13 `ChatMessage.author` rather than deprecated `ChatMessage.user`.
+- Cover exact Harpy Captivating Song (Su + Set sonic tags), Will 7 vs Countersong 10, Will 17 vs 10 and non-sonic supernatural negative control, including player↔elected GM socket reply and chat summary.
+- PR remains draft pending live Foundry confirmation.
+
+## v1.11.0 — Persistent saving throw result override infrastructure (experimental)
+
+- Adds `api.saveOverrides`: data-only, GM-resolved, persistent rules attached to `effectGroups` and source Actor flags; never serializes JavaScript callbacks.
+- Observes native PF1 `pf1PreActorRollSave(actor,rollOptions,save)` and `pf1ActorRollSave(actor,result,save)` hooks. Only **annotated** saving throws with an explicit Item origin are processed.
+- Dynamic replacement value comes from an Actor flag each time, not a cached value. `higher-result` compares actual save total to all eligible replacement results, without modifying native save bonuses.
+- Optional sonic / language-dependent / magical predicates from Item data, 30-ft scene range via grid measurePath, hearing/deafness and sound wall checks, and multiple sources.
+- GM validates actor-owned player socket requests and actual chat message totals, deduplicates decisions with persistent message IDs, and emits `pf1aeSaveOverrideResolved` with a compact chat summary.
+- Linked override rules are removed on effect-group expiration/stop, and inert when the group is missing.
+- Explicit `requestRepeatSave` bridge: a GM Item script may roll a known ongoing effect; no automatic save generation against arbitrary buffs.
+- Adds English `docs/SAVE-OVERRIDES.md` and `tests/save-overrides.test.cjs` to CI.
+- **Limitation:** PF1's post-save hook runs after core d20 resolution. Effective totals are published to consuming scripts, not retroactively injected into PF1's already-completed outcomes. No unannotated automatic source deduction.
+
 ## v1.10.0 — Approved PF1 buff templates from Compendiums
 
 - `api.effectGroups.approveTemplate()` accepts actor-owned ActiveEffects, actor-owned PF1 buffs, and Compendium PF1 `buff` Items.

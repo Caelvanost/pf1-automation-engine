@@ -1,4 +1,4 @@
-# PF1 Automation Engine v1.10.0 — Technical Guide (English)
+# PF1 Automation Engine v1.12.0 — Technical Guide (English)
 
 **Target environment:** Foundry Virtual Tabletop **v13.351**; Pathfinder 1st Edition system **11.11**.  
 **Module ID:** `pf1-automation-engine`.  
@@ -6,7 +6,7 @@
 
 > **Design contract:** Game Masters decide which spells, feats, traits, and class features need automation. They attach JavaScript to the *existing PF1 Item* on the relevant character sheet. The module provides lifecycle events, approved effect distribution, precise turn deadlines, persistent game-time durations, and cleanup; the Item script decides all PF1 rules.
 
-This document describes the API **as implemented in v1.10.0**, including the v1.9.0 native PF1 actor-rest event bridge. It is not a promise that every native PF1 spell or action is automatically supported. Start with [PF1 Item Script Recipes](PF1-ITEM-SCRIPT-RECIPES.md) if you want copy-and-adapt examples.
+This document describes the API **as implemented in v1.11.0**, including the v1.9.0 native PF1 actor-rest event bridge. It is not a promise that every native PF1 spell or action is automatically supported. Start with [PF1 Item Script Recipes](PF1-ITEM-SCRIPT-RECIPES.md) if you want copy-and-adapt examples.
 
 ## Contents
 
@@ -637,3 +637,18 @@ Existing actor-owned buffs and ActiveEffects preserve source-actor ownership req
 The Compendium path is available to **player-originated effect-group requests** only after approval by the elected GM. Calling `approveTemplate()` from a player's Script Call is not supported; use a GM setup macro and a separate player-side `effectGroups.applyGroup()` invocation.
 
 **Documentation and examples:** [Compendium Buff Templates](COMPENDIUM-BUFF-TEMPLATES.md).
+
+
+## 18. Saving throw override engine — v1.11.0
+
+The engine exports `api.saveOverrides.register`, `unregister`, `getApplicable`, `resolve`, `rollWithContext` and `requestRepeatSave`. Rules are persistent and data-only (Actor flag provider, structured descriptors and group key); only the elected GM performs effective-result resolution. The service watches PF1's native pre/post save hooks but **requires explicit source Item provenance** because the native post-hook supplies actor/result/save-type, not an originating Item. PF1 has already rolled when the post-hook fires; the engine shows and publishes an **effective comparison**, never a native bonus or retroactive mutation of PF1's die result. Lifecycle hooks on `effectGroups` remove attached registrations upon expiration/stop. For the exact Countersong Script Call, hearing/distance behavior, security notes and examples, read [Saving Throw Overrides](SAVE-OVERRIDES.md).
+
+
+### v1.11.1 compatibility fix
+
+PF1 `FeatModel.abilityType:"su"` is magical, and `BaseItemModel.tags` is read as a Set/Array/Object/String. Save predicates support explicit `anyOf` and `allOf`; existing `sonic:true` / `languageDependent:true` booleans retain OR semantics. `rollWithContext()` now waits for the elected GM and returns both the normal and effective totals instead of only a native ChatMessage. See [Saving Throw Overrides](SAVE-OVERRIDES.md).
+
+
+## 19. Native PF1 action card save context — v1.12.0
+
+[Native Save Context](NATIVE-SAVE-CONTEXT.md) documents the additional `saveContext` bridge. It stores PF1 action-card Item/Action/save metadata on ChatMessage flags, observes native save button clicks through Foundry v13's `renderChatMessageHTML`, and restores that metadata in the existing pre/post PF1 save hooks. The native save and UI are never replaced. The elected GM verifies the referenced source message against submitted Item/Action/save fields before calculating the effective result. A sheet-only save has no source and is intentionally unchanged. This integration is simulated in CI and requires a live-world PF1 11.11 button compatibility test.

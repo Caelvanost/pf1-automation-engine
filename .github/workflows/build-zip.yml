@@ -31,6 +31,8 @@ jobs:
           node tests/duration-group.test.cjs
           node tests/rest-hooks.test.cjs
           node tests/compendium-templates.test.cjs
+          node tests/save-overrides.test.cjs
+          node tests/native-save-context.test.cjs
 
       - name: Validate Foundry package
         shell: powershell
@@ -45,6 +47,8 @@ jobs:
             if ($null -eq $archive.GetEntry('scripts/effect-groups.js')) { throw 'Missing multi-target effect service.' }
             if ($null -eq $archive.GetEntry('scripts/duration-manager.js')) { throw 'Missing world-time duration manager.' }
             if ($null -eq $archive.GetEntry('scripts/rest-automation.js')) { throw 'Missing native PF1 rest bridge.' }
+            if ($null -eq $archive.GetEntry('scripts/save-overrides.js')) { throw 'Missing saving throw override service.' }
+            if ($null -eq $archive.GetEntry('scripts/save-context.js')) { throw 'Missing native PF1 save context bridge.' }
             if ($null -eq $archive.GetEntry('API-EXPIRATIONS.md')) { throw 'Missing turn expiry documentation.' }
             if ($null -ne $archive.GetEntry('scripts/combat-hooks.js')) { throw 'Removed class-specific combat hook still packaged.' }
             if ($null -ne $archive.GetEntry('macros/enregistrer-cold-adaptation.js')) { throw 'Removed class-specific example macro still packaged.' }
