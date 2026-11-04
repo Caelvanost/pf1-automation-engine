@@ -4,9 +4,11 @@ const REG = 'eventRegistry';
 const TIMERS = 'timerRegistry';
 const ENABLED = 'genericEnabled';
 const DEBUG = 'genericDebug';
-const EVENT_TYPES = new Set(['updateActor','updateItem','createItem','deleteItem','createActiveEffect','updateActiveEffect','deleteActiveEffect','ready','combatTurnChange']);
+const EVENT_TYPES = new Set(['updateActor','updateItem','createItem','deleteItem','createActiveEffect','updateActiveEffect','deleteActiveEffect','ready','combatTurnChange','pf1PreActorRest','pf1ActorRest']);
+const REST_EVENTS = new Set(['pf1PreActorRest','pf1ActorRest']);
 const activeRuns = new Set();
 const activeActorRuns = new Set();
+const activeActorCompletion = new Map();
 const processed = new Set();
 const queues = new Map();
 const uid = () => foundry.utils.randomID();
@@ -37,9 +39,21 @@ function isMatch(rule, ev) {
   }
   if (f.properties?.length && !f.properties.some(p=>ev.changedPaths.some(c=>c===p || c.startsWith(`${p}.`) || p.startsWith(`${c}.`)))) return false;
   if (f.buffState && f.buffState !== ev.buffState) return false;
+  // Rest conditions are a subscription filter, NOT Pathfinder rest rules.
+  // Native PF1 options control health and daily recharge independently.
+  if (f.rest) {
+    const r=ev.rest;
+    if (!r) return false;
+    if (f.rest.minHours!=null && !(r.hours>=f.rest.minHours)) return false;
+    if (f.rest.maxHours!=null && !(r.hours<=f.rest.maxHours)) return false;
+    for (const name of ['restoreHealth','restoreDailyUses','atLeastEightHours','isFullRest']) {
+      if (f.rest[name]!=null && r[name]!==f.rest[name]) return false;
+    }
+    if (f.rest.kind && r.kind!==f.rest.kind) return false;
+  }
   return true;
 }
-function serialize(ev) { return { type:ev.type, actorUuid:ev.actorUuid, itemUuid:ev.itemUuid, documentUuid:ev.documentUuid, changedPaths:ev.changedPaths, buffState:ev.buffState, round:ev.round, combatId:ev.combatId, combatantId:ev.combatantId, phase:ev.phase ?? null, timing:ev.timing ?? null }; }
+function serialize(ev) { return { type:ev.type, actorUuid:ev.actorUuid, itemUuid:ev.itemUuid, documentUuid:ev.documentUuid, changedPaths:ev.changedPaths, buffState:ev.buffState, round:ev.round, combatId:ev.combatId, combatantId:ev.combatantId, phase:ev.phase ?? null, timing:ev.timing ?? null, rest:ev.rest ? clone(ev.rest) : null }; }
 function appendQueue(key, fn) {
   const last = queues.get(key) ?? Promise.resolve();
   const next = last.catch(()=>{}).then(fn);
@@ -86,9 +100,21 @@ async function runHandler(entry, ev) {
   const actor = actorFor(item) ?? (entry.actorUuid ? await fromUuid(entry.actorUuid) : null);
   if (!actor) {console.warn(NS,'Actor de script introuvable',entry.id);return;}
   // Script code is GM-approved. Never accept arbitrary code in event payload.
+  // Rest notifications must NOT be lost when PF1's own actor update has
+  // another registered callback in flight. Regular update hooks still use
+  // the existing recursion guard.
+  if (REST_EVENTS.has(ev.type)) {
+    while (activeActorRuns.has(actor.uuid)) {
+      const pending=activeActorCompletion.get(actor.uuid);
+      if (!pending) break;
+      await pending;
+    }
+  }
   if (activeActorRuns.has(actor.uuid)) {log('Cycle d’acteur évité',actor.uuid);return;}
   activeRuns.add(key);
   activeActorRuns.add(actor.uuid);
+  let releaseActor;
+  activeActorCompletion.set(actor.uuid,new Promise(resolve => {releaseActor=resolve;}));
   try {
     const scriptEvent = Object.freeze(clone(serialize(ev)));
     if (entry.scriptId) {
@@ -103,11 +129,16 @@ async function runHandler(entry, ev) {
       await fn.call(null, actor, item, scriptEvent, game.modules.get(NS).api.generic, actor.getActiveTokens?.()[0] ?? null, game, canvas, ui, ChatMessage, foundry);
     }
     log('Script exécuté',entry.id,ev.type);
-  } catch(err) {console.error(`${NS} | Échec script ${entry.id}`,err);} finally {activeRuns.delete(key);activeActorRuns.delete(actor.uuid);}
+  } catch(err) {console.error(`${NS} | Échec script ${entry.id}`,err);} finally {
+    activeRuns.delete(key);
+    activeActorRuns.delete(actor.uuid);
+    activeActorCompletion.delete(actor.uuid);
+    releaseActor?.();
+  }
 }
 async function dispatch(ev) {
   if (!enabled() || !leader()) return;
-  if (ev.actorUuid && activeActorRuns.has(ev.actorUuid)) return;
+  if (ev.actorUuid && activeActorRuns.has(ev.actorUuid) && !REST_EVENTS.has(ev.type)) return;
   const discovery = game.modules.get(NS)?.api?.discovery;
   await discovery?.ensureScanned();
   const matched = [...getRegistry(), ...(discovery?.listApproved() ?? [])].filter(r=>isMatch(r,ev));
@@ -126,8 +157,30 @@ function validateRule(data) {
   if(data.scriptId && !CATEGORIES[data.scriptCategory]) throw Error('Catégorie de script invalide (use, postUse, afterUse ou toggle)');
   const f = data.filter ?? {};
   if (!obj(f)) throw Error('Filtre invalide');
-  for (const k of Object.keys(f)) if (!['actorUuid','documentUuid','itemUuid','tag','properties','buffState'].includes(k)) throw Error(`Filtre inconnu ${k}`);
+  for (const k of Object.keys(f)) if (!['actorUuid','documentUuid','itemUuid','tag','properties','buffState','rest'].includes(k)) throw Error(`Filtre inconnu ${k}`);
   if (f.properties && (!Array.isArray(f.properties) || f.properties.length>30 || f.properties.some(p=>!safeText(p,150)))) throw Error('Propriétés invalides');
+  if (f.rest != null) {
+    if (!REST_EVENTS.has(data.on) || !obj(f.rest)) throw Error('Le filtre rest exige un événement de repos.');
+    for (const k of Object.keys(f.rest)) {
+      if (!['minHours','maxHours','restoreHealth','restoreDailyUses','atLeastEightHours','isFullRest','kind'].includes(k)) {
+        throw Error(`Filtre rest inconnu : ${k}`);
+      }
+    }
+    for (const k of ['minHours','maxHours']) {
+      if (f.rest[k]!=null && (!Number.isFinite(f.rest[k]) || f.rest[k]<0 || f.rest[k]>8760)) {
+        throw Error(`Durée de repos invalide : ${k}`);
+      }
+    }
+    if (f.rest.minHours!=null && f.rest.maxHours!=null && f.rest.maxHours<f.rest.minHours) {
+      throw Error('minHours doit être inférieur ou égal à maxHours.');
+    }
+    for (const k of ['restoreHealth','restoreDailyUses','atLeastEightHours','isFullRest']) {
+      if (f.rest[k]!=null && typeof f.rest[k]!=='boolean') throw Error(`Filtre rest invalide : ${k}`);
+    }
+    if (f.rest.kind!=null && !['full','partial','dailyRecharge','none'].includes(f.rest.kind)) {
+      throw Error('Type de repos inconnu.');
+    }
+  }
   return {id:data.id,on:data.on,itemUuid:data.itemUuid,actionId:data.actionId??null,scriptId:data.scriptId??null,scriptCategory:data.scriptCategory??null,actorUuid:data.actorUuid??null,filter:clone(f)};
 }
 function requireGM() { if (!game.user.isGM) throw Error('Opération réservée au MJ'); if (!leader()) throw Error('Utiliser le MJ principal actif'); }
@@ -540,7 +593,16 @@ Hooks.once('init',()=>{
 });
 Hooks.once('ready',async()=>{
   game.modules.get(NS).api ??= {};
-  game.modules.get(NS).api.generic = Object.freeze({register,unregister,schedule,scheduleTurn,expireEffectAt,extendTimer,cancelTimer,listEvents:()=>clone(getRegistry()),listTimers:()=>clone(getTimers()),isLeader:leader,validateRule,validateTarget:async r=>{const i=await fromUuid(r.itemUuid);if(i?.documentName!=='Item')throw Error('Objet de script introuvable');return resolveTarget(i,r);}});
+  game.modules.get(NS).api.generic = Object.freeze({register,unregister,schedule,scheduleTurn,expireEffectAt,extendTimer,cancelTimer,listEvents:()=>clone(getRegistry()),listTimers:()=>clone(getTimers()),isLeader:leader,validateRule,validateTarget:async r=>{const i=await fromUuid(r.itemUuid);if(i?.documentName!=='Item')throw Error('Objet de script introuvable');return resolveTarget(i,r);},
+    // Internal rest bridge. It accepts only typed PF1 rest notifications from
+    // rest-automation.js; never an arbitrary script or generic event payload.
+    _dispatchRestEvent: ev => {
+      if (!REST_EVENTS.has(ev?.type) || !safeText(ev.actorUuid,400) ||
+          ev.documentUuid!==ev.actorUuid || !obj(ev.rest)) {
+        throw Error('Événement de repos interne invalide.');
+      }
+      return dispatch(ev);
+    }});
   try { await game.modules.get(NS).api.migration?.whenReady(); }
   catch(error) { console.error(`${NS} | Automatisations suspendues : échec de migration`, error); return; }
   await game.modules.get(NS).api.discovery?.scan();
