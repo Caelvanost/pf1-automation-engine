@@ -40,8 +40,19 @@ function makeWorld(){
     uuid:`${caster.uuid}.Item.inspire`,system:{active:false},flags:{},
     toObject(){return {_id:this.id,name:this.name,type:this.type,system:structuredClone(this.system),flags:{}};}};
   caster.items.set(template.id,template);docs.set(template.uuid,template);
+  const compendiumTemplate={
+    id:"compendium-inspire",name:"Inspire Courage (Pack)",
+    documentName:"Item",type:"buff",parent:null,
+    pack:"pf1ae-test.buff-templates",
+    uuid:"Compendium.pf1ae-test.buff-templates.Item.InspireABC",
+    system:{active:false,description:{value:"An approved shared buff."}},flags:{},
+    toObject(){return {_id:this.id,name:this.name,type:this.type,
+      system:structuredClone(this.system),flags:structuredClone(this.flags)};}
+  };
+  docs.set(compendiumTemplate.uuid,compendiumTemplate);
   const scene={id:'S',tokens:actors.map(a=>({actor:a,disposition:1}))};
-  return {docs,storage,users,actors,caster,template,scene,clock:{worldTime:1000},socket:new Map()};
+  return {docs,storage,users,actors,caster,template,compendiumTemplate,scene,
+    clock:{worldTime:1000},socket:new Map()};
 }
 function createClient(world,user){
   const module={active:true,api:{generic:{cancelTimer:async()=>{}}}};
@@ -67,13 +78,18 @@ function createClient(world,user){
 async function test(){
   const world=makeWorld();const gm=createClient(world,world.users[0]);await gm.start();
   await gm.api().effectGroups.approveTemplate(world.template.uuid);
+  await gm.api().effectGroups.approveTemplate(world.compendiumTemplate.uuid);
   const group=await gm.api().effectGroups.applyGroup({actor:world.caster,key:'inspire',
-    templateUuid:world.template.uuid,targets:world.actors.slice(1),
+    templateUuid:world.compendiumTemplate.uuid,targets:world.actors.slice(1),
     duration:{value:2,unit:'rounds'}});
   assert.equal(group.applied,true);assert.equal(group.targetCount,2);
   assert.equal(gm.api().duration.listTimers()[0].remainingSeconds,12);
   const copies=world.actors.slice(1).map(a=>[...a.items.values()][0]);
   assert.deepEqual(copies.map(c=>c.system.active),[true,true]);
+  assert.equal(world.compendiumTemplate.system.active,false,
+    'source pack buff remains inactive through timed effect application');
+  assert.ok(copies.every(c=>c.parent?.documentName==='Actor'),
+    'pack buffs are created as embedded PF1 Item copies');
   await gm.tick(6);
   assert.equal(world.actors[1].items.size,1);
   const ext=await gm.api().effectGroups.extendGroup({actor:world.caster,key:'inspire',rounds:1});
@@ -97,7 +113,7 @@ async function test(){
   // Player request uses the existing GM validation + socket gate.
   const player=createClient(world,world.users[1]);await player.start();
   const submitted=await player.api().effectGroups.applyGroup({actor:world.caster,key:'by-player',
-    templateUuid:world.template.uuid,targets:[world.actors[1]],
+    templateUuid:world.compendiumTemplate.uuid,targets:[world.actors[1]],
     duration:{value:1,unit:'minutes'}});
   assert.equal(submitted.submitted,true);
   await reload.flush();

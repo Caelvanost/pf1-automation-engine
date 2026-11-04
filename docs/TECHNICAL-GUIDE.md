@@ -1,4 +1,4 @@
-# PF1 Automation Engine v1.9.0 — Technical Guide (English)
+# PF1 Automation Engine v1.10.0 — Technical Guide (English)
 
 **Target environment:** Foundry Virtual Tabletop **v13.351**; Pathfinder 1st Edition system **11.11**.  
 **Module ID:** `pf1-automation-engine`.  
@@ -6,7 +6,7 @@
 
 > **Design contract:** Game Masters decide which spells, feats, traits, and class features need automation. They attach JavaScript to the *existing PF1 Item* on the relevant character sheet. The module provides lifecycle events, approved effect distribution, precise turn deadlines, persistent game-time durations, and cleanup; the Item script decides all PF1 rules.
 
-This document describes the API **as implemented in v1.9.0**, including the v1.9.0 native PF1 actor-rest event bridge. It is not a promise that every native PF1 spell or action is automatically supported. Start with [PF1 Item Script Recipes](PF1-ITEM-SCRIPT-RECIPES.md) if you want copy-and-adapt examples.
+This document describes the API **as implemented in v1.10.0**, including the v1.9.0 native PF1 actor-rest event bridge. It is not a promise that every native PF1 spell or action is automatically supported. Start with [PF1 Item Script Recipes](PF1-ITEM-SCRIPT-RECIPES.md) if you want copy-and-adapt examples.
 
 ## Contents
 
@@ -626,3 +626,14 @@ source-specific attribution tracked by the Item's own script.
 **Full documentation:** [Native PF1 Rest Hooks](PF1-NATIVE-REST.md) contains the native hook signatures, full event schema, rest-kind table, filters, and a Burn Item registration example.
 
 **Compatibility discipline:** this guide documents current v1.9.0 behavior. Any future actor-sheet scripting UI, universal player-side timer relay, automatic caster-level formula parsing or spell database would be a separate feature, not part of this API.
+
+
+## 17. Compendium buff templates — v1.10.0
+
+The elected GM may approve a PF1 Item of type `buff` directly from a Compendium via `api.effectGroups.approveTemplate("Compendium.scope.pack.Item.id")`. The Compendium item remains unmodified; the Engine makes **new actor-embedded PF1 buff copies** on targets and manages their activation, group flags and expiration. The source Actor **does not** need to carry a technical buff.
+
+Existing actor-owned buffs and ActiveEffects preserve source-actor ownership requirements and the previous clone flow. Newly approved templates store a structured record with the UUID, template type, diagnostic hash and **exact canonical content fingerprint**. The full fingerprint is checked on every application and invalidates approval when model content changes. Existing v1.9.x fingerprint-string approvals continue to work.
+
+The Compendium path is available to **player-originated effect-group requests** only after approval by the elected GM. Calling `approveTemplate()` from a player's Script Call is not supported; use a GM setup macro and a separate player-side `effectGroups.applyGroup()` invocation.
+
+**Documentation and examples:** [Compendium Buff Templates](COMPENDIUM-BUFF-TEMPLATES.md).
