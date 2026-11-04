@@ -50,32 +50,95 @@ function soActorQueue(uuid,fn) {
 function soRequireGM() {
   if(!game.user.isGM || !soLeader()) throw Error('Only the elected GM can perform this operation.');
 }
+const SO_DESCRIPTOR_NAMES = new Set(['sonic','languageDependent','magical']);
+function soNormalizeTag(tag) {
+  if (typeof tag !== 'string') return null;
+  const simple=tag.toLowerCase().replace(/[^a-z]/g,'');
+  if(simple==='sonic')return 'sonic';
+  if(simple==='languagedependent'||simple==='language')return 'language-dependent';
+  return simple||null;
+}
 function soNormalizedDescriptors(data) {
-  if (!data) return [];
-  // PF1 descriptors are structured on spells; custom traits must be
-  // explicitly configured instead of guessed from item descriptions/names.
-  const values=Array.isArray(data) ? data :
-    typeof data === 'string' ? [data] :
-    typeof data === 'object' ? Object.entries(data)
-      .filter(([,v])=>v===true).map(([k])=>k) : [];
-  const normalized=values.map(x=>typeof x==='string'?x:
-    typeof x?.id==='string'?x.id:
-    typeof x?.value==='string'?x.value:null)
-    .filter(x=>typeof x==='string').map(x=>
-      x.toLowerCase().replace(/[^a-z]/g,''));
-  return [...new Set(normalized.map(x=>
-    x==='languagedependent' || x==='language' ? 'language-dependent' : x
-  ))];
+  if(data==null)return [];
+  // PF1 11.11 BaseItemModel.tags is Set<FreeText>. It can be an Array
+  // after serialisation, or a flag object in converted/third-party content.
+  const values = data instanceof Set || Object.prototype.toString.call(data)==='[object Set]'
+    ? Array.from(data)
+    : Array.isArray(data) ? data
+    : typeof data==='string' ? data.split(/[,;|]/)
+    : typeof data==='object' ? Object.entries(data)
+      .flatMap(([key,v])=>v===true?[key]:
+        typeof v==='string'?[v]:
+        v && typeof v==='object'?[v]:[]) : [];
+  return [...new Set(values.map(v=>
+    soNormalizeTag(typeof v==='string'?v:
+      typeof v?.id==='string'?v.id:
+      typeof v?.value==='string'?v.value:
+      typeof v?.name==='string'?v.name:null)
+  ).filter(Boolean))];
 }
 function soTraits(item) {
-  if (item?.documentName !== 'Item') return null;
-  const custom=item.getFlag?.(SO_NS,'saveTraits') ?? {};
-  const native = item.system?.descriptors ?? item.system?.spellDescriptors ??
-    item.system?.spell?.descriptors ?? [];
-  const descriptors=soNormalizedDescriptors(custom.descriptors ?? native);
-  const magical=typeof custom.magical==='boolean' ? custom.magical :
-    item.type==='spell' || ['sp','su'].includes(item.system?.abilityType);
-  return {magical,descriptors};
+  if(item?.documentName!=='Item')return null;
+  const custom=item.getFlag?.(SO_NS,'saveTraits')??{};
+  const system=item.system??{};
+  // PF1 11.11 FeatModel.abilityType: "su" | "sp" | "ex" | "na".
+  // BaseItemModel.tags: Set<FreeText>. Item text is NEVER parsed.
+  const type=String(system.abilityType??'').toLowerCase().trim();
+  const abilityType=type==='su'?'supernatural':
+    type==='sp'?'spell-like':
+    type==='ex'?'extraordinary':
+    type==='na'?'natural':
+    type||null;
+  const descriptors=[...new Set([
+    ...soNormalizedDescriptors(system.tags),
+    ...soNormalizedDescriptors(system.descriptors),
+    ...soNormalizedDescriptors(system.spellDescriptors),
+    ...soNormalizedDescriptors(system.spell?.descriptors),
+    ...soNormalizedDescriptors(custom.descriptors)
+  ])];
+  const magical=typeof custom.magical==='boolean'
+    ?custom.magical
+    :item.type==='spell'||type==='su'||type==='sp';
+  return {
+    magical, abilityType, descriptors,
+    sonic:descriptors.includes('sonic'),
+    languageDependent:descriptors.includes('language-dependent')
+  };
+}
+/** Explicit allOf/anyOf plus legacy v1.11 sonic OR language semantics. */
+function soPredicateConfig(appliesTo) {
+  const current=appliesTo??{};
+  const valid=Object.keys(current).every(k=>
+    ['magical','sonic','languageDependent','allOf','anyOf'].includes(k));
+  const booleans=['magical','sonic','languageDependent']
+    .every(k=>current[k]===undefined||typeof current[k]==='boolean');
+  const validList=list=>list==null||(Array.isArray(list)&&list.length<=8&&
+    list.every(x=>SO_DESCRIPTOR_NAMES.has(x)));
+  if(typeof current!=='object'||Array.isArray(current)||!valid||!booleans||
+     !validList(current.anyOf)||!validList(current.allOf)) {
+    throw Error('Invalid appliesTo: use magical:true and anyOf/allOf descriptor arrays.');
+  }
+  const legacyAny=[];
+  if(current.sonic===true)legacyAny.push('sonic');
+  if(current.languageDependent===true)legacyAny.push('languageDependent');
+  return {
+    magical:current.magical===true,
+    anyOf:current.anyOf??legacyAny,
+    allOf:current.allOf??[]
+  };
+}
+function soMatchesPredicate(traits,appliesTo) {
+  const rule=soPredicateConfig(appliesTo);
+  const values={magical:traits.magical,sonic:traits.sonic,
+    languageDependent:traits.languageDependent};
+  if(rule.magical&&!values.magical)return {ok:false,reason:'source is not magical'};
+  for(const k of rule.allOf)if(!values[k])return {
+    ok:false,reason:'missing required '+k+' descriptor'
+  };
+  if(rule.anyOf.length && !rule.anyOf.some(k=>values[k]))return {
+    ok:false,reason:'no matching anyOf descriptor: '+rule.anyOf.join(' OR ')
+  };
+  return {ok:true,reason:'matched'};
 }
 function soValidation(data, source) {
   if (!source || source.documentName!=='Actor' || !soText(source.uuid)) {
@@ -101,12 +164,7 @@ function soValidation(data, source) {
       data.getReplacementValue != null) {
     throw Error('Executable predicates/providers cannot be persisted. Use appliesTo and replacement.actorFlag.');
   }
-  const appliesTo=data.appliesTo??{};
-  if(typeof appliesTo!=='object'||Array.isArray(appliesTo)||
-     Object.keys(appliesTo).some(k=>!['magical','sonic','languageDependent'].includes(k)) ||
-     Object.values(appliesTo).some(v=>typeof v!=='boolean')) {
-    throw Error('Unsupported appliesTo predicate.');
-  }
+  const appliesTo=soPredicateConfig(data.appliesTo);
   if (!data.replacement || data.replacement.type!=='actorFlag' ||
       !soText(data.replacement.namespace,80) ||
       !soText(data.replacement.key,120) ||
@@ -124,11 +182,7 @@ function soValidation(data, source) {
     range,rangeUnits:data.rangeUnits??'ft',
     requiresHearing:data.requiresHearing===true,
     requiresSight:data.requiresSight===true,
-    appliesTo:{
-      magical:appliesTo.magical===true,
-      sonic:appliesTo.sonic===true,
-      languageDependent:appliesTo.languageDependent===true
-    },
+    appliesTo,
     mode:data.mode??'higher-result',priority,
     replacement:{
       type:'actorFlag',
@@ -300,12 +354,16 @@ async function soFindCandidates(data) {
   const applicable=[];
   for(const rule of rules) {
     if(!soGroupsFor(rule).length)continue;
-    if(rule.appliesTo.magical && !traits.magical)continue;
-    const anyRequested=rule.appliesTo.sonic||rule.appliesTo.languageDependent;
-    if(anyRequested && !(
-      rule.appliesTo.sonic && traits.descriptors.includes('sonic') ||
-      rule.appliesTo.languageDependent && traits.descriptors.includes('language-dependent')
-    ))continue;
+    const predicate=soMatchesPredicate(traits,rule.appliesTo);
+    soLog('Source predicate: '+(predicate.ok?'PASS':'FAIL'),{
+      rule:rule.id,reason:predicate.reason,
+      magical:traits.magical,sonic:traits.sonic,
+      languageDependent:traits.languageDependent
+    });
+    if(!predicate.ok) {
+      soLog('Rule rejected: '+predicate.reason,{rule:rule.id});
+      continue;
+    }
     const source=await fromUuid(rule.sourceActorUuid);
     if(source?.documentName!=='Actor')continue;
     if(rule.requiresHearing && soDeaf(target)) {
