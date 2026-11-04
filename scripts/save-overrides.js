@@ -58,10 +58,13 @@ function soNormalizedDescriptors(data) {
     typeof data === 'string' ? [data] :
     typeof data === 'object' ? Object.entries(data)
       .filter(([,v])=>v===true).map(([k])=>k) : [];
-  const normalized=values.filter(x=>typeof x==='string').map(x=>
-    x.toLowerCase().replace(/[^a-z]/g,''));
+  const normalized=values.map(x=>typeof x==='string'?x:
+    typeof x?.id==='string'?x.id:
+    typeof x?.value==='string'?x.value:null)
+    .filter(x=>typeof x==='string').map(x=>
+      x.toLowerCase().replace(/[^a-z]/g,''));
   return [...new Set(normalized.map(x=>
-    x==='languagedependent' ? 'language-dependent' : x
+    x==='languagedependent' || x==='language' ? 'language-dependent' : x
   ))];
 }
 function soTraits(item) {
@@ -424,6 +427,20 @@ async function soProcessRoll(data,requester,remote=false) {
         [...list,message.id].slice(-SO_CACHE_LIMIT));
     });
     if(decision.candidates.length) {
+      const metadata={
+        normalTotal:decision.normalTotal,
+        effectiveTotal:decision.effectiveTotal,
+        saveType:decision.saveType,sourceItemUuid:decision.sourceItemUuid,
+        winner:decision.winner?.id??null
+      };
+      try {
+        await message.setFlag?.(SO_NS,'saveOverride',metadata);
+      } catch(error) {
+        soLog('Could not flag original save message',{id:message.id,error:error.message});
+      }
+      // Other integrations may consume the effective result, but PF1 itself
+      // has already finished its normal save calculation at this point.
+      Hooks.callAll('pf1aeSaveOverrideResolved',actor,decision,message);
       await soSummary(message,decision,actor);
     }
   });
@@ -481,6 +498,23 @@ async function soHandleSocket(data) {
     console.error('[PF1AE][SaveOverride] Request rejected: '+error.message,error);
   }
 }
+/** Roll with unambiguous item-origin metadata in the PF1 pre-save options.
+ * This runs on the client allowed to roll for the target; it never adds any
+ * bonus or changes the PF1 d20 result.
+ */
+async function soRollWithContext(data) {
+  const actor=data?.actor;
+  if(actor?.documentName!=='Actor' || (!actor.isOwner && !game.user.isGM)) {
+    throw Error('The roller must own the target Actor.');
+  }
+  if(!soSaveId(data.saveType)||!soText(data.sourceItemUuid)) {
+    throw Error('Save type and source Item UUID are required.');
+  }
+  const item=await fromUuid(data.sourceItemUuid);
+  if(item?.documentName!=='Item')throw Error('Save origin Item not found.');
+  const options={...(data.options??{}),pf1aeSave:{sourceItemUuid:item.uuid}};
+  return actor.rollSavingThrow(data.saveType,options);
+}
 async function soRepeatSave(data) {
   soRequireGM();
   if(data?.nonInstantaneous!==true||!Number.isFinite(data.dc) ||
@@ -517,6 +551,7 @@ Hooks.once('ready',()=>{
     unregister:data=>soSend('unregister',data),
     getApplicable:data=>soFindCandidates(data), // GM-authoritative
     resolve:soResolve, // elected GM only; does NOT alter native RollPF
+    rollWithContext:soRollWithContext, // owner-run native save with Item provenance
     requestRepeatSave:soRepeatSave, // GM explicit, never auto-scans buffs
     list:()=>soClone(soRegistry()),
     reconcile:soReconcile, // elected GM only
