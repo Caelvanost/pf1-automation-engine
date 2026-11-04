@@ -47,6 +47,12 @@ Available after Foundry's `ready` hook:
 
 `register()` accepts **data**, never JavaScript function predicates or callbacks. It does not serialize function closures from the client; such callbacks could not survive F5 and would be unsafe to run on another GM. Use an actor flag for dynamic replacement.
 
+## v1.12.0 — Native PF1 action-card integration
+
+A player can now click the original save button on a PF1 action card. The module persists the source Item/Action/save metadata in `flags.pf1-automation-engine.saveContext`, restores it on the native PF1 saving throw, and dispatches to the existing elected-GM saveOverrides pipeline. No player macro, monster edit or bard Script Call change is required. Manual sheet saves remain unannotated.
+
+**[Full workflow, security, privacy, debug and simulated acceptance tests](NATIVE-SAVE-CONTEXT.md).** The v1.11.1 explicit `rollWithContext()` API remains valid as a diagnostic fallback.
+
 ## v1.11.1 — Captivating Song / Supernatural (Su) fix
 
 PF1 11.11's `FeatModel.abilityType` is the structured source of `su`, `sp`, `ex` and `na`; `BaseItemModel.tags` is a `Set` of free-text tags. The engine now uses `item.system.abilityType === "su"` for magical status and reads `item.system.tags` correctly, including serialized arrays, objects, and delimited strings. It **never parses descriptions** to decide magical/sonic status.
