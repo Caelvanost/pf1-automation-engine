@@ -196,6 +196,21 @@ async function test(){
   e.actors.templates.effectTemplate.name='Modified';
   await reload.transition(7,0,'B','A');
   await assert.rejects(()=>reload.api().effectGroups.applyGroup({actor:e.actors[0],key:'changed',templateUuid:e.actors.templates.effectTemplate.uuid,targets:[e.actors[1]],timing:'endOfCurrentTurn'}),/non approuvé|modifié/);
+  await reload.api().effectGroups.applyGroup({actor:e.actors[0],key:'renew',
+    templateUuid:e.actors.templates.buffTemplate.uuid,
+    targets:[e.actors[1]],timing:'startOfNextTurn'});
+  await reload.api().saveOverrides.register({actor:e.actors[0],
+    key:'renew-save',groupKey:'renew',range:30,rangeUnits:'ft',
+    requiresHearing:true,appliesTo:{magical:true,sonic:true,languageDependent:true},
+    mode:'higher-result',replacement:{type:'actorFlag',
+      namespace:'world',key:'perform',path:'checkTotal'}});
+  assert.equal(reload.api().saveOverrides.list().length,1);
+  await reload.api().effectGroups.applyGroup({actor:e.actors[0],key:'renew',
+    templateUuid:e.actors.templates.buffTemplate.uuid,
+    targets:[e.actors[1]],timing:'startOfNextTurn'});
+  assert.equal(reload.api().saveOverrides.list().length,1);
+  await reload.api().effectGroups.stopGroup({actor:e.actors[0],key:'renew'});
+  assert.equal(reload.api().saveOverrides.list().length,0);
   console.log('PF1 Automation Engine v1.7.0: multi-target effects tests OK');
 }
 test().catch(e=>{console.error(e);process.exitCode=1});
