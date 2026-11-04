@@ -1,4 +1,4 @@
-# PF1 Automation Engine v1.11.1 — Technical Guide (English)
+# PF1 Automation Engine v1.12.0 — Technical Guide (English)
 
 **Target environment:** Foundry Virtual Tabletop **v13.351**; Pathfinder 1st Edition system **11.11**.  
 **Module ID:** `pf1-automation-engine`.  
@@ -647,3 +647,8 @@ The engine exports `api.saveOverrides.register`, `unregister`, `getApplicable`, 
 ### v1.11.1 compatibility fix
 
 PF1 `FeatModel.abilityType:"su"` is magical, and `BaseItemModel.tags` is read as a Set/Array/Object/String. Save predicates support explicit `anyOf` and `allOf`; existing `sonic:true` / `languageDependent:true` booleans retain OR semantics. `rollWithContext()` now waits for the elected GM and returns both the normal and effective totals instead of only a native ChatMessage. See [Saving Throw Overrides](SAVE-OVERRIDES.md).
+
+
+## 19. Native PF1 action card save context — v1.12.0
+
+[Native Save Context](NATIVE-SAVE-CONTEXT.md) documents the additional `saveContext` bridge. It stores PF1 action-card Item/Action/save metadata on ChatMessage flags, observes native save button clicks through Foundry v13's `renderChatMessageHTML`, and restores that metadata in the existing pre/post PF1 save hooks. The native save and UI are never replaced. The elected GM verifies the referenced source message against submitted Item/Action/save fields before calculating the effective result. A sheet-only save has no source and is intentionally unchanged. This integration is simulated in CI and requires a live-world PF1 11.11 button compatibility test.
