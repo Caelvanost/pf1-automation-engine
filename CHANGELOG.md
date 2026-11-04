@@ -1,3 +1,14 @@
+## v1.12.0 — Native PF1 action chat-card saving throw context (experimental)
+
+- Preserve source Actor/Item/Action and save type/DC in the native PF1 action ChatMessage through `pf1PreDisplayActionUse` and guarded message creation.
+- Under Foundry v13's `renderChatMessageHTML`, observe the original save-button click in capture phase; never replace PF1 roll handlers or Actor prototypes.
+- Restore the source on native `pf1PreActorRollSave`, then delegate the original `pf1ActorRollSave` to the existing elected-GM resolver.
+- Cross-check the persisted source ChatMessage Item/Action/save identity on the elected GM before applying conditional Countersong.
+- Record normal and effective result even when no override applies (no extra chat). Preserve native whispered/blind visibility on summary messages.
+- Handle multiple targets, independent actors, F5, action IDs, socket deduplication and manual unannotated saves.
+- Add `scripts/save-context.js`, `tests/native-save-context.test.cjs` and `docs/NATIVE-SAVE-CONTEXT.md`.
+- **Limit:** exact PF1 11.11 button DOM compatibility and actual live workflow must be tested in Foundry before merging.
+
 ## v1.11.1 — Native PF1 supernatural/sonic save-overrides hotfix
 
 - Resolve PF1 11.11 feat `system.abilityType: "su"` as magical; parse `system.tags` (Set), arrays, objects and strings in addition to structured spell descriptors.
