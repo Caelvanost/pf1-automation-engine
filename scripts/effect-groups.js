@@ -106,21 +106,31 @@ function effectApprovalRecord(template, kind) {
     fingerprint
   };
 }
-function effectTemplateCopy(template) {
+function effectTemplateCopy(template, kind) {
   const copy=foundry.utils.deepClone(template.toObject());
-  // Preserve PF1 system.actions and system.scriptCalls IDs, but do not reuse
-  // a world/pack document ID or embedded root ownership/provenance metadata.
-  for (const key of EFFECT_VOLATILE_ROOT_KEYS) delete copy[key];
-  if (Array.isArray(copy.effects)) {
-    // Embedded ActiveEffect IDs must be generated anew for the new Item.
-    for (const effect of copy.effects) if (effect && typeof effect === 'object') delete effect._id;
-  }
-  copy.flags ??= {};
-  // A copied Compendium UUID is not an actor Item's permanent origin.
-  if (copy.flags.core && typeof copy.flags.core === 'object') {
-    delete copy.flags.core.sourceId;
+  delete copy._id; // Current behavior for actor-owned Items and ActiveEffects.
+  if (kind === 'compendiumBuff') {
+    // Pack provenance and world-document metadata must not be transferred.
+    // Keep PF1 scriptCalls/actions IDs: other PF1 data may refer to them.
+    for (const key of EFFECT_VOLATILE_ROOT_KEYS) delete copy[key];
+    if (Array.isArray(copy.effects)) {
+      // Nested ActiveEffects are newly embedded in a newly embedded Item.
+      for (const effect of copy.effects) if (effect && typeof effect === 'object') delete effect._id;
+    }
+    copy.flags ??= {};
+    if (copy.flags.core && typeof copy.flags.core === 'object') {
+      delete copy.flags.core.sourceId;
+    }
   }
   return copy;
+}
+async function effectResolveTemplate(uuid) {
+  if (typeof uuid !== 'string' || !uuid || uuid.length>400) return null;
+  try { return await fromUuid(uuid); }
+  catch(error) {
+    effectDebug('template-rejected',{uuid,reason:'fromUuid failed',error:error?.message});
+    return null;
+  }
 }
 function effectValidKey(key) {
   return typeof key === 'string' && /^[a-zA-Z0-9_-]{1,80}$/.test(key);
@@ -149,7 +159,7 @@ function effectOwnedBy(template, actor) {
 async function effectApproveTemplate(templateUuid) {
   effectRequireLeader();
   const uuid=effectUuid(templateUuid);
-  const template=typeof uuid === 'string' ? await fromUuid(uuid) : null;
+  const template=await effectResolveTemplate(uuid);
   const kind=effectTemplateKind(template);
   if (!kind) {
     effectDebug('template-rejected',{uuid,reason:'not an actor-owned buff/AE or Compendium buff'});
@@ -258,8 +268,7 @@ async function effectValidateRequest(data, requester, socketOrigin) {
       throw Error('L’expiration en fin du tour actuel exige que ce soit le tour du lanceur.');
     }
   }
-  const template=typeof data.templateUuid === 'string' && data.templateUuid.length<=400
-    ? await fromUuid(data.templateUuid) : null;
+  const template=await effectResolveTemplate(data.templateUuid);
   if (!template) {
     effectDebug('template-rejected',{uuid:data.templateUuid,reason:'UUID not resolvable'});
     throw Error('Modèle introuvable : UUID invalide ou document supprimé.');
@@ -276,7 +285,7 @@ async function effectValidateRequest(data, requester, socketOrigin) {
   effectCheckApproval(template);
   // Snapshot once after approval, before any asynchronous removal or clone.
   // This avoids applying a mutated template to later targets in the same group.
-  const templateData=effectTemplateCopy(template);
+  const templateData=effectTemplateCopy(template,templateKind);
   effectDebug('template-resolved',{uuid:template.uuid,kind:templateKind,sourceUuid:source.uuid});
   if (!Array.isArray(data.targetUuids) || !data.targetUuids.length || data.targetUuids.length>EFFECT_MAX_TARGETS) {
     throw Error(`Le nombre de bénéficiaires doit être compris entre 1 et ${EFFECT_MAX_TARGETS}.`);
