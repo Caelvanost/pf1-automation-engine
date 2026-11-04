@@ -508,6 +508,58 @@ function soMessageTotal(message) {
   ];
   return values.find(x=>typeof x==='number'&&Number.isFinite(x))??null;
 }
+/**
+ * Update only the public action card, and only after authoritative GM
+ * verification. Private/GM/blind rolls never write their totals to a
+ * potentially public source card, preventing leaks via readable flags.
+ */
+async function soUpdateSourceCard(card, actor, data, decision, message) {
+  if(!card || !data.sourceMessageId)return;
+  if(message.blind===true || (message.whisper?.length??0)>0) {
+    soLog('Source card update withheld: private or blind save',{
+      sourceMessageId:card.id,targetActorUuid:actor.uuid});
+    return;
+  }
+  const targets=card.system?.targets??[];
+  const expected=Array.isArray(targets)?targets:[];
+  // Prefer the exact PF1 token target of the action card; options.token
+  // may not be provided for older PF1 save handlers.
+  let targetUuid=expected.includes(data.targetTokenUuid)?data.targetTokenUuid:null;
+  if(!targetUuid)for(const uuid of expected){
+    try{
+      const doc=await fromUuid(uuid);
+      if(doc?.actor?.uuid===actor.uuid || doc?.actorId===actor.id){
+        targetUuid=uuid;break;
+      }
+    }catch(error){soLog('Target UUID lookup failed',{uuid,error:error.message});}
+  }
+  if(!targetUuid){
+    soLog('Source card target not identified; no card mutation',{
+      cardId:card.id,targetActorUuid:actor.uuid});
+    return;
+  }
+  await soWrites(async()=>{
+    const previous=card.getFlag?.(SO_NS,'targetSaveResults');
+    const list=Array.isArray(previous)?previous:[];
+    const old=list.find(x=>x.targetUuid===targetUuid && x.saveType===decision.saveType);
+    // No override, no previous display => leave native PF1 untouched.
+    if(!decision.changed && !old)return;
+    const newRecord={targetUuid,targetActorUuid:actor.uuid,
+      saveType:decision.saveType,normalTotal:decision.normalTotal,
+      effectiveTotal:decision.effectiveTotal,changed:decision.changed,
+      // If an earlier save was replaced, refresh that display even when the
+      // latest native roll is already higher (avoid stale Countersong totals).
+      display:true,originalMessageId:message.id,
+      sourceActionId:data.sourceActionId??null};
+    const updated=list.filter(x=>!(x.targetUuid===targetUuid &&
+      x.saveType===decision.saveType));
+    updated.push(newRecord);
+    await card.setFlag(SO_NS,'targetSaveResults',updated);
+    soLog('Action card target result updated',{
+      cardId:card.id,targetUuid,normalTotal:decision.normalTotal,
+      effectiveTotal:decision.effectiveTotal});
+  });
+}
 async function soProcessRoll(data,requester,remote=false) {
   if(!soEnabled()||!soLeader())return;
   if(!soSaveId(data?.saveType)||!soText(data?.actorUuid)||
@@ -517,10 +569,12 @@ async function soProcessRoll(data,requester,remote=false) {
   if(remote && !actor.testUserPermission?.(requester,'OWNER'))return;
   if(!requester?.active)return;
   return soActorQueue(actor.uuid,async()=>{
+    let sourceCard=null;
     if(data.sourceMessageId) {
       // The GM re-reads persisted PF1 action-card provenance rather than
       // trusting a socket-supplied Item or Action ID.
       const card=game.messages?.get(data.sourceMessageId);
+      sourceCard=card??null;
       const context=card && game.modules.get(SO_NS)?.api?.saveContext?.fromMessage(card);
       if(!context || context.sourceItemUuid!==data.sourceItemUuid ||
           context.sourceActionId!==data.sourceActionId ||
@@ -610,6 +664,14 @@ async function soProcessRoll(data,requester,remote=false) {
         soLog('Could not flag original save message',{id:message.id,error:error.message});
       }
       Hooks.callAll('pf1aeSaveOverrideResolved',actor,decision,message);
+      if(sourceCard) {
+        try {await soUpdateSourceCard(sourceCard,actor,data,decision,message);}
+        catch(error){
+          soLog('Action card effective result update failed',{
+            sourceMessageId:sourceCard.id,error:error.message});
+          console.warn('[PF1AE][SaveOverride] Could not update source action card',error);
+        }
+      }
       if(decision.candidates.length)await soSummary(message,decision,actor);
     }
     return {...decision,sourceMessageId:data.sourceMessageId??null,
@@ -618,13 +680,19 @@ async function soProcessRoll(data,requester,remote=false) {
   });
 }
 function soStorePre(actor,options,saveType) {
-  if(!soEnabled()||!soSaveId(saveType))return;
+  if(!soEnabled()||!soSaveId(saveType)||!actor?.uuid)return;
   const key=actor.uuid+':'+saveType;
-  // Explicit rollWithContext wins; an ordinary native card button click
-  // supplies its metadata via the context bridge before PF1 rolls.
-  const restored=!options?.pf1aeSave
-    ?game.modules.get(SO_NS)?.api?.saveContext?._consumeForNativeSave(actor,saveType)
-    :null;
+  const bridge=game.modules.get(SO_NS)?.api?.saveContext;
+  // PF1's own onRollSave/targetSavingThrowClick passes reference: cm.uuid
+  // through actor.rollSavingThrow and pf1PreActorRollSave rollOptions.
+  // This is the primary path: persisted source per roll, no DOM dependency.
+  const nativeContext=!options?.pf1aeSave
+    ?bridge?._fromNativeSaveOptions(actor,saveType,options):null;
+  // Legacy DOM fallback ONLY for editions with no reference property.
+  // An explicit sheet save has no reference and no native card click.
+  const clickContext=!options?.pf1aeSave && !options?.reference
+    ?bridge?._consumeForNativeSave(actor,saveType):null;
+  const restored=nativeContext??clickContext;
   const extra=options?.pf1aeSave??(restored ?{
     sourceItemUuid:restored.sourceItemUuid,
     sourceMessageId:restored.sourceMessageId,
