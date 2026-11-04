@@ -9,7 +9,7 @@ const NS='pf1-automation-engine';
 const world={
   settings:new Map(), documents:new Map(), chats:[],
   messages:new Map(), callbacks:new Map(),socket:new Map(),groups:[],
-  soundBlocked:false,sightBlocked:false,nextId:0
+  soundBlocked:false,sightBlocked:false,nextId:0,debug:false
 };
 const users=[
   {id:'a',name:'Primary GM',isGM:true,active:true},
@@ -56,7 +56,7 @@ function newClient(user){
       },
       get(ns,key){
         if(key==='genericEnabled')return true;
-        if(key==='genericDebug')return false;
+        if(key==='genericDebug')return world.debug;
         return world.settings.get(ns+'.'+key);
       },
       async set(ns,key,value){
@@ -101,7 +101,7 @@ function newClient(user){
     fromUuid:async id=>world.documents.get(id)??null,
     foundry:{utils:{deepClone:structuredClone,randomID:()=> 'req-'+(++world.nextId)}},
     console:{debug:(...args)=>logs.push(args),error:(...args)=>logs.push(args),warn:(...args)=>logs.push(args)},
-    setTimeout,Date,Promise,Number};
+    setTimeout,clearTimeout,Date,Promise,Number};
   vm.runInNewContext(SOURCE,context,{filename:'save-overrides.js'});
   async function start(){await Hooks.fire('init');await Hooks.fire('ready');}
   return {game,Hooks,logs,start,api:()=>mod.api.saveOverrides};
@@ -134,6 +134,95 @@ function rule(actor,key='countersong') {
  await settle();
  assert.equal(gm.api().list().length,1);
  assert.equal(gm.api().list()[0].replacement.key,'pf1CountersongState');
+
+ // Exact real-world regression: Captivating Song (Su, PF1 system.tags Set)
+ // and one Countersong at 10 versus an ordinary Will total of 7.
+ const harpyItem={
+   id:'captivating-song',uuid:'Actor.harpy.Item.captivating-song',
+   name:'Captivating Song',documentName:'Item',type:'feat',
+   system:{abilityType:'su',tags:new Set(['sonic','mind-affecting','charm'])},
+   getFlag(){return null;}
+ };
+ world.documents.set(harpyItem.uuid,harpyItem);
+ actors.bard.flags.world.pf1CountersongState.checkTotal=10;
+ world.debug=true;
+ let testDecision=await gm.api().resolve({
+   targetActorUuid:actors.target.uuid,saveType:'will',
+   sourceItemUuid:harpyItem.uuid,normalTotal:7
+ });
+ assert.equal(testDecision.normalTotal,7);
+ assert.equal(testDecision.effectiveTotal,10,'Su + sonic countersong overrides 7');
+ assert.equal(testDecision.winner?.value,10);
+ testDecision=await gm.api().resolve({
+   targetActorUuid:actors.target.uuid,saveType:'will',
+   sourceItemUuid:harpyItem.uuid,normalTotal:17
+ });
+ assert.equal(testDecision.effectiveTotal,17,'higher native Will remains 17');
+ const plainSupernatural={
+   ...harpyItem,id:'other-su',uuid:'Actor.harpy.Item.other-su',
+   name:'Other Supernatural Ability',
+   system:{abilityType:'su',tags:new Set(['mind-affecting','charm'])}
+ };
+ world.documents.set(plainSupernatural.uuid,plainSupernatural);
+ testDecision=await gm.api().resolve({
+   targetActorUuid:actors.target.uuid,saveType:'will',
+   sourceItemUuid:plainSupernatural.uuid,normalTotal:7
+ });
+ assert.equal(testDecision.effectiveTotal,7,'Su without sonic/language is ignored');
+
+ // Actual helper API regression: helper must await the elected GM, return
+ // effectiveTotal and leave the native PF1 ChatMessage roll at 7.
+ let nextSave=7;
+ actors.target.rollSavingThrow=async(saveType,options)=>{
+   const id='harpy-'+(++world.nextId);
+   const message={id,documentName:'ChatMessage',
+     author:{id:'p2'},speaker:{actor:actors.target.id},
+     rolls:[{total:nextSave}],
+     flags:{},
+     getFlag(ns,key){return this.flags?.[ns]?.[key]??null;},
+     async setFlag(ns,key,value){this.flags[ns]??={};this.flags[ns][key]=value;}
+   };
+   await targetPlayer.Hooks.fire('pf1PreActorRollSave',actors.target,options,saveType);
+   world.messages.set(id,message);
+   await targetPlayer.Hooks.fire('pf1ActorRollSave',actors.target,message,saveType);
+   return message;
+ };
+ const first=await targetPlayer.api().rollWithContext({
+   actor:actors.target,saveType:'will',
+   sourceItemUuid:harpyItem.uuid,options:{}
+ });
+ assert.equal(first.processed,true);
+ assert.equal(first.normalTotal,7);
+ assert.equal(first.effectiveTotal,10);
+ assert.equal(first.nativeResult.rolls[0].total,7,
+   'PF1 roll remains an authentic normal 7');
+ assert.equal(world.chats.length,1,'one chat summary for Su sonic Will');
+ assert.match(world.chats[0].content,/Result used: 10/);
+ assert.equal(first.nativeResult.getFlag(NS,'saveOverride').effectiveTotal,10);
+ nextSave=17;
+ const second=await targetPlayer.api().rollWithContext({
+   actor:actors.target,saveType:'will',
+   sourceItemUuid:harpyItem.uuid,options:{}
+ });
+ assert.equal(second.effectiveTotal,17);
+ assert.match(world.chats[1].content,/Result used: 17/);
+ nextSave=7;
+ const unrelated=await targetPlayer.api().rollWithContext({
+   actor:actors.target,saveType:'will',
+   sourceItemUuid:plainSupernatural.uuid,options:{}
+ });
+ assert.equal(unrelated.effectiveTotal,7);
+ assert.equal(world.chats.length,2,'no extra chat summary for non-sonic effect');
+ const debugText=gm.logs.map(v=>String(v[0])).join('\n');
+ for(const expected of ['Source: Captivating Song','Source ability type: supernatural',
+   'Source tags: sonic','Dynamic replacement resolved: 10',
+   'Normal save: 7','Effective result: 10',
+   'Rule rejected: no matching anyOf descriptor']) {
+   assert.ok(debugText.includes(expected),'Expected debug event: '+expected);
+ }
+ world.debug=false;
+ world.chats.length=0;
+ actors.bard.flags.world.pf1CountersongState.checkTotal=23;
 
  let evaluation=await gm.api().resolve({
    targetActorUuid:actors.target.uuid,saveType:'will',
@@ -236,7 +325,7 @@ function rule(actor,key='countersong') {
 
  // Native PF1 post-save hooks (actor,result,save): only an annotated
  // roll may be resolved. GM verifies the actual ChatMessage roll total.
- world.messages.set('m1',{id:'m1',user:{id:'p2'},
+ world.messages.set('m1',{id:'m1',author:{id:'p2'},
    speaker:{actor:actors.target.id},rolls:[{total:17}]});
  const annotated={pf1aeSave:{sourceItemUuid:'Actor.caster.Item.sonic'},
    token:tokens.find(t=>t.actor===actors.target)};
@@ -252,7 +341,7 @@ function rule(actor,key='countersong') {
  assert.equal(world.chats.length,1);
 
  // An unrelated unannotated native save does NOT get a replacement.
- world.messages.set('m2',{id:'m2',user:{id:'p2'},
+ world.messages.set('m2',{id:'m2',author:{id:'p2'},
    speaker:{actor:actors.target.id},rolls:[{total:12}]});
  await targetPlayer.Hooks.fire('pf1PreActorRollSave',actors.target,{},'will');
  await targetPlayer.Hooks.fire('pf1ActorRollSave',actors.target,world.messages.get('m2'),'will');
