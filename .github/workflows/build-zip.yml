@@ -30,6 +30,7 @@ jobs:
           node tests/duration.test.cjs
           node tests/duration-group.test.cjs
           node tests/rest-hooks.test.cjs
+          node tests/compendium-templates.test.cjs
 
       - name: Validate Foundry package
         shell: powershell
