@@ -1,4 +1,13 @@
-## v1.12.8 — Native PF1 PRE/POST saving throw lifecycle bridge
+## v1.12.9 — SaveBridge initialization diagnostics and permanent hooks
+
+- Register native PF1 PRE/POST hooks at init and recheck at ready without duplicate registration.
+- Log `Installed PF1 save hooks` and `SaveBridge ready` when generic debugging is enabled.
+- Log PRE/POST at callback entry even if the generic automation feature is disabled; explicitly log the disabled state.
+- Keep the verified source-card context, elected-GM dispatch, effectiveTotal, Countersong, Distraction and Fascination Script Calls unchanged.
+- Add regression coverage for empty registries and disabled automation at initialization.
+- Runtime verification is still needed to confirm execution under the installed PF1 11.11 client.
+
+## v1.12.9 — Native PF1 PRE/POST saving throw lifecycle bridge
 
 - Log native `pf1PreActorRollSave` and `pf1ActorRollSave` for every enabled save, including sheet saves.
 - Read the native `ChatMessagePF` from the POST hook rather than guessing the last chat message.
@@ -8,7 +17,7 @@
 - Preserve Countersong and Distraction resolution, deduplication and existing native PF1 card display.
 - Simulated integration tests passed; runtime validation in PF1 11.11 remains required.
 
-## v1.12.8 — Native PF1 SaveBridge post-roll correlation (candidate)
+## v1.12.9 — Native PF1 SaveBridge post-roll correlation (candidate)
 
 - Add explicit SaveBridge diagnostics at native save click, pre-save hook, post-save and authoritative GM resolution.
 - Correlate native PF1 d20-roll results without directly returned ChatMessage using structured saving throw metadata, verified author and speaker, and one pending source-card save.
