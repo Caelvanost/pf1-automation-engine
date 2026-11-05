@@ -812,6 +812,16 @@ function soStorePre(actor,options,saveType) {
     helper:extra?.helper===true
   });
   soPreRolls.set(key,queue.slice(-20));
+  // PF1 cancelled rolls produce no POST; expire stale context automatically.
+  const timeout=setTimeout(()=>{
+    const active=soPreRolls.get(key)??[];
+    const remaining=active.filter(p=>p.requestId!==requestId);
+    if(remaining.length)soPreRolls.set(key,remaining);
+    else soPreRolls.delete(key);
+    soBridgeLog('PRE expired without POST',{requestId,actorUuid:actor.uuid,saveType});
+  },30000);
+  timeout.unref?.();
+  queue[queue.length-1].timer=timeout;
   if(extra?.sourceMessageId && soText(extra?.sourceItemUuid))
     soBridgeLog('Source context restored',{requestId,actorUuid:actor.uuid,
       sourceMessageId:extra.sourceMessageId,sourceItemUuid:extra.sourceItemUuid,
@@ -931,6 +941,7 @@ function soReadPost(actor,result,saveType) {
   const key=actor.uuid+':'+saveType;
   const queue=(soPreRolls.get(key)??[]).filter(p=>Date.now()-p.createdAt<30000);
   soPreRolls.delete(key);
+  for(const pending of queue)clearTimeout(pending.timer);
   if(queue.length!==1){
     soBridgeLog('POST has no unique PRE; ignored safely',{
       actorUuid:actor.uuid,saveType,pendingCount:queue.length});
