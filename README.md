@@ -1,4 +1,4 @@
-# PF1 Automation Engine — v1.12.4
+# PF1 Automation Engine — v1.12.5
 
 **Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
@@ -17,6 +17,16 @@ The GM adds JavaScript to the **native PF1 Script Calls** of the **Spell** or **
 - **GM approval, persistent registries, controlled player requests and one elected GM** when multiple GMs are connected.
 
 No spell catalogue, class-specific handler, or exhaustive rule database is bundled. An ordinary GM can configure **only the spells/features actually needed in their campaign**, without modifying module source code.
+
+## Native save outcomes dispatch (v1.12.5)
+
+`api.saveOutcomes.resolve(event)` is GM-only and called automatically by the
+existing `saveOverrides` elected-GM handler for **every** native Action-card save
+with verified source metadata, even when no override matches. The native PF1
+save is never re-rolled. Fate is determined from the final effective total
+against the numeric DC stored on the source PF1 Action card. The originating
+`sourceMessageId` and generated `saveMessageId` remain distinct and are
+required. Never call `resolve()` directly from a player Script Call.
 
 ## Distraction (v1.12.2)
 
