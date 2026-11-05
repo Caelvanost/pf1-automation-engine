@@ -1,3 +1,12 @@
+## v1.12.5 — Save Outcomes dispatch for all source-verified native PF1 saves
+
+- Add one elected-GM `saveOutcomes.resolve(event)` dispatcher, invoked after final saveOverrides resolution for **every** verified native PF1 Action-card saving throw, including when no override applies (`changed:false`). No class-specific logic or extra rolls.
+- Pass exact Action chat message ID, native save ChatMessage ID, source Item/Action, saving-throw type, source card DC, target Actor, and both normal/effective totals. No speculative DC recalculation.
+- Reuse the existing GM socket route of `saveOverrides`; direct outcome resolution is GM-only. Preserve idempotent per-message outcome flags and separate source-specific linked effects.
+- Retry briefly while the GM receives the Action ChatMessage; add diagnostics for missing source, uncorrelated rolls, unavailable services and absent numeric DC.
+- Preserve Countersong, Distraction and native PF1 roll handling. No changes to Fascination Script Call.
+- Simulated integration tests cover no-override failure/success, upgraded success after Countersong, source isolation, duplicate delivery and manual sheet saves. Real Foundry acceptance remains required.
+
 ## v1.12.4 — Save Outcomes PF1 ItemAction lookup and optional status fix
 
 - Prefer the native `ItemPF.actions` Collection over legacy `system.actions` in `saveOutcomes.register()`; retain the actual `ItemAction.id` for native Action-card correlation.
