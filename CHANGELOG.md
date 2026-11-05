@@ -1,3 +1,13 @@
+## v1.12.7 — Native PF1 SaveBridge post-roll correlation (candidate)
+
+- Add explicit SaveBridge diagnostics at native save click, pre-save hook, post-save and authoritative GM resolution.
+- Correlate native PF1 d20-roll results without directly returned ChatMessage using structured saving throw metadata, verified author and speaker, and one pending source-card save.
+- Handle chat messages created before or shortly after the PF1 post-save hook; never infer source provenance from chat text.
+- Instrument both exported PF1 native save handlers when present without altering their original behavior.
+- Preserve final Save Override evaluation before Save Outcomes, including saves with zero applicable overrides.
+- Add regression tests for delayed chat messages and isolation of unrelated saves.
+- Live Foundry v13 / PF1 11.11 integration and both button variants require verification; no PF1 system file is modified.
+
 ## v1.12.6 — Silent, GM-authoritative multi-target automation
 
 - `effectGroups.applyGroup`, `extendGroup` and `stopGroup` requests from owners now await a GM-leader socket acknowledgement and return actual success/error; no interactive GM approval.
