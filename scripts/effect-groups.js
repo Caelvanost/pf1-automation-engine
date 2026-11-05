@@ -490,6 +490,14 @@ async function effectStopByKeyInternal(sourceUuid,key,preserveSaveOverrides=fals
 }
 async function effectApplyInternal(data,requester,socketOrigin=false) {
   const ctx=await effectValidateRequest(data,requester,socketOrigin);
+  const signature=JSON.stringify([ctx.source.uuid,data.key,ctx.template.uuid,
+    ctx.targets.map(t=>t.uuid).sort(),ctx.duration,ctx.timing,ctx.occurrences,
+    ctx.combat?.id??null,ctx.combat?.round??null,ctx.combat?.turn??null]);
+  const recent=effectRecentApplications.get(signature);
+  if (recent && Date.now()-recent.time<1000 && effectGroups()[recent.result.groupId]) {
+    effectDebug('Duplicate apply ignored',{source:ctx.source.uuid,key:data.key});
+    return recent.result;
+  }
   // Serialize all world-ledger writes and template clones on the elected GM.
   // Reapplying the SAME source/group key is a replacement, not a true stop.
   // Keep its save-overrides registration across the replacement. A failed
@@ -547,8 +555,12 @@ async function effectApplyInternal(data,requester,socketOrigin=false) {
         combatantId:ctx.combatant.id,timing:ctx.timing,occurrences:ctx.occurrences
       });
     }
+    const result={applied:true,groupId:id,targetCount:copies.length,timerId};
+    effectRecentApplications.set(signature,{time:Date.now(),result});
+    if (effectRecentApplications.size>200) effectRecentApplications.clear();
+    effectDebug(`Applied to ${copies.length} targets`,{source:ctx.source.uuid,key:data.key,groupId:id});
     console.info(`${EFFECT_NS} | Groupe ${id} appliqué à ${copies.length} bénéficiaire(s).`);
-    return {applied:true,groupId:id,targetCount:copies.length,timerId};
+    return result;
   } catch(error) {
     effectDebug('clone-failed',{kind:ctx.templateKind,uuid:ctx.template.uuid,
       groupId:id,error:error?.message});
@@ -672,14 +684,28 @@ async function effectStopInternal(data,requester,socketOrigin) {
   }
   return {stopped:await effectStopByKeyInternal(source.uuid,data.key)};
 }
+/** Send a request to the elected GM, awaiting authoritative completion. */
+function effectSendRemote(op,payload) {
+  const gm=effectPrimaryGM();
+  if (!gm) return Promise.reject(Error('An active GM is required.'));
+  const requestId=foundry.utils.randomID();
+  return new Promise((resolve,reject)=>{
+    const timer=setTimeout(()=>{
+      effectPendingRequests.delete(requestId);
+      reject(Error('EffectGroup request timed out waiting for elected GM.'));
+    },EFFECT_REQUEST_TIMEOUT);
+    effectPendingRequests.set(requestId,{resolve,reject,timer,leaderId:gm.id});
+    game.socket.emit(EFFECT_SOCKET,{...payload,channel:EFFECT_CHANNEL,op,
+      requestId,userId:game.user.id});
+  });
+}
 function effectRequest(op,data) {
   const source=effectActor(data?.actor);
   if (!source || !effectValidKey(data?.key)) throw Error('Actor ou clé invalide.');
   if (!source.isOwner && !game.user.isGM) throw Error('Vous ne contrôlez pas cet acteur.');
   const combat=data.combatId ? game.combats.get(data.combatId) : game.combat;
   const combatantId=data.combatantId ?? ([...(combat?.combatants?.values?.() ?? [])].find(c=>c.actor?.uuid===source.uuid)?.id ?? null);
-  const payload={channel:EFFECT_CHANNEL,op,requestId:foundry.utils.randomID(),userId:game.user.id,
-    sourceUuid:source.uuid,key:data.key,combatId:combat?.id,combatantId};
+  const payload={sourceUuid:source.uuid,key:data.key,combatId:combat?.id,combatantId};
   if (op === 'apply') {
     payload.templateUuid=effectUuid(data.templateUuid ?? data.template);
     payload.targetUuids=(data.targets ?? []).map(effectUuid);
@@ -690,33 +716,47 @@ function effectRequest(op,data) {
       payload.timing=data.timing ?? 'endOfCurrentTurn';
       payload.occurrences=data.occurrences ?? 1;
     }
-  } else if (op === 'extend') {
-    payload.rounds=data.rounds ?? 1;
-  }
-  if (effectIsLeader()) {
-    return op==='extend'
-      ? effectExtendInternal(payload,game.user,false)
-      : effectQueue(()=>op==='apply' ? effectApplyInternal(payload,game.user,false) : effectStopInternal(payload,game.user,false));
-  }
-  if (!effectPrimaryGM()) throw Error('Un MJ doit être connecté pour appliquer des effets.');
-  // This is a request, not an acknowledgement of successful application.
-  game.socket.emit(EFFECT_SOCKET,payload);
-  return Promise.resolve({submitted:true,requestId:payload.requestId});
+  } else if (op === 'extend') payload.rounds=data.rounds ?? 1;
+  if (effectIsLeader()) return op==='extend'
+    ? effectExtendInternal(payload,game.user,false)
+    : effectQueue(()=>op==='apply' ? effectApplyInternal(payload,game.user,false) : effectStopInternal(payload,game.user,false));
+  return effectSendRemote(op,payload);
 }
 async function effectHandleSocket(data) {
-  if (!effectIsLeader() || !effectEnabled() || data?.channel!==EFFECT_CHANNEL) return;
-  if (!data.requestId || typeof data.requestId!=='string' || data.requestId.length>100) return;
+  if (!effectEnabled() || data?.channel!==EFFECT_CHANNEL ||
+      typeof data.requestId!=='string' || data.requestId.length>100) return;
+  if (data.op==='ack') {
+    const pending=effectPendingRequests.get(data.requestId);
+    if (!pending || data.recipientId!==game.user.id ||
+        data.senderId!==pending.leaderId) return;
+    clearTimeout(pending.timer);
+    effectPendingRequests.delete(data.requestId);
+    if (data.error) pending.reject(Error(data.error));
+    else pending.resolve(data.result);
+    return;
+  }
+  if (!effectIsLeader()) return;
+  if (!['approve','apply','stop','extend'].includes(data.op)) return;
   if (effectSeenRequests.has(data.requestId)) return;
   effectSeenRequests.add(data.requestId);
-  if (effectSeenRequests.size > 2000) effectSeenRequests.clear();
+  if (effectSeenRequests.size>2000) effectSeenRequests.clear();
   const requester=game.users.get(data.userId);
-  if (!requester?.active || !['apply','stop','extend'].includes(data.op)) return;
+  if (!requester?.active) return;
+  effectDebug('Remote request',{operation:data.op,requester:requester.name??requester.id,
+    source:data.sourceUuid,requestId:data.requestId});
+  let result=null,error=null;
   try {
-    if (data.op==='extend') await effectExtendInternal(data,requester,true);
-    else await effectQueue(()=>data.op==='apply' ? effectApplyInternal(data,requester,true) : effectStopInternal(data,requester,true));
-  } catch(error) {
-    console.error(`${EFFECT_NS} | Demande d’effet refusée : ${error.message}`,error);
+    if (data.op==='approve') result=await effectApproveInternal(data,requester,true);
+    else if (data.op==='extend') result=await effectExtendInternal(data,requester,true);
+    else result=await effectQueue(()=>data.op==='apply'
+      ? effectApplyInternal(data,requester,true):effectStopInternal(data,requester,true));
+  } catch(err) {
+    error=String(err?.message??err);
+    effectDebug('Request rejected',{operation:data.op,requester:requester.id,reason:error});
+    console.error(`${EFFECT_NS} | Demande d’effet refusée : ${error}`,err);
   }
+  game.socket.emit(EFFECT_SOCKET,{channel:EFFECT_CHANNEL,op:'ack',requestId:data.requestId,
+    recipientId:requester.id,senderId:game.user.id,result,error});
 }
 async function effectGroupsForDeletedCombat(combat) {
   if (!effectIsLeader()) return;
