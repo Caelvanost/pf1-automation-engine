@@ -17,6 +17,12 @@ const SO_CHANNEL = 'pf1ae-save-overrides-v1';
 const SO_SOCKET = 'module.' + SO_NS;
 const SO_CACHE_LIMIT = 200;
 const soPreRolls = new Map();
+const soBridgeDelivered = new Set();
+const soBridgeAwaiting = new Map();
+const soBridgeLog = (name,data={})=>{
+  if(game.settings.get(SO_NS,'genericDebug'))
+    console.debug('[PF1AE][SaveBridge] '+name,data);
+};
 const soPendingRollResolutions = new Map();
 const soQueue = new Map();
 let soWriteTail=Promise.resolve();
@@ -719,6 +725,12 @@ async function soProcessRoll(data,requester,remote=false) {
       sourceItemUuid:data.sourceItemUuid,targetTokenUuid:data.targetTokenUuid,
       normalTotal:normal
     });
+    soBridgeLog('Resolved context',{
+      saveMessageId:message.id,sourceMessageId:data.sourceMessageId??null,
+      targetActorUuid:actor.uuid,sourceItemUuid:data.sourceItemUuid,
+      sourceActionId:data.sourceActionId??null,saveDC:verifiedContext?.saveDC??null,
+      normalTotal:decision.normalTotal,effectiveTotal:decision.effectiveTotal
+    });
     // Deduplicate persistent message IDs even after a secondary GM takes over.
     await soWrites(async()=>{
       const list=soDone();
@@ -795,8 +807,13 @@ function soStorePre(actor,options,saveType) {
   }
   const queue=(soPreRolls.get(key)??[]).filter(p=>
     Date.now()-p.createdAt<30000);
+  soBridgeLog('Saving throw requested',{
+    actorUuid:actor.uuid,saveType,sourceMessageId:extra.sourceMessageId,
+    sourceItemUuid:extra.sourceItemUuid,sourceActionId:extra.sourceActionId,saveDC:extra.saveDC
+  });
   queue.push({
     sourceItemUuid:extra.sourceItemUuid,createdAt:Date.now(),
+    candidateMessages:[],actorId:actor.id,tokenId:options.token?.id??actor.token?.id??null,
     sourceMessageId:extra.sourceMessageId??null,
     sourceActionId:extra.sourceActionId??null,
     saveDC:Number.isFinite(extra.saveDC)?extra.saveDC:null,
@@ -805,39 +822,120 @@ function soStorePre(actor,options,saveType) {
   });
   soPreRolls.set(key,queue.slice(-20));
 }
+/**
+ * Correlates a native PF1 save result with the real ChatMessage. If d20Roll
+ * returns only a roll data object, require structured save metadata, matching
+ * author/speaker, and an unambiguous pending native action-card save. Never
+ * inspect chat text or infer the source Item from the roll flavor.
+ */
+function soStructuredSaveType(message) {
+  const candidates=[
+    message?.system?.subject?.save,
+    message?.flags?.pf1?.subject?.save,
+    message?.flags?.pf1?.roll?.subject?.save,
+    message?.getFlag?.('pf1','subject')?.save,
+    message?.rolls?.[0]?.options?.subject?.save
+  ];
+  return candidates.find(soSaveId)??null;
+}
+function soOnCreatedChatMessage(message,_options,userId) {
+  if(!soEnabled()||!message?.id||
+      !Array.isArray(message.rolls)||!message.rolls.length||
+      (userId&&userId!==game.user.id)||message.author?.id!==game.user.id)return;
+  const saveType=soStructuredSaveType(message);
+  if(!saveType)return;
+  const matches=[];
+  for(const [key,list] of [...soPreRolls.entries(),...soBridgeAwaiting.entries()]){
+    for(const pending of list){
+      if(Date.now()-pending.createdAt>30000||!key.endsWith(':'+saveType)||
+        message.speaker?.actor!==pending.actorId)continue;
+      if(pending.tokenId&&message.speaker?.token&&
+        message.speaker.token!==pending.tokenId)continue;
+      matches.push(pending);
+    }
+  }
+  if(matches.length!==1){
+    if(matches.length>1)soBridgeLog('Ambiguous native save message; ignored',{
+      messageId:message.id,saveType,matchingRolls:matches.length});
+    return;
+  }
+  matches[0].candidateMessages.push(message.id);
+  soBridgeLog('Native PF1 save ChatMessage correlated',{
+    messageId:message.id,saveType,actorId:message.speaker.actor});
+}
+function soNativeMessageId(result) {
+  for(const c of [result,result?.message,result?.chatMessage,result?.chat?.message]){
+    if(c?.documentName==='ChatMessage'&&soText(c.id,100))return c.id;
+    if(soText(c?.id,100)&&game.messages?.get(c.id)?.documentName==='ChatMessage')return c.id;
+    if(soText(c?.uuid)&&c.uuid.startsWith('ChatMessage.'))
+      return c.uuid.slice('ChatMessage.'.length);
+  }
+  return null;
+}
+async function soSendNativeSave(actor,saveType,pending,result) {
+  const key=actor.uuid+':'+saveType;
+  const awaiting=soBridgeAwaiting.get(key)??[];
+  awaiting.push(pending);
+  soBridgeAwaiting.set(key,awaiting);
+  try {
+    let messageId=soNativeMessageId(result);
+    if(!messageId)for(let attempt=0;attempt<12;attempt++){
+      const valid=[...new Set(pending.candidateMessages)].filter(id=>
+        game.messages?.get(id)?.documentName==='ChatMessage');
+      if(valid.length===1){messageId=valid[0];break;}
+      if(valid.length>1){
+        soBridgeLog('Multiple matching chat messages; save skipped',{actorUuid:actor.uuid,messages:valid});
+        return;
+      }
+      await new Promise(resolve=>setTimeout(resolve,125));
+    }
+    if(!messageId){
+      soBridgeLog('Save result has no safely correlated ChatMessage',{
+        actorUuid:actor.uuid,saveType,resultType:result?.constructor?.name??typeof result,
+        structuredCandidates:pending.candidateMessages});
+      return;
+    }
+    const message=game.messages?.get(messageId);
+    if(!message||soMessageTotal(message)===null){
+      soBridgeLog('Native save ChatMessage lacks usable result',{messageId});return;
+    }
+    if(soBridgeDelivered.has(messageId))return;
+    soBridgeDelivered.add(messageId);
+    if(soBridgeDelivered.size>1000)soBridgeDelivered.clear();
+    soBridgeLog('Saving throw rolled',{
+      actorUuid:actor.uuid,saveType,saveMessageId:messageId,normalTotal:soMessageTotal(message)});
+    const payload={
+      channel:SO_CHANNEL,op:'roll',userId:game.user.id,
+      requestId:foundry.utils.randomID(),actorUuid:actor.uuid,
+      saveType,sourceItemUuid:pending.sourceItemUuid,
+      sourceMessageId:pending.sourceMessageId,sourceActionId:pending.sourceActionId,
+      saveDC:pending.saveDC,targetTokenUuid:pending.tokenUuid,messageId
+    };
+    soBridgeLog('Resolved context',{
+      saveMessageId:messageId,sourceMessageId:pending.sourceMessageId,
+      targetActorUuid:actor.uuid,sourceItemUuid:pending.sourceItemUuid,
+      sourceActionId:pending.sourceActionId,saveDC:pending.saveDC,
+      normalTotal:soMessageTotal(message),effectiveTotal:'pending GM resolution'});
+    if(soLeader())await soProcessRoll(payload,game.user);
+    else game.socket.emit(SO_SOCKET,payload);
+  }finally{
+    const remaining=(soBridgeAwaiting.get(key)??[]).filter(x=>x!==pending);
+    if(remaining.length)soBridgeAwaiting.set(key,remaining);
+    else soBridgeAwaiting.delete(key);
+  }
+}
 function soReadPost(actor,result,saveType) {
   if(!soEnabled()||!soSaveId(saveType))return;
-  const key=actor?.uuid+':'+saveType;
-  const queue=soPreRolls.get(key)??[];
+  const key=actor?.uuid+':'+saveType,queue=soPreRolls.get(key)??[];
   const pending=queue.shift();
   if(!queue.length)soPreRolls.delete(key);
-  if(!pending || Date.now()-pending.createdAt>30000){
-    soLog('Native save without correlated action card; ignored',{actorUuid:actor?.uuid,saveType});
+  if(!pending||Date.now()-pending.createdAt>30000){
+    soBridgeLog('Save post-hook lacks native source context',{actorUuid:actor?.uuid,saveType});
     return;
   }
-  if(pending.helper)return; // rollWithContext explicitly awaits the GM decision.
-  const messageId=result?.documentName==='ChatMessage' ? result.id :
-    (result?.message?.documentName==='ChatMessage' ? result.message.id :
-      (result?.chatMessage?.documentName==='ChatMessage' ? result.chatMessage.id :
-        (typeof result?.id==='string' && game.messages?.get(result.id)?.documentName==='ChatMessage'
-          ?result.id:null)));
-  if(!messageId){
-    soLog('Native save has no identifiable ChatMessage; ignored',{
-      actorUuid:actor?.uuid,saveType,resultType:result?.constructor?.name??typeof result});
-    return;
-  }
-  const payload={
-    channel:SO_CHANNEL,op:'roll',userId:game.user.id,
-    requestId:foundry.utils.randomID(),actorUuid:actor.uuid,
-    saveType,sourceItemUuid:pending.sourceItemUuid,
-    sourceMessageId:pending.sourceMessageId,
-    sourceActionId:pending.sourceActionId,
-    saveDC:pending.saveDC,
-    targetTokenUuid:pending.tokenUuid,messageId
-  };
-  if(soLeader())void soProcessRoll(payload,game.user).catch(error=>
-    console.error('[PF1AE][SaveOverride] Roll processing failed',error));
-  else game.socket.emit(SO_SOCKET,payload);
+  if(pending.helper)return;
+  void soSendNativeSave(actor,saveType,pending,result).catch(error=>
+    console.error('[PF1AE][SaveBridge] Native save delivery failed',error));
 }
 const soSeenRequests=new Set();
 async function soHandleSocket(data) {
@@ -969,6 +1067,7 @@ Hooks.once('init',()=>{
     {scope:'world',config:false,type:Array,default:[]});
   Hooks.on('pf1PreActorRollSave',soStorePre);
   Hooks.on('pf1ActorRollSave',soReadPost);
+  Hooks.on('createChatMessage',soOnCreatedChatMessage);
 });
 Hooks.once('ready',()=>{
   const mod=game.modules.get(SO_NS);
