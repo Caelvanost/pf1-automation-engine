@@ -1,3 +1,12 @@
+## v1.12.3 — Generic source-bound save outcomes (experimental)
+
+- Add `api.saveOutcomes.register/unregister/list` for exact Item+Action+target save consequences, using the *verified* native PF1 Action card's DC and `saveOverrides.effectiveTotal`.
+- On failure create one minimal, source-specific, embedded ActiveEffect and attach its document to the parent `managedEffectGroups` copies ledger; group maintenance, expiration and stop manage the linked effect.
+- Optional `fascinated` status is applied only if found in the active PF1 condition registry; never toggle a global status manually.
+- Add elected-GM socket acknowledgements, ownership checks, persistent rule registry, per-message processing flags, persistent effect-level outcome IDs and safe replay.
+- Add positive/negative simulated tests, preservation of existing native save pipeline, documentation and explicit test limitations.
+- No 24-hour immunity, automatic repeat-save workflow or modifications to system PF1 files.
+
 ## v1.12.2 — Generic Distraction/illusion save-override support (candidate)
 
 - Preserve the validated v1.12.1 native PF1 action-card save workflow.
