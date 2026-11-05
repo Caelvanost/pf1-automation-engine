@@ -1,4 +1,4 @@
-# PF1 Automation Engine — v1.12.2
+# PF1 Automation Engine — v1.12.3
 
 **Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
@@ -21,6 +21,12 @@ No spell catalogue, class-specific handler, or exhaustive rule database is bundl
 ## Distraction (v1.12.2)
 
 Distraction can use the existing `saveOverrides.register()` API with `appliesTo: {magical:true,anyOf:["pattern","figment"]}` and `requiresSight:true`. See [Distraction API and testing](docs/DISTRACTION.md). This release does not add persistent-effect tracking or automatic repeat saves.
+
+## Save Outcomes (v1.12.3 experimental)
+
+Generic GM-authoritative consequences of native PF1 saving throws. After the existing Save Override resolver provides `effectiveTotal`, a registered rule can apply an **individually identified ActiveEffect** to an exact target on failure. The effect is stored as a managed copy of its parent `effectGroups` session, so maintenance, expiry and stopping the parent group preserve and remove it correctly. Includes socket acknowledgement, source Action/Item matching, target matching, deduplication and verified Action-card DC. No second save roll or automatic 24-hour immunity.
+
+See [Save Outcomes API — Fascination recipe and limitations](docs/SAVE-OUTCOMES.md).
 
 ## English documentation
 
