@@ -604,6 +604,33 @@ async function soUpdateSourceCard(card, actor, data, decision, message) {
       effectiveTotal:decision.effectiveTotal});
   });
 }
+/**
+ * One authoritative dispatch for every verified native PF1 card save, whether
+ * or not a Save Override rule matches. Never accepts player-supplied totals:
+ * the elected GM has already read the saved native ChatMessage itself.
+ */
+async function soDispatchSaveOutcome({actor,card,message,context,normalTotal,effectiveTotal,saveType}) {
+  if(!soLeader()||!card||!message||!context)return;
+  const event={
+    saveMessageId:message.id,sourceMessageId:card.id,
+    sourceItemUuid:context.sourceItemUuid,sourceActionId:context.sourceActionId,
+    targetActorUuid:actor.uuid,saveType,
+    saveDC:context.saveDC,normalTotal,effectiveTotal
+  };
+  if(!Number.isFinite(event.saveDC)) {
+    soLog('SaveOutcome not dispatched: source card has no numeric DC',event);
+    return;
+  }
+  if(game.settings.get(SO_NS,'genericDebug'))
+    console.debug('[PF1AE][SaveOutcome] Dispatching resolved save',event);
+  const service=game.modules.get(SO_NS)?.api?.saveOutcomes;
+  if(!service?.resolve) {
+    soLog('SaveOutcome unavailable; no outcome dispatcher registered',event);
+    return;
+  }
+  try { return await service.resolve(event); }
+  catch(error) { console.error('[PF1AE][SaveOutcome] Dispatch failed',error); }
+}
 async function soProcessRoll(data,requester,remote=false) {
   if(!soEnabled()||!soLeader())return;
   if(!soSaveId(data?.saveType)||!soText(data?.actorUuid)||
@@ -618,8 +645,12 @@ async function soProcessRoll(data,requester,remote=false) {
     if(data.sourceMessageId) {
       // The GM re-reads persisted PF1 action-card provenance rather than
       // trusting a socket-supplied Item or Action ID.
-      const card=game.messages?.get(data.sourceMessageId);
-      sourceCard=card??null;
+      let card=game.messages?.get(data.sourceMessageId)??null;
+      for(let n=0;!card&&n<8;n++) {
+        await new Promise(resolve=>setTimeout(resolve,120));
+        card=game.messages?.get(data.sourceMessageId)??null;
+      }
+      sourceCard=card;
       const context=card && game.modules.get(SO_NS)?.api?.saveContext?.fromMessage(card);
       if(!context || context.sourceItemUuid!==data.sourceItemUuid ||
           context.sourceActionId!==data.sourceActionId ||
@@ -639,13 +670,9 @@ async function soProcessRoll(data,requester,remote=false) {
       const saved=original?.getFlag?.(SO_NS,'saveOverride');
       if(saved && Number.isFinite(saved.effectiveTotal)) {
         if(sourceCard && verifiedContext) {
-          try {await game.modules.get(SO_NS)?.api?.saveOutcomes?._onResolved?.({
-            targetActorUuid:actor.uuid,sourceItemUuid:verifiedContext.sourceItemUuid,
-            sourceActionId:verifiedContext.sourceActionId,
-            sourceMessageId:sourceCard.id,saveMessageId:data.messageId,
-            saveDC:verifiedContext.saveDC,saveType:data.saveType,
-            normalTotal:saved.normalTotal,effectiveTotal:saved.effectiveTotal
-          });} catch(error){console.error('[PF1AE][SaveOutcome] Replay failed',error);}
+          await soDispatchSaveOutcome({actor,card:sourceCard,message:original,
+            context:verifiedContext,normalTotal:saved.normalTotal,
+            effectiveTotal:saved.effectiveTotal,saveType:data.saveType});
         }
         return {
           normalTotal:saved.normalTotal,effectiveTotal:saved.effectiveTotal,
@@ -719,21 +746,11 @@ async function soProcessRoll(data,requester,remote=false) {
       } catch(error) {
         soLog('Could not flag original save message',{id:message.id,error:error.message});
       }
-      // Run source-bound outcomes only after saveOverrides has produced the
-      // final effective total; no second PF1 roll is ever made.
-      if(sourceCard && verifiedContext) {
-        try {
-          await game.modules.get(SO_NS)?.api?.saveOutcomes?._onResolved?.({
-            targetActorUuid:actor.uuid,sourceItemUuid:verifiedContext.sourceItemUuid,
-            sourceActionId:verifiedContext.sourceActionId,
-            sourceMessageId:sourceCard.id,saveMessageId:message.id,
-            saveDC:verifiedContext.saveDC,saveType:data.saveType,
-            normalTotal:decision.normalTotal,effectiveTotal:decision.effectiveTotal
-          });
-        } catch(error) {
-          console.error('[PF1AE][SaveOutcome] Processing failed',error);
-        }
-      }
+      // Always dispatch on a verified native card even when no Save Override
+      // candidates apply (changed:false, normalTotal===effectiveTotal).
+      await soDispatchSaveOutcome({actor,card:sourceCard,message,
+        context:verifiedContext,normalTotal:decision.normalTotal,
+        effectiveTotal:decision.effectiveTotal,saveType:data.saveType});
       Hooks.callAll('pf1aeSaveOverrideResolved',actor,decision,message);
       if(sourceCard) {
         try {await soUpdateSourceCard(sourceCard,actor,data,decision,message);}
@@ -794,10 +811,21 @@ function soReadPost(actor,result,saveType) {
   const queue=soPreRolls.get(key)??[];
   const pending=queue.shift();
   if(!queue.length)soPreRolls.delete(key);
-  if(!pending || Date.now()-pending.createdAt>30000)return;
-  if(pending.helper) return; // rollWithContext explicitly awaits the GM decision.
-  const messageId=result?.id??null;
-  if(!messageId)return; // Non-chat result: manual GM resolve remains available.
+  if(!pending || Date.now()-pending.createdAt>30000){
+    soLog('Native save without correlated action card; ignored',{actorUuid:actor?.uuid,saveType});
+    return;
+  }
+  if(pending.helper)return; // rollWithContext explicitly awaits the GM decision.
+  const messageId=result?.documentName==='ChatMessage' ? result.id :
+    (result?.message?.documentName==='ChatMessage' ? result.message.id :
+      (result?.chatMessage?.documentName==='ChatMessage' ? result.chatMessage.id :
+        (typeof result?.id==='string' && game.messages?.get(result.id)?.documentName==='ChatMessage'
+          ?result.id:null)));
+  if(!messageId){
+    soLog('Native save has no identifiable ChatMessage; ignored',{
+      actorUuid:actor?.uuid,saveType,resultType:result?.constructor?.name??typeof result});
+    return;
+  }
   const payload={
     channel:SO_CHANNEL,op:'roll',userId:game.user.id,
     requestId:foundry.utils.randomID(),actorUuid:actor.uuid,

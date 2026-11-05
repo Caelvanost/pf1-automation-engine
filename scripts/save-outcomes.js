@@ -263,7 +263,8 @@ Hooks.once('ready',()=>{
     register:data=>outSend('register',data),
     unregister:data=>outSend('unregister',data),
     list:()=>outClone(outLedger()),
-    _onResolved:outResolved,
+    resolve:outResolved, // elected-GM only; called by the verified native save dispatcher
+    _onResolved:outResolved, // legacy internal alias
     _onGroupRemoved:outGroupRemoved
   });
   game.socket.on(OUT_SOCKET,data=>{
