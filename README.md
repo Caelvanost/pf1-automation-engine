@@ -1,4 +1,4 @@
-# PF1 Automation Engine — v1.12.5
+# PF1 Automation Engine — v1.12.6
 
 **Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
@@ -14,7 +14,7 @@ The GM adds JavaScript to the **native PF1 Script Calls** of the **Spell** or **
 - **Event-driven automations** linked to a named PF1 Item Script Call.
 - **Save-result override infrastructure** with dynamic Actor flags, hearing/range checks and one elected-GM result comparison for annotated native PF1 saving throws.
 - **Native PF1 actor rest hooks** (`pf1PreActorRest` and `pf1ActorRest`): before/after snapshots, 8-hour filtering, independent health/daily-recharge flags and player-to-GM relay.
-- **GM approval, persistent registries, controlled player requests and one elected GM** when multiple GMs are connected.
+- **Silent GM-leader authorization, persistent registries, controlled player requests and one elected GM** when multiple GMs are connected.
 
 No spell catalogue, class-specific handler, or exhaustive rule database is bundled. An ordinary GM can configure **only the spells/features actually needed in their campaign**, without modifying module source code.
 
@@ -42,6 +42,14 @@ See [Save Outcomes API — Fascination recipe and limitations](docs/SAVE-OUTCOME
 
 `saveOutcomes.register()` now reads the native PF1 `item.actions` Collection first and uses `item.system.actions` only as a legacy fallback. For a single `ItemAction`, `sourceActionId` can be omitted and its real `id` is retained for matching native Action-card save context. On multi-Action Items, pass the explicit `sourceActionId`. `onFailure.statusId` can be omitted or `null`; the optional `"fascinated"` status is included only if PF1 registers that condition. The final save-resolution pipeline remains unchanged.
 
+## Silent multi-target automation (v1.12.6)
+
+The elected GM now automatically processes player-owned source Actor group requests; no interactive approval button or dialog is involved. `applyGroup`, `extendGroup` and `stopGroup` return **acknowledged results**, not `{submitted:true}`. Targets may be owned by different players or by the GM. The item Script Call must still select rule-legal targets (range, hearing and sight); engine GM-side validation checks provenance, template restrictions and source ownership.
+
+`approveTemplate(templateUuid)` silently approves eligible passive, actor-owned templates on player request. For Compendium buffs, `approveTemplate(templateUuid)` performs a passive-template preflight without privileged approval; `applyGroup` checks source Actor OWNER and approves automatically. The optional `approveTemplate({actor,templateUuid})` form performs source-owner validation immediately. Previously GM-trusted advanced scripted templates retain their approval. Newly requested templates with executable Script Calls or macros are rejected instead of allowing a player to run arbitrary code on GM-controlled Actors.
+
+See [Silent EffectGroup requests](docs/SILENT-EFFECT-GROUPS.md) for the API, safety restrictions, debugging and multiplayer test plan.
+
 ## English documentation
 
 **Start here:**
@@ -52,13 +60,13 @@ See [Save Outcomes API — Fascination recipe and limitations](docs/SAVE-OUTCOME
 - **[Compendium Buff Templates — GM approval, content fingerprints and caster Item Script Calls](docs/COMPENDIUM-BUFF-TEMPLATES.md)**
 - **[Saving Throw Overrides — PF1 native hook behavior, Countersong integration, GM resolution and limitations](docs/SAVE-OVERRIDES.md)**
 
-The technical guide explains why direct world-registry timer writes are reserved for the elected GM, while player-used spells should ordinarily call `api.effectGroups.applyGroup()` with a pre-approved Actor or Compendium buff template. The recipes include examples for both paths.
+The technical guide explains why direct world-registry timer writes are reserved for the elected GM, while player-used spells should ordinarily call `api.effectGroups.applyGroup()` with a validated Actor or Compendium buff template. The recipes include examples for both paths.
 
 ## Quick start
 
 1. Install the Engine from the Foundry ZIP in `Data/modules/pf1-automation-engine/`; `module.json` must be at the folder root. Restart Foundry and enable the module.
 2. On the actor's sheet, open the Spell or Class Feature Item and create a native PF1 **Use** or **After Use** Script Call.
-3. For a timed bonus, create an actor-owned **buff Item** or ActiveEffect template with the actual PF1 modifiers, then have the **elected GM** approve its UUID via `api.effectGroups.approveTemplate()`.
+3. For a timed bonus, create an actor-owned **buff Item** or ActiveEffect template with the actual PF1 modifiers, then let `applyGroup()` automatically validate its contents. Explicit `approveTemplate()` is optional for eligible passive templates.
 4. In the spell/feature Item's script, call `api.effectGroups.applyGroup({actor,key,templateUuid,targets,duration})` or the precise-turn `timing` variant. Test using the actual player account.
 5. Check the active groups/timers in the console; see the [recipes](docs/PF1-ITEM-SCRIPT-RECIPES.md).
 
