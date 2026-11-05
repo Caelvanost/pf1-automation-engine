@@ -12,6 +12,9 @@ const GROUPS_SETTING = 'managedEffectGroups';
 const TEMPLATES_SETTING = 'effectTemplateApprovals';
 const EFFECT_MAX_TARGETS = 30;
 const effectSeenRequests = new Set();
+const effectPendingRequests = new Map();
+const effectRecentApplications = new Map();
+const EFFECT_REQUEST_TIMEOUT = 15000;
 let effectMutationTail = Promise.resolve();
 
 function effectQueue(fn) {
@@ -55,7 +58,7 @@ function effectTemplateKind(template) {
 }
 function effectDebug(event, details={}) {
   if (game.settings.get(EFFECT_NS,'genericDebug')) {
-    console.debug(`${EFFECT_NS} | effectGroups:${event}`,details);
+    console.debug(`[PF1AE][EffectGroup] ${event}`, details);
   }
 }
 const EFFECT_VOLATILE_ROOT_KEYS = new Set([
@@ -156,20 +159,92 @@ function effectOwnedBy(template, actor) {
     template.parent?.uuid === actor.uuid
   );
 }
-async function effectApproveTemplate(templateUuid) {
-  effectRequireLeader();
-  const uuid=effectUuid(templateUuid);
-  const template=await effectResolveTemplate(uuid);
+/** Auto-validation is not unrestricted authority to execute player-authored scripts
+ * on other Actors. A template that was not previously trusted by a GM must
+ * be declarative (no Script Calls, executable ActiveEffect changes or macros).
+ */
+function effectHasExecutablePayload(template) {
+  const raw=template.toObject();
+  const populated=value=>Array.isArray(value) ? value.length>0 :
+    !!(value && typeof value==='object' && Object.keys(value).length);
+  if (populated(raw.system?.scriptCalls)) return true;
+  if ((raw.effects??[]).some(e=>(e.changes??[]).some(c=>
+    /(?:macro|script|command|execute)/i.test(String(c.key??''))))) return true;
+  if ((raw.changes??[]).some(c=>
+    /(?:macro|script|command|execute)/i.test(String(c.key??'')))) return true;
+  if (Object.entries(raw.flags??{}).some(([key,value])=>
+    !['core','pf1',EFFECT_NS].includes(key) && populated(value))) return true;
+  return false;
+}
+async function effectAutoApprove(template, source, requester, explicitGM=false) {
   const kind=effectTemplateKind(template);
-  if (!kind) {
-    effectDebug('template-rejected',{uuid,reason:'not an actor-owned buff/AE or Compendium buff'});
-    throw Error('Modèle refusé : ActiveEffect d’acteur, buff PF1 embarqué ou buff PF1 de Compendium requis.');
+  if (!kind || !effectOwnedBy(template,source)) throw Error('Template/source association rejected.');
+  const existing=effectApprovals()[template.uuid];
+  if (existing) {
+    try { effectCheckApproval(template); return template.uuid; }
+    catch(error) {
+      effectDebug('Existing template fingerprint changed',{uuid:template.uuid,reason:error.message});
+    }
+  }
+  if (!explicitGM && effectHasExecutablePayload(template)) {
+    effectDebug('Auto-approval REFUSED: executable template',{uuid:template.uuid,
+      requester:requester?.id,source:source.uuid});
+    throw Error('Automatic template approval rejected: executable scripts or macros require a pre-trusted template.');
   }
   const record=effectApprovalRecord(template,kind);
-  const approvals={...effectApprovals(),[template.uuid]:record};
-  await game.settings.set(EFFECT_NS,TEMPLATES_SETTING,approvals);
-  effectDebug('template-approved',{uuid:template.uuid,kind,hash:record.hash});
+  await game.settings.set(EFFECT_NS,TEMPLATES_SETTING,{
+    ...effectApprovals(),[template.uuid]:record});
+  effectDebug('Auto-approved',{templateUuid:template.uuid,kind,source:source.uuid,
+    requester:requester?.id});
   return template.uuid;
+}
+/** GM-only explicit trust remains available for advanced scripted templates.
+ * Players may request a silent, strictly validated approval for passive ones.
+ * A compendium template requires {actor,templateUuid} for owner verification.
+ */
+async function effectApproveInternal(data, requester, socketOrigin=false) {
+  if (!effectEnabled() || !effectIsLeader()) throw Error('Elected GM required.');
+  const uuid=effectUuid(data.templateUuid);
+  const template=await effectResolveTemplate(uuid);
+  const kind=effectTemplateKind(template);
+  if (!kind) throw Error('Only actor-owned buffs/ActiveEffects or Compendium buffs are supported.');
+  const directGM=!socketOrigin && requester?.isGM && effectIsLeader();
+  const source=await effectResolveActor(data.sourceUuid??template.parent?.uuid);
+  // A legacy call approveTemplate(compendiumUuid) has no source identity.
+  // Perform a safe read-only preflight now; actual persisted authorization
+  // happens at applyGroup when the GM can verify the source Actor OWNER.
+  if (!directGM && !source && kind==='compendiumBuff' && !data.sourceUuid) {
+    if (effectHasExecutablePayload(template))
+      throw Error('Untrusted scripted Compendium template cannot be silently approved.');
+    effectDebug('Compendium preflight passed; source OWNER checked on applyGroup',
+      {templateUuid:template.uuid,requester:requester.id});
+    return template.uuid;
+  }
+  if (!directGM && (!source || !source.testUserPermission?.(requester,'OWNER'))) {
+    throw Error('Source Actor OWNER permission required for automatic approval.');
+  }
+  effectDebug('Source OWNER PASS',{requester:requester.id,source:source?.uuid});
+  if (!directGM && !effectOwnedBy(template,source)) {
+    throw Error('Template does not belong to the source (except shared Compendium buffs).');
+  }
+  // GM may intentionally approve a shared Compendium without a source Actor.
+  if (directGM && !source) {
+    const record=effectApprovalRecord(template,kind);
+    await game.settings.set(EFFECT_NS,TEMPLATES_SETTING,{
+      ...effectApprovals(),[template.uuid]:record});
+    effectDebug('Auto-approved',{templateUuid:template.uuid,requester:requester.id,gm:true});
+    return template.uuid;
+  }
+  return effectAutoApprove(template,source,requester,directGM);
+}
+function effectApproveTemplate(templateOrData) {
+  const data=typeof templateOrData==='string' || templateOrData?.uuid
+    ? {templateUuid:effectUuid(templateOrData)}
+    : {templateUuid:effectUuid(templateOrData?.templateUuid??templateOrData?.template),
+       sourceUuid:effectUuid(templateOrData?.actor??templateOrData?.source)};
+  if (!data.templateUuid) throw Error('Template UUID required.');
+  if (effectIsLeader()) return effectApproveInternal(data,game.user,false);
+  return effectSendRemote('approve',data);
 }
 async function effectRevokeTemplate(templateUuid) {
   effectRequireLeader();
@@ -241,6 +316,7 @@ async function effectValidateRequest(data, requester, socketOrigin) {
   if (!isDirectGM && !source.testUserPermission?.(requester,'OWNER')) {
     throw Error('Le demandeur ne possède pas le personnage source.');
   }
+  effectDebug('Source OWNER PASS',{requester:requester?.id,source:source.uuid});
   const combat=data.combatId ? game.combats.get(data.combatId) : game.combat;
   const durationMode=data.duration != null;
   let combatant=null, timing=null, occurrences=null;
@@ -282,7 +358,9 @@ async function effectValidateRequest(data, requester, socketOrigin) {
     effectDebug('template-rejected',{uuid:data.templateUuid,kind:templateKind,reason:'other actor owner'});
     throw Error('Le modèle embarqué doit appartenir à l’acteur source (les buffs de Compendium sont partagés).');
   }
-  effectCheckApproval(template);
+  // The elected GM validates and silently authorizes declarative templates.
+  // Scripts/macros remain restricted to templates already explicitly trusted.
+  await effectAutoApprove(template,source,requester,isDirectGM);
   // Snapshot once after approval, before any asynchronous removal or clone.
   // This avoids applying a mutated template to later targets in the same group.
   const templateData=effectTemplateCopy(template,templateKind);
@@ -298,9 +376,9 @@ async function effectValidateRequest(data, requester, socketOrigin) {
   for (const uuid of unique) {
     const actor=await effectResolveActor(uuid);
     if (!actor) throw Error(`Bénéficiaire introuvable : ${uuid}`);
-    if (!isDirectGM && !effectIsAllowedTarget(requester,actor,source,scene)) {
-      throw Error(`Bénéficiaire non autorisé : ${actor.name}`);
-    }
+    // A player's permission is checked on the SOURCE only. The elected GM
+    // executes target mutations, including other players' and GM-owned Actors.
+    // Rule-specific range/hearing/sight decisions remain in the PF1 Item script.
     targets.push(actor);
   }
   return {source,template,templateKind,templateData,targets,combat,combatant,timing,occurrences,
