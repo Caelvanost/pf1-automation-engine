@@ -51,12 +51,13 @@ function soActorQueue(uuid,fn) {
 function soRequireGM() {
   if(!game.user.isGM || !soLeader()) throw Error('Only the elected GM can perform this operation.');
 }
-const SO_DESCRIPTOR_NAMES = new Set(['sonic','languageDependent','magical']);
+const SO_DESCRIPTOR_NAMES = new Set(['sonic','languageDependent','magical','pattern','figment']);
 function soNormalizeTag(tag) {
   if (typeof tag !== 'string') return null;
   const raw=tag.toLowerCase().trim();
   const simple=raw.replace(/[^a-z]/g,'');
   if(simple==='sonic')return 'sonic';
+  if(simple==='pattern'||simple==='figment')return simple;
   if(simple==='languagedependent'||simple==='language')return 'language-dependent';
   return raw.replace(/\s+/g,'-')||null;
 }
@@ -79,10 +80,14 @@ function soNormalizedDescriptors(data) {
       typeof v?.name==='string'?v.name:null)
   ).filter(Boolean))];
 }
-function soTraits(item) {
+function soTraits(item,sourceActionId=null) {
   if(item?.documentName!=='Item')return null;
   const custom=item.getFlag?.(SO_NS,'saveTraits')??{};
   const system=item.system??{};
+  // Actions are keyed records in PF1. Only inspect the exact action that
+  // generated this save, never descriptors from unrelated Item actions.
+  const action=sourceActionId && Object.prototype.hasOwnProperty.call(system.actions??{},sourceActionId)
+    ?system.actions[sourceActionId]:null;
   // PF1 11.11 FeatModel.abilityType: "su" | "sp" | "ex" | "na".
   // BaseItemModel.tags: Set<FreeText>. Item text is NEVER parsed.
   const type=String(system.abilityType??'').toLowerCase().trim();
@@ -91,20 +96,34 @@ function soTraits(item) {
     type==='ex'?'extraordinary':
     type==='na'?'natural':
     type||null;
+  // SpellModel.subschool is a structured Set<string> (PF1 11.11).
+  // Prefer it over freeform tags: tags alone cannot override a contrary
+  // explicit spell subschool selection. School 'ill' identifies illusion.
+  const subschools=soNormalizedDescriptors(system.subschool);
+  const school=String(system.school??'').toLowerCase().trim();
+  const hasStructuredSubschool=item.type==='spell' && subschools.length>0;
   const descriptors=[...new Set([
     ...soNormalizedDescriptors(system.tags),
+    ...soNormalizedDescriptors(action?.tags),
+    ...soNormalizedDescriptors(action?.descriptors),
     ...soNormalizedDescriptors(system.descriptors),
     ...soNormalizedDescriptors(system.spellDescriptors),
     ...soNormalizedDescriptors(system.spell?.descriptors),
     ...soNormalizedDescriptors(custom.descriptors)
   ])];
+  const validIllusionSchool=item.type!=='spell'||!school||school==='ill';
+  const pattern=validIllusionSchool && (hasStructuredSubschool
+    ? subschools.includes('pattern') : descriptors.includes('pattern'));
+  const figment=validIllusionSchool && (hasStructuredSubschool
+    ? subschools.includes('figment') : descriptors.includes('figment'));
   const magical=typeof custom.magical==='boolean'
     ?custom.magical
     :item.type==='spell'||type==='su'||type==='sp';
   return {
     magical, abilityType, descriptors,
     sonic:descriptors.includes('sonic'),
-    languageDependent:descriptors.includes('language-dependent')
+    languageDependent:descriptors.includes('language-dependent'),
+    pattern,figment,school,subschools
   };
 }
 /** Explicit allOf/anyOf plus legacy v1.11 sonic OR language semantics. */
@@ -132,7 +151,7 @@ function soPredicateConfig(appliesTo) {
 function soMatchesPredicate(traits,appliesTo) {
   const rule=soPredicateConfig(appliesTo);
   const values={magical:traits.magical,sonic:traits.sonic,
-    languageDependent:traits.languageDependent};
+    languageDependent:traits.languageDependent,pattern:traits.pattern,figment:traits.figment};
   if(rule.magical&&!values.magical)return {ok:false,reason:'source is not magical'};
   for(const k of rule.allOf)if(!values[k])return {
     ok:false,reason:'missing required '+k+' descriptor'
@@ -284,6 +303,14 @@ async function soReconcile() {
     return {removed:old.length-next.length,remaining:next.length};
   });
 }
+function soBlind(actor) {
+  // PF1 uses the normalized 'blind' condition ID, while Foundry may expose
+  // a 'blinded' status. Never infer blindness from arbitrary buff names.
+  return Boolean(actor?.statuses?.has?.('blind') ||
+    actor?.statuses?.has?.('blinded') ||
+    actor?.system?.conditions?.blind || actor?.system?.conditions?.blinded ||
+    actor?.hasCondition?.('blind'));
+}
 function soDeaf(actor) {
   const s=actor?.statuses;
   return Boolean(s?.has?.('deafened') || s?.has?.('deaf') ||
@@ -362,7 +389,7 @@ async function soFindCandidates(data) {
       saveType:data?.saveType});
     return [];
   }
-  const traits=soTraits(item);
+  const traits=soTraits(item,data.sourceActionId??null);
   if(!traits)return [];
   soLog('Save detected',{target:target.uuid,save:data.saveType});
   soLog('Source: '+item.name,{uuid:item.uuid});
@@ -370,7 +397,8 @@ async function soFindCandidates(data) {
   soLog('Source ability type: '+(traits.abilityType??'unknown'));
   soLog('Source tags: '+traits.descriptors.join(', '));
   soLog('Context',{magical:traits.magical,sonic:traits.sonic,
-    languageDependent:traits.languageDependent});
+    languageDependent:traits.languageDependent,pattern:traits.pattern,
+    figment:traits.figment,school:traits.school,subschools:traits.subschools});
   const scene=game.scenes?.active??canvas.scene;
   const targetToken=soTokenFromActor(target,scene,data.targetTokenUuid??null);
   if(!targetToken) {
@@ -391,7 +419,7 @@ async function soFindCandidates(data) {
     soLog('Source predicate: '+(predicate.ok?'PASS':'FAIL'),{
       rule:rule.id,reason:predicate.reason,
       magical:traits.magical,sonic:traits.sonic,
-      languageDependent:traits.languageDependent
+      languageDependent:traits.languageDependent,pattern:traits.pattern,figment:traits.figment
     });
     if(!predicate.ok) {
       soLog('Rule rejected: '+predicate.reason,{rule:rule.id});
@@ -403,6 +431,14 @@ async function soFindCandidates(data) {
       continue;
     }
     soLog('Target deafened: '+soDeaf(target),{target:target.uuid});
+    if(rule.requiresSight) {
+      const blind=soBlind(target);
+      soLog('Sight: '+(blind?'FAIL (blind)':'condition PASS'),{rule:rule.id,target:target.uuid});
+      if(blind) {
+        soLog('Rule '+rule.key+' rejected: target cannot see provider (blind)',{rule:rule.id});
+        continue;
+      }
+    }
     if(rule.requiresHearing && soDeaf(target)) {
       soLog('Rule rejected: target cannot hear source (deafened)',{rule:rule.id});
       continue;
@@ -435,11 +471,19 @@ async function soFindCandidates(data) {
         }
         soLog('Hearing check: PASS',{rule:rule.id});
       }
-      if(rule.requiresSight && soWallsBlock(sourceToken,targetToken,'sight')!==false) {
-        soLog('Rule rejected: sight blocked or unknown',{rule:rule.id});
-        continue;
+      if(rule.requiresSight) {
+        // Distraction: observer TARGET must see provider SOURCE. Direction
+        // matters for one-way vision-blocking walls. Use v13 sight backend.
+        const blocked=soWallsBlock(targetToken,sourceToken,'sight');
+        soLog('Sight: '+(blocked===false?'PASS':blocked===true?'FAIL (wall)':'FAIL (unknown)'),{rule:rule.id});
+        if(blocked!==false) {
+          soLog('Rule '+rule.key+' rejected: target cannot see provider',{rule:rule.id});
+          continue;
+        }
       }
     }
+    if(rule.requiresSight && source.uuid===target.uuid)
+      soLog('Sight: PASS (self, not blind)',{rule:rule.id});
     const value=soReadFlag(source,rule.replacement);
     if(value===null)continue;
     applicable.push({
@@ -633,6 +677,7 @@ async function soProcessRoll(data,requester,remote=false) {
     }
     const decision=await soResolve({
       targetActorUuid:actor.uuid,saveType:data.saveType,
+      sourceActionId:data.sourceActionId??null,
       sourceItemUuid:data.sourceItemUuid,targetTokenUuid:data.targetTokenUuid,
       normalTotal:normal
     });
