@@ -83,6 +83,47 @@ const event=(target,save,normal,effective,opts={})=>({
   const registered=await api.saveOutcomes.register(rule);
   assert.equal(registered.registered,true,'rule persisted on elected GM');
   assert.equal(api.saveOutcomes.list().length,1);
+  // Regression PF1 v13: item.actions is a Collection<ItemAction>, while
+  // system.actions can be missing or have stale/incompatible serialized data.
+  const nativeAction={id:'real-fascination-action',name:'Fascination'};
+  const nativeSingle={documentName:'Item',uuid:bard.uuid+'.Item.nativeSingle',actor:bard,
+    actions:new Map([['collection-key-not-action-id',nativeAction]]),
+    system:{actions:{incorrect:{id:'stale-action-id'}}}};
+  docs.set(nativeSingle.uuid,nativeSingle);
+  const discovered=context.outActions(nativeSingle);
+  assert.equal(discovered.length,1,'native PF1 Collection yields one ItemAction');
+  assert.equal(discovered[0],nativeAction,'returns the real ItemAction object');
+  assert.equal(discovered[0].id,'real-fascination-action','uses real ItemAction.id, not Collection key');
+  const nativeRule={...rule,key:'fascinate-native',sourceItemUuid:nativeSingle.uuid,
+    sourceActionId:undefined,onFailure:{type:'linkedBuff',name:'Fasciné — Barde',img:'fascination.webp'}};
+  let nativeRegistration=await api.saveOutcomes.register(nativeRule);
+  assert.equal(nativeRegistration.registered,true,'auto-resolves unique native PF1 Action');
+  let savedRule=api.saveOutcomes.list().find(r=>r.key==='fascinate-native');
+  assert.equal(savedRule.sourceActionId,nativeAction.id,'registered ID matches chat actionSource.id');
+  assert.equal(savedRule.onFailure.statusId,undefined,'missing statusId is valid');
+  await api.saveOutcomes.unregister({actor:bard,key:'fascinate-native'});
+  nativeRegistration=await api.saveOutcomes.register({...nativeRule,
+    onFailure:{...nativeRule.onFailure,statusId:null}});
+  savedRule=api.saveOutcomes.list().find(r=>r.key==='fascinate-native');
+  assert.equal(nativeRegistration.registered,true,'null statusId is accepted');
+  assert.equal(savedRule.onFailure.statusId,undefined,'null normalizes to omitted status');
+  await api.saveOutcomes.unregister({actor:bard,key:'fascinate-native'});
+  await assert.rejects(api.saveOutcomes.register({...nativeRule,
+    onFailure:{...nativeRule.onFailure,statusId:'invented-condition'}}),
+    /Only opt-in official fascinated status/,'unsupported statuses still rejected');
+  const nativeMulti={...nativeSingle,uuid:bard.uuid+'.Item.nativeMulti',
+    actions:new Map([['x',{id:'real-first'}],['y',{id:'real-second'}]])};
+  docs.set(nativeMulti.uuid,nativeMulti);
+  await assert.rejects(api.saveOutcomes.register({...nativeRule,
+    sourceItemUuid:nativeMulti.uuid}),/valid sourceActionId/,
+    'Items with multiple Actions still require explicit sourceActionId');
+  await api.saveOutcomes.register({...nativeRule,key:'fascinate-multi',
+    sourceItemUuid:nativeMulti.uuid,sourceActionId:'real-second'});
+  savedRule=api.saveOutcomes.list().find(r=>r.key==='fascinate-multi');
+  assert.equal(savedRule.sourceActionId,'real-second','explicit real Action ID retained');
+  await api.saveOutcomes.unregister({actor:bard,key:'fascinate-multi'});
+  // Legacy world data remains supported when item.actions is absent.
+  assert.equal(context.outActions(source).length,2,'legacy system.actions fallback works');
   const roll11=message('roll11',janis);
   let res=await api.saveOutcomes._onResolved(event(janis,'roll11',11,11));
   assert.equal(res.success,false);
