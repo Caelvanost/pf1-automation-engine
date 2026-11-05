@@ -1,4 +1,4 @@
-# PF1 Automation Engine — v1.12.8
+# PF1 Automation Engine — v1.12.9
 
 **Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
@@ -146,6 +146,10 @@ The Windows build script is `build_release.ps1`. GitHub Actions runs the Node re
 
 **Compatibility:** target versions are Foundry v13.351 and PF1 11.11. The Engine was tested in a live world for the v1.8.0 duration and turn features. Native rest hooks in v1.9.0 require live-world acceptance testing, especially player-initiated rests and two-GM handoff. Other combinations and exceptional edge cases should be validated before use in a live campaign.
 
-## Native PF1 SaveBridge v1.12.8
+## Native PF1 SaveBridge v1.12.9
 
 The bridge hooks `pf1PreActorRollSave(actor,options,saveType)` and `pf1ActorRollSave(actor,ChatMessagePF,saveType)`. Enable generic debug to see `[PF1AE][SaveBridge] PRE`, `PRE options`, `POST` and `Source context restored`. Only an explicitly linked source-card roll is forwarded to `saveOutcomes`; a manual sheet save remains unannotated. Simultaneous ambiguous same-actor/same-save-type rolls fail closed.
+
+## SaveBridge startup diagnostics (v1.12.9)
+
+After F5, with `genericDebug` enabled, expect `[PF1AE][SaveBridge] Installed PF1 save hooks` and `[PF1AE][SaveBridge] SaveBridge ready` (with `genericEnabled` and the hook IDs). Any PF1 save emits PRE/POST even if `genericEnabled` is false; an additional message then explains that processing is disabled. An empty rules registry never prevents listeners from installing. If neither installation nor ready message appears, check the module's JavaScript loading errors and installed version.

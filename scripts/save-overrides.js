@@ -19,10 +19,28 @@ const SO_CACHE_LIMIT = 200;
 const soPreRolls = new Map();
 const soBridgeDelivered = new Set();
 const soBridgeAwaiting = new Map();
+let soBridgeInstalled = false;
+let soBridgeHooks = null;
 const soBridgeLog = (name,data={})=>{
-  if(game.settings.get(SO_NS,'genericDebug'))
-    console.debug('[PF1AE][SaveBridge] '+name,data);
+  // Debug controls visibility, not installation or reception.
+  try {
+    if(game.settings.get(SO_NS,'genericDebug'))
+      console.debug('[PF1AE][SaveBridge] '+name,data);
+  } catch(error) {
+    // Settings may not be registered during early initialization.
+  }
 };
+function soInstallSaveBridge() {
+  if(soBridgeInstalled)return soBridgeHooks;
+  const preHookId=Hooks.on('pf1PreActorRollSave',soStorePre);
+  const postHookId=Hooks.on('pf1ActorRollSave',soReadPost);
+  const chatHookId=Hooks.on('createChatMessage',soOnCreatedChatMessage);
+  soBridgeHooks={preHookId,postHookId,chatHookId};
+  soBridgeInstalled=true;
+  soBridgeLog('Installed PF1 save hooks',{...soBridgeHooks,
+    enabled:!!soEnabled(),genericEnabled:game.settings.get(SO_NS,'genericEnabled')});
+  return soBridgeHooks;
+}
 const soPendingRollResolutions = new Map();
 const soQueue = new Map();
 let soWriteTail=Promise.resolve();
@@ -784,8 +802,8 @@ async function soProcessRoll(data,requester,remote=false) {
  * Multiple unresolved PREs for one actor/save type are ambiguous: fail closed.
  */
 function soStorePre(actor,options,saveType) {
-  if(!soEnabled())return;
-  soBridgeLog('PRE',{actor:actor?.name,actorUuid:actor?.uuid,saveType});
+  soBridgeLog('PRE',{actor:actor?.name,actorUuid:actor?.uuid,saveType,enabled:!!soEnabled()});
+  if(!soEnabled()){soBridgeLog('PRE received but automation disabled',{actorUuid:actor?.uuid,saveType});return;}
   soBridgeLog('PRE options',options??null);
   if(!soSaveId(saveType)||!actor?.uuid)return;
   const key=actor.uuid+':'+saveType;
@@ -933,10 +951,11 @@ async function soSendNativeSave(actor,saveType,pending,result) {
   }
 }
 function soReadPost(actor,result,saveType) {
-  if(!soEnabled())return;
-  soBridgeLog('POST',{actor:actor?.name,actorUuid:actor?.uuid,saveType,
+  soBridgeLog('POST',{actor:actor?.name,actorUuid:actor?.uuid,saveType,enabled:!!soEnabled(),
+
     saveMessageId:result?.id??null,normalTotal:soMessageTotal(result),
     resultType:result?.constructor?.name??typeof result});
+  if(!soEnabled()){soBridgeLog('POST received but automation disabled',{actorUuid:actor?.uuid,saveType});return;}
   if(!soSaveId(saveType)||!actor?.uuid)return;
   const key=actor.uuid+':'+saveType;
   const queue=(soPreRolls.get(key)??[]).filter(p=>Date.now()-p.createdAt<30000);
@@ -1086,11 +1105,13 @@ Hooks.once('init',()=>{
     {scope:'world',config:false,type:Array,default:[]});
   game.settings.register(SO_NS,SO_DONE_SETTING,
     {scope:'world',config:false,type:Array,default:[]});
-  Hooks.on('pf1PreActorRollSave',soStorePre);
-  Hooks.on('pf1ActorRollSave',soReadPost);
-  Hooks.on('createChatMessage',soOnCreatedChatMessage);
+  soInstallSaveBridge();
 });
 Hooks.once('ready',()=>{
+  // Fallback for a delayed module load; never install twice.
+  soInstallSaveBridge();
+  soBridgeLog('SaveBridge ready',{installed:soBridgeInstalled,hookIds:soBridgeHooks,enabled:!!soEnabled(),
+    genericEnabled:game.settings.get(SO_NS,'genericEnabled'),genericDebug:game.settings.get(SO_NS,'genericDebug')});
   const mod=game.modules.get(SO_NS);
   if(!mod)return;
   mod.api??={};
