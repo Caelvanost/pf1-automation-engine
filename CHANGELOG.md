@@ -1,3 +1,13 @@
+## v1.12.6 — Silent, GM-authoritative multi-target automation
+
+- `effectGroups.applyGroup`, `extendGroup` and `stopGroup` requests from owners now await a GM-leader socket acknowledgement and return actual success/error; no interactive GM approval.
+- `effectGroups.approveTemplate(uuid)` can silently approve passive actor-owned templates from owner clients; compendium calls without an inferred source perform a non-authorizing preflight. `applyGroup` performs the source OWNER check and auto-validates and auto-approves eligible passive templates, including Compendium buffs.
+- Reject automatic approval of templates with executable Script Calls, macro changes or untrusted module flags unless previously GM-trusted. Preserve precise canonical fingerprint comparison for all approved templates.
+- Validate source Actor OWNER, Item/ActiveEffect provenance, source template contents and target documents on elected GM; **target ownership is not required** for source-owner initiated applications.
+- Ignore identical re-application while the original group remains active within a short duplicate-click window; keep request-ID replay suppression and existing group-key replacement behavior.
+- Keep saveOverrides and saveOutcomes pipelines unchanged; linked failure effects remain created by GM immediately and removed with the group.
+- Note: rule-specific range/visibility/hearing requirements remain the responsibility of the initiating PF1 Item Script Call.
+
 ## v1.12.5 — Save Outcomes dispatch for all source-verified native PF1 saves
 
 - Add one elected-GM `saveOutcomes.resolve(event)` dispatcher, invoked after final saveOverrides resolution for **every** verified native PF1 Action-card saving throw, including when no override applies (`changed:false`). No class-specific logic or extra rolls.
