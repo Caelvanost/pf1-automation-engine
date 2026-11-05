@@ -614,6 +614,7 @@ async function soProcessRoll(data,requester,remote=false) {
   if(!requester?.active)return;
   return soActorQueue(actor.uuid,async()=>{
     let sourceCard=null;
+    let verifiedContext=null;
     if(data.sourceMessageId) {
       // The GM re-reads persisted PF1 action-card provenance rather than
       // trusting a socket-supplied Item or Action ID.
@@ -628,6 +629,7 @@ async function soProcessRoll(data,requester,remote=false) {
           claimedItem:data.sourceItemUuid,claimedAction:data.sourceActionId});
         return null;
       }
+      verifiedContext=context;
       soLog('Source context restored',{sourceMessageId:data.sourceMessageId,
         sourceItemUuid:context.sourceItemUuid,sourceActionId:context.sourceActionId,
         saveDC:context.saveDC});
@@ -636,6 +638,15 @@ async function soProcessRoll(data,requester,remote=false) {
       const original=game.messages?.get(data.messageId);
       const saved=original?.getFlag?.(SO_NS,'saveOverride');
       if(saved && Number.isFinite(saved.effectiveTotal)) {
+        if(sourceCard && verifiedContext) {
+          try {await game.modules.get(SO_NS)?.api?.saveOutcomes?._onResolved?.({
+            targetActorUuid:actor.uuid,sourceItemUuid:verifiedContext.sourceItemUuid,
+            sourceActionId:verifiedContext.sourceActionId,
+            sourceMessageId:sourceCard.id,saveMessageId:data.messageId,
+            saveDC:verifiedContext.saveDC,saveType:data.saveType,
+            normalTotal:saved.normalTotal,effectiveTotal:saved.effectiveTotal
+          });} catch(error){console.error('[PF1AE][SaveOutcome] Replay failed',error);}
+        }
         return {
           normalTotal:saved.normalTotal,effectiveTotal:saved.effectiveTotal,
           changed:saved.effectiveTotal>saved.normalTotal,
@@ -707,6 +718,21 @@ async function soProcessRoll(data,requester,remote=false) {
         await message.setFlag?.(SO_NS,'saveOverride',metadata);
       } catch(error) {
         soLog('Could not flag original save message',{id:message.id,error:error.message});
+      }
+      // Run source-bound outcomes only after saveOverrides has produced the
+      // final effective total; no second PF1 roll is ever made.
+      if(sourceCard && verifiedContext) {
+        try {
+          await game.modules.get(SO_NS)?.api?.saveOutcomes?._onResolved?.({
+            targetActorUuid:actor.uuid,sourceItemUuid:verifiedContext.sourceItemUuid,
+            sourceActionId:verifiedContext.sourceActionId,
+            sourceMessageId:sourceCard.id,saveMessageId:message.id,
+            saveDC:verifiedContext.saveDC,saveType:data.saveType,
+            normalTotal:decision.normalTotal,effectiveTotal:decision.effectiveTotal
+          });
+        } catch(error) {
+          console.error('[PF1AE][SaveOutcome] Processing failed',error);
+        }
       }
       Hooks.callAll('pf1aeSaveOverrideResolved',actor,decision,message);
       if(sourceCard) {
