@@ -246,6 +246,8 @@ function scOnRendered(message,html) {
   html.addEventListener('click',event=>{
     const clicked=scIsSaveButton(event);
     if(!clicked)return;
+    if(game.settings.get(SC_NS,'genericDebug'))
+      console.debug('[PF1AE][SaveBridge] Saving throw requested',{handler:'native chat button',sourceMessageId:message.id});
     const actors=scAllowedActors(message,clicked);
     if(!actors.size){scLog('Save button: no identifiable target (ignored)',{messageId:message.id});return;}
     SC_CURRENT.push({context,sourceMessageId:message.id,expires:Date.now()+SC_MAX_CLICK_AGE,
@@ -303,6 +305,8 @@ function scWrap(object,key,label) {
   if(typeof original!=='function'||original.__pf1aeWrapped)return false;
   const wrapped=function(...args){
     scLog(label+' intercepted',{argumentsCount:args.length});
+    if(game.settings.get(SC_NS,'genericDebug'))
+      console.debug('[PF1AE][SaveBridge] Saving throw requested',{handler:label,argumentsCount:args.length});
     try {scTrackNativeCall(label,args);}
     catch(error){scLog('Native handler context tracing failed',{error:error.message});}
     return original.apply(this,args);
@@ -321,8 +325,9 @@ function scInstallNativeWrappers() {
   // Action chat handler. Do not guess parameters: delegate ALL original args.
   const old=globalThis.pf1?.utils?.chat;
   const newActions=globalThis.pf1?.chat?.Actions;
-  const matched=scWrap(old,'targetSavingThrowClick','targetSavingThrowClick') ||
-    scWrap(newActions,'onRollSave','Actions.onRollSave');
+  const legacyWrapped=scWrap(old,'targetSavingThrowClick','targetSavingThrowClick');
+  const actionWrapped=scWrap(newActions,'onRollSave','Actions.onRollSave');
+  const matched=legacyWrapped||actionWrapped;
   if(!matched)scLog('No exported native save handler to wrap: reference hook remains active');
 }
 function scRestoreNativeWrappers() {
