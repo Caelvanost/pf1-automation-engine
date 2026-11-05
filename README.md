@@ -1,4 +1,4 @@
-# PF1 Automation Engine — v1.12.6
+# PF1 Automation Engine — v1.12.7
 
 **Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
