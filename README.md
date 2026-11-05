@@ -1,4 +1,4 @@
-# PF1 Automation Engine — v1.12.1
+# PF1 Automation Engine — v1.12.2
 
 **Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
@@ -17,6 +17,10 @@ The GM adds JavaScript to the **native PF1 Script Calls** of the **Spell** or **
 - **GM approval, persistent registries, controlled player requests and one elected GM** when multiple GMs are connected.
 
 No spell catalogue, class-specific handler, or exhaustive rule database is bundled. An ordinary GM can configure **only the spells/features actually needed in their campaign**, without modifying module source code.
+
+## Distraction (v1.12.2)
+
+Distraction can use the existing `saveOverrides.register()` API with `appliesTo: {magical:true,anyOf:["pattern","figment"]}` and `requiresSight:true`. See [Distraction API and testing](docs/DISTRACTION.md). This release does not add persistent-effect tracking or automatic repeat saves.
 
 ## English documentation
 
