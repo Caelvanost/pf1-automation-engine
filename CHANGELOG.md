@@ -1,3 +1,12 @@
+## v1.12.2 — Generic Distraction/illusion save-override support (candidate)
+
+- Preserve the validated v1.12.1 native PF1 action-card save workflow.
+- Add generic `pattern` and `figment` descriptors to `anyOf`/`allOf`, extracting `SpellModel.subschool` and respecting explicit illusion school `ill`; fall back to explicit Item tags where structured subschools are unavailable.
+- Check sight **from the saving Actor towards the providing Actor** using the Foundry v13 polygon backend; reject blinded targets, blocked lines of sight and unavailable collision data. Self-target sight is allowed unless blind.
+- Keep feet/metres conversion, dynamic actor flags, the linked `effectGroups` lifecycle and highest-result winner intact.
+- No repeat-save scheduler or persistent-effect tracking.
+- Requires live Foundry testing with an illusion Pattern and Figment source and multiple clients.
+
 ## v1.12.1 — Native PF1 source-reference integration hotfix (experimental)
 
 - Restore source provenance from PF1 `rollOptions.reference` during `pf1PreActorRollSave`, using the actual originating Action ChatMessage and its `itemSource`, `actionSource`, `system.save.type` and `system.save.dc`. This no longer depends on a browser click/render hook.
