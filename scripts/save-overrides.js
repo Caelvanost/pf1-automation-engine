@@ -779,54 +779,59 @@ async function soProcessRoll(data,requester,remote=false) {
       saveDC:Number.isFinite(data.saveDC)?data.saveDC:null};
   });
 }
+/**
+ * PF1 PRE provides options; POST supplies its final ChatMessagePF.
+ * Multiple unresolved PREs for one actor/save type are ambiguous: fail closed.
+ */
 function soStorePre(actor,options,saveType) {
-  if(!soEnabled()||!soSaveId(saveType)||!actor?.uuid)return;
+  if(!soEnabled())return;
+  soBridgeLog('PRE',{actor:actor?.name,actorUuid:actor?.uuid,saveType});
+  soBridgeLog('PRE options',options??null);
+  if(!soSaveId(saveType)||!actor?.uuid)return;
   const key=actor.uuid+':'+saveType;
   const bridge=game.modules.get(SO_NS)?.api?.saveContext;
-  // PF1's own onRollSave/targetSavingThrowClick passes reference: cm.uuid
-  // through actor.rollSavingThrow and pf1PreActorRollSave rollOptions.
-  // This is the primary path: persisted source per roll, no DOM dependency.
   const nativeContext=!options?.pf1aeSave
     ?bridge?._fromNativeSaveOptions(actor,saveType,options):null;
-  // Legacy DOM fallback ONLY for editions with no reference property.
-  // An explicit sheet save has no reference and no native card click.
   const clickContext=!options?.pf1aeSave && !options?.reference
     ?bridge?._consumeForNativeSave(actor,saveType):null;
   const restored=nativeContext??clickContext;
-  const extra=options?.pf1aeSave??(restored ?{
-    sourceItemUuid:restored.sourceItemUuid,
-    sourceMessageId:restored.sourceMessageId,
-    sourceActionId:restored.sourceActionId,
-    saveDC:restored.saveDC
+  const extra=options?.pf1aeSave??(restored?{
+    sourceItemUuid:restored.sourceItemUuid,sourceMessageId:restored.sourceMessageId,
+    sourceActionId:restored.sourceActionId,saveDC:restored.saveDC
   }:null);
-  // An unannotated roll breaks the pending annotated sequence, including
-  // a prior roll that was cancelled by PF1 before its post hook.
-  if(!soText(extra?.sourceItemUuid)) {
-    soPreRolls.delete(key);
-    return;
-  }
-  const queue=(soPreRolls.get(key)??[]).filter(p=>
-    Date.now()-p.createdAt<30000);
-  soBridgeLog('Saving throw requested',{
-    actorUuid:actor.uuid,saveType,sourceMessageId:extra.sourceMessageId,
-    sourceItemUuid:extra.sourceItemUuid,sourceActionId:extra.sourceActionId,saveDC:extra.saveDC
-  });
+  const requestId=foundry.utils.randomID();
+  const queue=(soPreRolls.get(key)??[]).filter(p=>Date.now()-p.createdAt<30000);
   queue.push({
-    sourceItemUuid:extra.sourceItemUuid,createdAt:Date.now(),
-    candidateMessages:[],actorId:actor.id,tokenId:options.token?.id??actor.token?.id??null,
-    sourceMessageId:extra.sourceMessageId??null,
-    sourceActionId:extra.sourceActionId??null,
-    saveDC:Number.isFinite(extra.saveDC)?extra.saveDC:null,
-    helper:extra.helper===true,
-    tokenUuid:options.token?.uuid??actor.token?.uuid??null
+    requestId,createdAt:Date.now(),actorId:actor.id,
+    sourceItemUuid:extra?.sourceItemUuid??null,
+    sourceMessageId:extra?.sourceMessageId??null,
+    sourceActionId:extra?.sourceActionId??null,
+    saveDC:Number.isFinite(extra?.saveDC)?extra.saveDC:null,
+    candidateMessages:[],tokenId:options?.token?.id??actor.token?.id??null,
+    tokenUuid:options?.token?.uuid??actor.token?.uuid??null,
+    helper:extra?.helper===true
   });
   soPreRolls.set(key,queue.slice(-20));
+  // PF1 cancelled rolls produce no POST; expire stale context automatically.
+  const timeout=setTimeout(()=>{
+    const active=soPreRolls.get(key)??[];
+    const remaining=active.filter(p=>p.requestId!==requestId);
+    if(remaining.length)soPreRolls.set(key,remaining);
+    else soPreRolls.delete(key);
+    soBridgeLog('PRE expired without POST',{requestId,actorUuid:actor.uuid,saveType});
+  },30000);
+  timeout.unref?.();
+  queue[queue.length-1].timer=timeout;
+  if(extra?.sourceMessageId && soText(extra?.sourceItemUuid))
+    soBridgeLog('Source context restored',{requestId,actorUuid:actor.uuid,
+      sourceMessageId:extra.sourceMessageId,sourceItemUuid:extra.sourceItemUuid,
+      sourceActionId:extra.sourceActionId,saveDC:extra.saveDC});
+  else soBridgeLog('PRE has no verified source card; manual save ignored',{
+    requestId,actorUuid:actor.uuid,saveType});
 }
 /**
- * Correlates a native PF1 save result with the real ChatMessage. If d20Roll
- * returns only a roll data object, require structured save metadata, matching
- * author/speaker, and an unambiguous pending native action-card save. Never
- * inspect chat text or infer the source Item from the roll flavor.
+ * PF1 11.11 normally returns ChatMessagePF. A fallback for a separate
+ * createChatMessage event requires structured metadata, never chat text.
  */
 function soStructuredSaveType(message) {
   const candidates=[
@@ -864,11 +869,14 @@ function soOnCreatedChatMessage(message,_options,userId) {
     messageId:message.id,saveType,actorId:message.speaker.actor});
 }
 function soNativeMessageId(result) {
-  for(const c of [result,result?.message,result?.chatMessage,result?.chat?.message]){
+  if(soText(result?.id,100) && (result.documentName==='ChatMessage' ||
+      (result?.rolls?.length && result?.constructor?.name==='ChatMessagePF')))
+    return result.id;
+  const candidates=[result?.message,result?.chatMessage,result?.chat?.message];
+  for(const c of candidates) {
     if(c?.documentName==='ChatMessage'&&soText(c.id,100))return c.id;
     if(soText(c?.id,100)&&game.messages?.get(c.id)?.documentName==='ChatMessage')return c.id;
-    if(soText(c?.uuid)&&c.uuid.startsWith('ChatMessage.'))
-      return c.uuid.slice('ChatMessage.'.length);
+    if(soText(c?.uuid)&&c.uuid.startsWith('ChatMessage.'))return c.uuid.slice('ChatMessage.'.length);
   }
   return null;
 }
@@ -906,7 +914,7 @@ async function soSendNativeSave(actor,saveType,pending,result) {
       actorUuid:actor.uuid,saveType,saveMessageId:messageId,normalTotal:soMessageTotal(message)});
     const payload={
       channel:SO_CHANNEL,op:'roll',userId:game.user.id,
-      requestId:foundry.utils.randomID(),actorUuid:actor.uuid,
+      requestId:pending.requestId,actorUuid:actor.uuid,
       saveType,sourceItemUuid:pending.sourceItemUuid,
       sourceMessageId:pending.sourceMessageId,sourceActionId:pending.sourceActionId,
       saveDC:pending.saveDC,targetTokenUuid:pending.tokenUuid,messageId
@@ -925,15 +933,28 @@ async function soSendNativeSave(actor,saveType,pending,result) {
   }
 }
 function soReadPost(actor,result,saveType) {
-  if(!soEnabled()||!soSaveId(saveType))return;
-  const key=actor?.uuid+':'+saveType,queue=soPreRolls.get(key)??[];
-  const pending=queue.shift();
-  if(!queue.length)soPreRolls.delete(key);
-  if(!pending||Date.now()-pending.createdAt>30000){
-    soBridgeLog('Save post-hook lacks native source context',{actorUuid:actor?.uuid,saveType});
+  if(!soEnabled())return;
+  soBridgeLog('POST',{actor:actor?.name,actorUuid:actor?.uuid,saveType,
+    saveMessageId:result?.id??null,normalTotal:soMessageTotal(result),
+    resultType:result?.constructor?.name??typeof result});
+  if(!soSaveId(saveType)||!actor?.uuid)return;
+  const key=actor.uuid+':'+saveType;
+  const queue=(soPreRolls.get(key)??[]).filter(p=>Date.now()-p.createdAt<30000);
+  soPreRolls.delete(key);
+  for(const pending of queue)clearTimeout(pending.timer);
+  if(queue.length!==1){
+    soBridgeLog('POST has no unique PRE; ignored safely',{
+      actorUuid:actor.uuid,saveType,pendingCount:queue.length});
     return;
   }
+  const pending=queue[0];
   if(pending.helper)return;
+  if(!soText(pending.sourceMessageId) || !soText(pending.sourceItemUuid) ||
+      !soText(pending.sourceActionId) || !Number.isFinite(pending.saveDC)){
+    soBridgeLog('POST has no verified action-card source; manual save ignored',{
+      actorUuid:actor.uuid,saveType,requestId:pending.requestId});
+    return;
+  }
   void soSendNativeSave(actor,saveType,pending,result).catch(error=>
     console.error('[PF1AE][SaveBridge] Native save delivery failed',error));
 }

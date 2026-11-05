@@ -1,4 +1,14 @@
-## v1.12.7 — Native PF1 SaveBridge post-roll correlation (candidate)
+## v1.12.8 — Native PF1 PRE/POST saving throw lifecycle bridge
+
+- Log native `pf1PreActorRollSave` and `pf1ActorRollSave` for every enabled save, including sheet saves.
+- Read the native `ChatMessagePF` from the POST hook rather than guessing the last chat message.
+- Pair PRE and POST only with one unambiguous pending save for the Actor and save type; reject overlapping ambiguous rolls.
+- Keep Action ChatMessage provenance through structured `rollOptions.reference` / `saveContext`; never trigger outcomes on manual sheet rolls.
+- Dispatch the effective total to the elected GM and `saveOutcomes` even when no override applies.
+- Preserve Countersong and Distraction resolution, deduplication and existing native PF1 card display.
+- Simulated integration tests passed; runtime validation in PF1 11.11 remains required.
+
+## v1.12.8 — Native PF1 SaveBridge post-roll correlation (candidate)
 
 - Add explicit SaveBridge diagnostics at native save click, pre-save hook, post-save and authoritative GM resolution.
 - Correlate native PF1 d20-roll results without directly returned ChatMessage using structured saving throw metadata, verified author and speaker, and one pending source-card save.

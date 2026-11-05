@@ -1,4 +1,4 @@
-# PF1 Automation Engine — v1.12.7
+# PF1 Automation Engine — v1.12.8
 
 **Foundry Virtual Tabletop 13.351 · Pathfinder 1st Edition system 11.11**
 
@@ -145,3 +145,7 @@ Some historical documents retain their original version headers; the English gui
 The Windows build script is `build_release.ps1`. GitHub Actions runs the Node regression suite and produces an installable Foundry ZIP on pull requests or manual workflow runs. Developers should keep class, spell, ancestry and archetype rules **out of the Engine**; those belong in actor-owned PF1 Item scripts and templates.
 
 **Compatibility:** target versions are Foundry v13.351 and PF1 11.11. The Engine was tested in a live world for the v1.8.0 duration and turn features. Native rest hooks in v1.9.0 require live-world acceptance testing, especially player-initiated rests and two-GM handoff. Other combinations and exceptional edge cases should be validated before use in a live campaign.
+
+## Native PF1 SaveBridge v1.12.8
+
+The bridge hooks `pf1PreActorRollSave(actor,options,saveType)` and `pf1ActorRollSave(actor,ChatMessagePF,saveType)`. Enable generic debug to see `[PF1AE][SaveBridge] PRE`, `PRE options`, `POST` and `Source context restored`. Only an explicitly linked source-card roll is forwarded to `saveOutcomes`; a manual sheet save remains unannotated. Simultaneous ambiguous same-actor/same-save-type rolls fail closed.
