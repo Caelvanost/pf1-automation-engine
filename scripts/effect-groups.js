@@ -356,6 +356,8 @@ async function effectExpireGroupInternal(groupId, fromTimer=false, preserveSaveO
     try {
       await game.modules.get(EFFECT_NS)?.api?.saveOverrides?._onGroupRemoved?.(
         session.sourceUuid,session.key);
+      await game.modules.get(EFFECT_NS)?.api?.saveOutcomes?._onGroupRemoved?.(
+        session.sourceUuid,session.key);
     } catch(error) {
       console.warn(EFFECT_NS + ' | Save override cleanup deferred',error);
     }
@@ -484,6 +486,78 @@ async function effectApplyInternal(data,requester,socketOrigin=false) {
     throw error;
   }
 }
+/**
+ * Internal elected-GM service: add one source-specific, durationless AE to a
+ * live managed group. All mutations are serialized with group expiration.
+ * External requests cannot invoke this through the group's socket channel.
+ */
+async function effectCreateLinkedOutcome(data) {
+  effectRequireLeader();
+  if (!effectEnabled() || !data || !effectValidKey(data.key) ||
+      typeof data.sourceUuid !== 'string' ||
+      typeof data.targetUuid !== 'string' ||
+      typeof data.outcomeId !== 'string' || data.outcomeId.length>150) {
+    throw Error('Invalid linked outcome request.');
+  }
+  return effectQueue(async()=>{
+    const group=Object.values(effectGroups()).find(g=>g.id===data.groupId &&
+      g.sourceUuid===data.sourceUuid && g.key===data.key && !g.pendingCleanup);
+    if(!group) return {applied:false,reason:'parent group no longer active'};
+    const target=await effectResolveActor(data.targetUuid);
+    if(!target) return {applied:false,reason:'target Actor no longer available'};
+    // Deduplicate by the actual tracked document, surviving F5 and GM handoff.
+    for(const copy of group.copies??[]) {
+      if(copy.actorUuid!==target.uuid)continue;
+      const doc=effectDocumentFor(target,copy);
+      if(doc && (doc.getFlag?.(EFFECT_NS,'outcomeId')===data.outcomeId ||
+          (data.ruleId && doc.getFlag?.(EFFECT_NS,'outcomeRuleId')===data.ruleId)))
+        return {applied:true,duplicate:true,groupId:group.id,effectUuid:doc.uuid};
+    }
+    const raw=data.effect;
+    if(!raw || typeof raw.label!=='string' || raw.label.length>120 ||
+       typeof raw.img!=='string' || raw.img.length>500)throw Error('Invalid outcome effect.');
+    // PF1 v13 ActiveEffect is actor-embedded; avoid toggling the global
+    // 'fascinated' status because unrelated sources may supply it too.
+    const flags={[EFFECT_NS]:{
+      effectGroupId:group.id,sourceUuid:group.sourceUuid,key:group.key,
+      outcomeId:data.outcomeId,outcomeRuleId:data.ruleId,sourceItemUuid:data.sourceItemUuid,
+      sourceActionId:data.sourceActionId
+    }};
+    // Only attach an official PF1 status when the current installed system
+    // advertises that exact condition. Never toggle a global condition:
+    // deleting this source-specific AE leaves other providers untouched.
+    const registry=globalThis.pf1?.registry?.conditions;
+    const official=registry instanceof Map || registry instanceof Set
+      ? registry.has('fascinated') :
+      (registry && typeof registry==='object' &&
+        Object.prototype.hasOwnProperty.call(registry,'fascinated'));
+    const requestedStatus=data.effect.statusId==='fascinated' && official
+      ? ['fascinated'] : [];
+    const created=(await target.createEmbeddedDocuments('ActiveEffect',[{
+      name:raw.label,img:raw.img,icon:raw.img,disabled:false,
+      origin:data.sourceItemUuid,changes:[],statuses:requestedStatus,flags
+    }],{[EFFECT_NS]:{skip:true}}))?.[0];
+    if(!created)throw Error('Linked ActiveEffect creation failed.');
+    try {
+      const updated={...effectGroups()};
+      const current=updated[group.id];
+      if(!current || current.pendingCleanup)throw Error('Parent group expired during effect creation.');
+      const copies=[...(current.copies??[]),{
+        actorUuid:target.uuid,documentType:'ActiveEffect',documentId:created.id
+      }];
+      updated[group.id]={...current,copies};
+      await game.settings.set(EFFECT_NS,GROUPS_SETTING,updated);
+    }catch(error){
+      // If ledger persistence fails, never leave an orphan effect.
+      try {await created.delete({[EFFECT_NS]:{skip:true}});}
+      catch(cleanupError){console.error(`${EFFECT_NS} | Linked effect rollback failed`,cleanupError);}
+      throw error;
+    }
+    effectDebug('linked-outcome-created',{groupId:group.id,targetUuid:target.uuid,
+      effectUuid:created.uuid,outcomeId:data.outcomeId});
+    return {applied:true,duplicate:false,groupId:group.id,effectUuid:created.uuid};
+  });
+}
 /** Extend the existing group's timer without touching any beneficiary copies. */
 async function effectExtendInternal(data,requester,socketOrigin=false) {
   if (!effectEnabled() || !effectIsLeader()) throw Error('Le MJ responsable est indisponible.');
@@ -593,6 +667,7 @@ Hooks.once('ready',()=>{
     revokeTemplate:effectRevokeTemplate,
     listApprovedTemplates:()=>Object.keys(effectApprovals()),
     listGroups:()=>foundry.utils.deepClone(Object.values(effectGroups())),
+    _createLinkedOutcome:effectCreateLinkedOutcome, // GM internal; serial with expiry
     expireGroup:effectExpireGroup,
     canExpireGroup:effectCanExpireGroup,
     validateGroupTimer:effectValidateGroupTimer,
