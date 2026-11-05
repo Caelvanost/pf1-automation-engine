@@ -1,3 +1,10 @@
+## v1.12.4 — Save Outcomes PF1 ItemAction lookup and optional status fix
+
+- Prefer the native `ItemPF.actions` Collection over legacy `system.actions` in `saveOutcomes.register()`; retain the actual `ItemAction.id` for native Action-card correlation.
+- Infer `sourceActionId` only for Items with exactly one Action; still require the caller's explicit ID when multiple Actions exist.
+- Accept missing or `null` `onFailure.statusId`; preserve optional official `fascinated` status and fallback to source-specific ActiveEffect when not registered by PF1.
+- Add positive/negative regression tests for single/multiple Actions and status ID validation. No changes to the saving throw resolution, Countersong or Distraction pipelines.
+
 ## v1.12.3 — Generic source-bound save outcomes (experimental)
 
 - Add `api.saveOutcomes.register/unregister/list` for exact Item+Action+target save consequences, using the *verified* native PF1 Action card's DC and `saveOverrides.effectiveTotal`.

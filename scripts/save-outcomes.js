@@ -29,11 +29,18 @@ const outClone=value=>foundry.utils.deepClone(value);
 function outActor(value){return value?.documentName==='Actor'?value:value?.actor??null;}
 function outRuleId(actor,key){return actor+':'+key;}
 function outActions(item){
-  const actions=item?.system?.actions;
+  // PF1 11.11 exposes ItemAction documents through ItemPF.actions,
+  // a Foundry Collection. Its values carry the real ItemAction.id used
+  // by ChatMessagePF.actionSource and saveContext.
+  const actions=item?.actions ?? item?.system?.actions;
   if(!actions)return [];
   if(typeof actions.values==='function')return [...actions.values()];
   if(Array.isArray(actions))return actions;
-  return Object.entries(actions).map(([key,value])=>({...value,id:value?.id??key}));
+  // Legacy serialized action dictionaries may be keyed by the action ID.
+  // Never replace an existing ItemAction.id with a Collection key.
+  return Object.entries(actions).map(([key,value])=>({
+    ...value,id:value?.id??value?._id??key
+  }));
 }
 async function outValidate(payload,requester,remote=false){
   if(!outEnabled()||!outLeader())throw Error('Elected GM required.');
@@ -58,7 +65,7 @@ async function outValidate(payload,requester,remote=false){
       !outStr(data.onFailure.name,120) || !outStr(data.onFailure.img,500))
     throw Error('onFailure must specify linkedBuff with name and img.');
   if(data.onSuccess!==undefined)throw Error('onSuccess is not implemented in this version.');
-  if(data.onFailure.statusId!==undefined && data.onFailure.statusId!=='fascinated')
+  if(data.onFailure.statusId!=null && data.onFailure.statusId!=='fascinated')
     throw Error('Only opt-in official fascinated status is supported.');
   const targets=[...new Set(data.targets)];
   for(const uuid of targets){
