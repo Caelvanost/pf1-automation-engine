@@ -229,6 +229,8 @@ async function outResolved(event){
       result.push(record);continue;
     }
     outLog('Rule matched: '+rule.key,{groupId:group.id,target:target.name});
+    outLog('Applying linked buff automatically',{rule:rule.key,target:target.name,
+      effect:rule.onFailure.name,groupId:group.id});
     const applied=await game.modules.get(OUT_NS)?.api?.effectGroups?._createLinkedOutcome?.({
       sourceUuid:rule.actorUuid,groupId:group.id,key:rule.groupKey,
       targetUuid:target.uuid,sourceItemUuid:rule.sourceItemUuid,
