@@ -703,7 +703,7 @@ async function effectCreateTimedOutcome(data){
     }
     const duration=raw.duration,isCombat=!!game.combat?.started;
     const sourceCombatants=isCombat
-      ?[...game.combat.combatants].filter(c=>c.actor?.uuid===source.uuid):[];
+      ?[...game.combat.combatants.values()].filter(c=>c.actor?.uuid===source.uuid):[];
     if(isCombat&&duration.expire!=='elapsed'&&sourceCombatants.length!==1)
       return {applied:false,reason:'Source combatant missing or ambiguous; GM adjudication required',requiresGM:true};
     const timerId='outcome:'+foundry.utils.randomID();
