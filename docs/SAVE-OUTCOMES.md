@@ -83,3 +83,28 @@ Enable the module's `genericDebug` setting. Key events:
 ```
 
 The existing effect-group engine logs creation/deletion of group-owned documents. For diagnosis, inspect the save message's `saveOutcomes` flag and the exact group's `copies` array.
+
+## v1.13.0 — Generic timed native conditions
+
+`onFailure.statusId` accepts a condition identifier from the **live** `pf1.registry.conditions`. The existing historical `fascinated` fallback remains. PF1 v11.11 uses `stunned` for the condition and `stun` for its immunity category. The system's `actor.getConditionImmunities()` resolves the latter; absent or unusable immunity data causes new conditions to be refused with a warning for GM adjudication.
+
+```js
+await api.saveOutcomes.register({
+  actor: monk, key: "stunning-fist", groupKey: "stunning-fist",
+  sourceItemUuid: item.uuid, sourceActionId: saveAction.id,
+  targets: [target.actor.uuid],
+  onFailure: {
+    type: "linkedBuff",
+    name: `Étourdi — ${monk.name}`,
+    img: item.img,
+    statusId: "stunned",
+    duration: { rounds: 1, expire: "sourceTurnStart" }
+  }
+});
+```
+
+When `duration` is provided, this is an **independent effect** and no active parent `effectGroups` group is required. On failure, the elected GM creates a source-specific ActiveEffect and schedules its deletion with `generic.scheduleTurn` at the **start of the source combatant's next turn**. For a timed effect, `groupKey` remains a rule-identity namespace; `groupId` may be omitted. On success, no effect is created. Each verified target's pending registration is consumed once resolved. A duplicate native save message is still guarded by the ChatMessage's saveOutcomes flag and the effect's outcomeId.
+
+A duration may be `{rounds:1,expire:"sourceTurnStart"}`, `{rounds:N,expire:"sourceTurnEnd"}`, `{rounds:N,expire:"elapsed"}`, or `{seconds:N,expire:"elapsed"}`. Outside combat, round duration falls back to elapsed Foundry world time at six seconds per round; the world clock must advance.
+
+The module does **not** perform or confirm melee attacks, damage, resource expenditures or extra actions. The source PF1 Script Call must do those checks and register the rule **before** publishing the native Fortitude save Action card, using `item.use({actionId: saveAction.id})` when its system workflow supports that call. Resource consumption must be handled once by the Script Call. A successful hit is not inferred from the save card.
