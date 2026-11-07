@@ -19,6 +19,7 @@ const outLog=(event,details={})=>{
   if(game.settings.get(OUT_NS,'genericDebug'))console.debug('[PF1AE][SaveOutcome] '+event,details);
 };
 const outLedger=()=>game.settings.get(OUT_NS,OUT_REG)??[];
+const outTimed=(rule)=>!!rule.onFailure?.duration;
 const outQueue=fn=>{
   const next=outTail.catch(()=>{}).then(fn);
   outTail=next.catch(()=>{});
@@ -65,8 +66,30 @@ async function outValidate(payload,requester,remote=false){
       !outStr(data.onFailure.name,120) || !outStr(data.onFailure.img,500))
     throw Error('onFailure must specify linkedBuff with name and img.');
   if(data.onSuccess!==undefined)throw Error('onSuccess is not implemented in this version.');
-  if(data.onFailure.statusId!=null && data.onFailure.statusId!=='fascinated')
-    throw Error('Only opt-in official fascinated status is supported.');
+  const status=data.onFailure.statusId;
+  if(status!=null && (!outStr(status,80) || !/^[a-z][a-z0-9_-]*$/.test(status)))
+    throw Error('Invalid statusId.');
+  const official=globalThis.pf1?.registry?.conditions;
+  const known=status==null || (typeof official?.has==='function' ? official.has(status) :
+    Object.prototype.hasOwnProperty.call(official??{},status));
+  // Legacy Fascination: preserve the source-specific AE even without a native status.
+  if(!known && status!=='fascinated')throw Error('Not an official PF1 condition: '+status);
+  const rawDuration=data.onFailure.duration;
+  let duration=null;
+  if(rawDuration!=null){
+    if(typeof rawDuration!=='object'||Array.isArray(rawDuration))
+      throw Error('Duration must be an object.');
+    const rounds=rawDuration.rounds,seconds=rawDuration.seconds;
+    if((rounds==null)===(seconds==null) ||
+       (rounds!=null && (!Number.isSafeInteger(rounds)||rounds<1||rounds>10000)) ||
+       (seconds!=null && (!Number.isSafeInteger(seconds)||seconds<1||seconds>31536000)))
+      throw Error('Specify exactly one positive duration: {rounds} or {seconds}.');
+    const expire=rawDuration.expire??(rounds!=null?'sourceTurnStart':'elapsed');
+    if(!['sourceTurnStart','sourceTurnEnd','elapsed'].includes(expire) ||
+        (seconds!=null && expire!=='elapsed'))
+      throw Error('Invalid duration expire mode.');
+    duration={...(rounds!=null?{rounds}:{seconds}),expire};
+  }
   const targets=[...new Set(data.targets)];
   for(const uuid of targets){
     const t=await fromUuid(uuid);
@@ -84,7 +107,7 @@ async function outValidate(payload,requester,remote=false){
     sourceMessageId:data.sourceMessageId??null,
     sourceItemUuid:item.uuid,sourceActionId:actionId,
     targets,onFailure:{type:'linkedBuff',name:data.onFailure.name,img:data.onFailure.img,
-      ...(data.onFailure.statusId?{statusId:data.onFailure.statusId}:{})}
+      ...(status?{statusId:status}:{}),...(duration?{duration}:{})}
   };
 }
 async function outRegister(payload,requester,remote=false){
@@ -179,6 +202,18 @@ async function outGroupRemoved(actorUuid,groupKey){
     }
   });
 }
+/** A timed rule is consumed once per target, independent of a parent group. */
+async function outConsumeTimedTarget(rule,targetUuid){
+  return outQueue(async()=>{
+    const updated=outLedger().flatMap(r=>{
+      if(r.id!==rule.id)return [r];
+      const targets=r.targets.filter(uuid=>uuid!==targetUuid);
+      return targets.length?[{...r,targets}]:[];
+    });
+    await game.settings.set(OUT_NS,OUT_REG,updated);
+    outLog('Timed outcome target consumed',{id:rule.id,targetUuid});
+  });
+}
 /** No roll and no re-evaluation of spell DC. Call only from the GM resolver. */
 async function outResolved(event){
   if(!outEnabled()||!outLeader())return;
@@ -217,7 +252,12 @@ async function outResolved(event){
     const groups=game.modules.get(OUT_NS)?.api?.effectGroups?.listGroups?.()??[];
     const group=groups.find(g=>g.sourceUuid===rule.actorUuid&&g.key===rule.groupKey&&
       !g.pendingCleanup&&(!rule.groupId||g.id===rule.groupId));
-    if(!group){outLog('Skipped: parent group inactive',{rule:rule.key});continue;}
+    if(!group && !outTimed(rule)){
+      outLog('Skipped: parent group inactive',{rule:rule.key});continue;
+    }
+    if(outTimed(rule)&&rule.groupId&&!group){
+      outLog('Skipped: explicitly bound parent group inactive',{rule:rule.key});continue;
+    }
     const prior=message.getFlag?.(OUT_NS,'saveOutcomes')??{};
     if(prior[rule.id]?.processed){
       result.push({...prior[rule.id],duplicate:true});continue;
@@ -226,31 +266,38 @@ async function outResolved(event){
       const record={processed:true,success:true,ruleId:rule.id};
       await message.setFlag(OUT_NS,'saveOutcomes',{...prior,[rule.id]:record});
       outLog('No failure effect applied',{rule:rule.key,target:target.name});
-      result.push(record);continue;
+      result.push(record);
+      if(outTimed(rule))await outConsumeTimedTarget(rule,target.uuid);
+      continue;
     }
-    outLog('Rule matched: '+rule.key,{groupId:group.id,target:target.name});
+    outLog('Rule matched: '+rule.key,{groupId:group?.id??null,target:target.name});
     outLog('Applying linked buff automatically',{rule:rule.key,target:target.name,
-      effect:rule.onFailure.name,groupId:group.id});
-    const applied=await game.modules.get(OUT_NS)?.api?.effectGroups?._createLinkedOutcome?.({
-      sourceUuid:rule.actorUuid,groupId:group.id,key:rule.groupKey,
+      effect:rule.onFailure.name,groupId:group?.id??null});
+    const effectData={
+      sourceUuid:rule.actorUuid,groupId:group?.id??null,key:rule.groupKey,
       targetUuid:target.uuid,sourceItemUuid:rule.sourceItemUuid,
       sourceActionId:rule.sourceActionId,
       outcomeId:event.saveMessageId+':'+rule.id,ruleId:rule.id,
       effect:{label:rule.onFailure.name,img:rule.onFailure.img,
-        statusId:rule.onFailure.statusId??null}
-    });
+        statusId:rule.onFailure.statusId??null,duration:rule.onFailure.duration??null}
+    };
+    const groupApi=game.modules.get(OUT_NS)?.api?.effectGroups;
+    const applied=outTimed(rule)
+      ?await groupApi?._createTimedOutcome?.(effectData)
+      :await groupApi?._createLinkedOutcome?.(effectData);
     if(!applied?.applied){
       outLog('Effect not applied',{rule:rule.key,reason:applied?.reason??'unknown'});
       continue;
     }
     const record={processed:true,success:false,ruleId:rule.id,
-      effectUuid:applied.effectUuid,groupId:group.id};
+      effectUuid:applied.effectUuid,groupId:group?.id??null};
     await message.setFlag(OUT_NS,'saveOutcomes',{
       ...(message.getFlag?.(OUT_NS,'saveOutcomes')??{}),[rule.id]:record
     });
     outLog('Linked effect created',{rule:rule.key,effect:rule.onFailure.name,
       target:target.name,effectUuid:applied.effectUuid,duplicate:applied.duplicate});
     result.push(record);
+    if(outTimed(rule))await outConsumeTimedTarget(rule,target.uuid);
   }
   return {processed:!!result.length,success,results:result};
 }
