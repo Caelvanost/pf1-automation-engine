@@ -576,6 +576,35 @@ async function effectApplyInternal(data,requester,socketOrigin=false) {
     throw error;
   }
 }
+/** Only native PF1 condition identifiers are applied. */
+function effectOfficialStatus(statusId){
+  if(!statusId)return null;
+  const registry=globalThis.pf1?.registry?.conditions;
+  const official=typeof registry?.has==='function'?registry.has(statusId):
+    Object.prototype.hasOwnProperty.call(registry??{},statusId);
+  if(!official){
+    if(statusId==='fascinated')return null;
+    throw Error('PF1 condition not registered: '+statusId);
+  }
+  return statusId;
+}
+function effectCheckStatusImmunity(target,statusId){
+  if(!statusId)return {allowed:true};
+  if(typeof target.getConditionImmunities!=='function'){
+    if(statusId==='fascinated')return {allowed:true};
+    return {allowed:false,reason:'PF1 immunity API unavailable; GM adjudication required'};
+  }
+  try{
+    const immune=target.getConditionImmunities();
+    if(typeof immune?.has!=='function' && !Array.isArray(immune))
+      return {allowed:false,reason:'Unrecognized PF1 immunity data; GM adjudication required'};
+    if(immune.has?.(statusId)||immune.includes?.(statusId))
+      return {allowed:false,reason:'Target immune to '+statusId};
+    return {allowed:true};
+  }catch(error){
+    return {allowed:false,reason:'Cannot verify PF1 immunities: '+error.message};
+  }
+}
 /**
  * Internal elected-GM service: add one source-specific, durationless AE to a
  * live managed group. All mutations are serialized with group expiration.
@@ -616,13 +645,13 @@ async function effectCreateLinkedOutcome(data) {
     // Only attach an official PF1 status when the current installed system
     // advertises that exact condition. Never toggle a global condition:
     // deleting this source-specific AE leaves other providers untouched.
-    const registry=globalThis.pf1?.registry?.conditions;
-    const official=registry instanceof Map || registry instanceof Set
-      ? registry.has('fascinated') :
-      (registry && typeof registry==='object' &&
-        Object.prototype.hasOwnProperty.call(registry,'fascinated'));
-    const requestedStatus=data.effect.statusId==='fascinated' && official
-      ? ['fascinated'] : [];
+    const status=effectOfficialStatus(data.effect.statusId);
+    const permission=effectCheckStatusImmunity(target,status);
+    if(!permission.allowed){
+      console.warn('[PF1AE][SaveOutcome] Condition not applied:',permission.reason,target.name);
+      return {applied:false,reason:permission.reason,requiresGM:true};
+    }
+    const requestedStatus=status?[status]:[];
     const created=(await target.createEmbeddedDocuments('ActiveEffect',[{
       name:raw.label,img:raw.img,icon:raw.img,disabled:false,
       origin:data.sourceItemUuid,changes:[],statuses:requestedStatus,flags
@@ -646,6 +675,70 @@ async function effectCreateLinkedOutcome(data) {
     effectDebug('linked-outcome-created',{groupId:group.id,targetUuid:target.uuid,
       effectUuid:created.uuid,outcomeId:data.outcomeId});
     return {applied:true,duplicate:false,groupId:group.id,effectUuid:created.uuid};
+  });
+}
+/** Standalone source-specific condition with persistent turn/world-time expiry. */
+async function effectCreateTimedOutcome(data){
+  effectRequireLeader();
+  if(!effectEnabled()||!data||!effectValidKey(data.key)||
+      typeof data.outcomeId!=='string'||data.outcomeId.length>150)
+    throw Error('Invalid timed outcome.');
+  return effectQueue(async()=>{
+    const target=await effectResolveActor(data.targetUuid);
+    const source=await effectResolveActor(data.sourceUuid);
+    if(!target||!source)return {applied:false,reason:'Actor unavailable'};
+    const raw=data.effect;
+    if(!raw||!raw.duration||typeof raw.label!=='string'||typeof raw.img!=='string')
+      throw Error('Timed outcome requires a valid effect and duration.');
+    const status=effectOfficialStatus(raw.statusId);
+    const immunity=effectCheckStatusImmunity(target,status);
+    if(!immunity.allowed){
+      console.warn('[PF1AE][SaveOutcome] Manual GM adjudication needed:',immunity.reason,target.name);
+      return {applied:false,reason:immunity.reason,requiresGM:true};
+    }
+    // Preserve the synthetic Actor UUID; never substitute a world Actor.
+    for(const doc of target.effects?.values?.()??[]){
+      if(doc.getFlag?.(EFFECT_NS,'outcomeId')===data.outcomeId)
+        return {applied:true,duplicate:true,effectUuid:doc.uuid};
+    }
+    const duration=raw.duration,isCombat=!!game.combat?.started;
+    const sourceCombatants=isCombat
+      ?[...game.combat.combatants].filter(c=>c.actor?.uuid===source.uuid):[];
+    if(isCombat&&duration.expire!=='elapsed'&&sourceCombatants.length!==1)
+      return {applied:false,reason:'Source combatant missing or ambiguous; GM adjudication required',requiresGM:true};
+    const timerId='outcome:'+foundry.utils.randomID();
+    const flags={[EFFECT_NS]:{
+      sourceUuid:source.uuid,key:data.key,outcomeId:data.outcomeId,
+      outcomeRuleId:data.ruleId,sourceItemUuid:data.sourceItemUuid,
+      sourceActionId:data.sourceActionId,timerId
+    }};
+    const created=(await target.createEmbeddedDocuments('ActiveEffect',[{
+      name:raw.label,img:raw.img,icon:raw.img,disabled:false,
+      origin:data.sourceItemUuid,changes:[],statuses:status?[status]:[],flags
+    }],{[EFFECT_NS]:{skip:true}}))?.[0];
+    if(!created)throw Error('Timed outcome AE creation failed.');
+    try{
+      const api=game.modules.get(EFFECT_NS)?.api;
+      if(!api?.generic || !api?.duration)throw Error('Automation timer services unavailable.');
+      if(isCombat&&duration.expire!=='elapsed'){
+        await api.generic.scheduleTurn({id:timerId,effectUuid:created.uuid,
+          effectAction:'delete',combatId:game.combat.id,
+          combatantId:sourceCombatants[0].id,
+          timing:duration.expire==='sourceTurnEnd'?'turnEnd':'turnStart',
+          occurrences:duration.rounds??1});
+      }else{
+        const seconds=duration.seconds??duration.rounds*6;
+        await api.duration.schedule({id:timerId,effectUuid:created.uuid,
+          effectAction:'delete',duration:{value:seconds,unit:'seconds'}});
+      }
+    }catch(error){
+      try{await created.delete({[EFFECT_NS]:{skip:true}});}
+      catch(cleanup){console.error('[PF1AE][SaveOutcome] Timed effect rollback failed',cleanup);}
+      throw error;
+    }
+    effectDebug('timed-outcome-created',{targetUuid:target.uuid,
+      statusId:status,effectUuid:created.uuid,timerId,duration});
+    return {applied:true,effectUuid:created.uuid,timerId};
   });
 }
 /** Extend the existing group's timer without touching any beneficiary copies. */
@@ -786,6 +879,7 @@ Hooks.once('ready',()=>{
     listApprovedTemplates:()=>Object.keys(effectApprovals()),
     listGroups:()=>foundry.utils.deepClone(Object.values(effectGroups())),
     _createLinkedOutcome:effectCreateLinkedOutcome, // GM internal; serial with expiry
+    _createTimedOutcome:effectCreateTimedOutcome, // GM internal; independent condition timer
     expireGroup:effectExpireGroup,
     canExpireGroup:effectCanExpireGroup,
     validateGroupTimer:effectValidateGroupTimer,
