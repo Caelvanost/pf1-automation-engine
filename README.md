@@ -153,3 +153,7 @@ The bridge hooks `pf1PreActorRollSave(actor,options,saveType)` and `pf1ActorRoll
 ## SaveBridge startup diagnostics (v1.12.9)
 
 After F5, with `genericDebug` enabled, expect `[PF1AE][SaveBridge] Installed PF1 save hooks` and `[PF1AE][SaveBridge] SaveBridge ready` (with `genericEnabled` and the hook IDs). Any PF1 save emits PRE/POST even if `genericEnabled` is false; an additional message then explains that processing is disabled. An empty rules registry never prevents listeners from installing. If neither installation nor ready message appears, check the module's JavaScript loading errors and installed version.
+
+## Timed official PF1 conditions after a save (v1.13.0)
+
+`api.saveOutcomes.register()` now accepts any verified ID in the installed `pf1.registry.conditions`, including `stunned`, and `onFailure.duration:{rounds:1,expire:'sourceTurnStart'}` for effects independent of an `effectGroups` group. During combat the condition expires at the source Actor's next turn-start boundary; out of combat one round uses six seconds of world time. Existing durationless Fascination remains tied to its parent group. For new conditions, failed immunity verification blocks application and warns the GM. See [Save Outcomes](docs/SAVE-OUTCOMES.md).
