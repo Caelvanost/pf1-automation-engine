@@ -286,7 +286,18 @@ async function outResolved(event){
       ?await groupApi?._createTimedOutcome?.(effectData)
       :await groupApi?._createLinkedOutcome?.(effectData);
     if(!applied?.applied){
-      outLog('Effect not applied',{rule:rule.key,reason:applied?.reason??'unknown'});
+      const reason=applied?.reason??'unknown';
+      outLog('Effect not applied',{rule:rule.key,reason,requiresGM:!!applied?.requiresGM});
+      if(outTimed(rule)){
+        // A valid save was completed, even when immunity blocked the effect.
+        // Consume the target and record the decision for idempotent replay.
+        const record={processed:true,success:false,rejected:true,reason,ruleId:rule.id};
+        await message.setFlag(OUT_NS,'saveOutcomes',{
+          ...(message.getFlag?.(OUT_NS,'saveOutcomes')??{}),[rule.id]:record
+        });
+        result.push(record);
+        await outConsumeTimedTarget(rule,target.uuid);
+      }
       continue;
     }
     const record={processed:true,success:false,ruleId:rule.id,
