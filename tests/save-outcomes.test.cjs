@@ -110,7 +110,7 @@ const event=(target,save,normal,effective,opts={})=>({
   await api.saveOutcomes.unregister({actor:bard,key:'fascinate-native'});
   await assert.rejects(api.saveOutcomes.register({...nativeRule,
     onFailure:{...nativeRule.onFailure,statusId:'invented-condition'}}),
-    /Only opt-in official fascinated status/,'unsupported statuses still rejected');
+    /Not an official PF1 condition/,'unsupported statuses still rejected');
   const nativeMulti={...nativeSingle,uuid:bard.uuid+'.Item.nativeMulti',
     actions:new Map([['x',{id:'real-first'}],['y',{id:'real-second'}]])};
   docs.set(nativeMulti.uuid,nativeMulti);

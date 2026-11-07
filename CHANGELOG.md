@@ -1,3 +1,13 @@
+## v1.13.0 — Native PF1 conditions and timed saving throw outcomes
+
+- Extend `saveOutcomes.register` beyond fascinated using the installed `pf1.registry.conditions` IDs.
+- Add optional `onFailure.duration` with rounds/seconds, source turn-start/turn-end and elapsed expiration.
+- Standalone timed effects use existing elected-GM timer services; existing Fascination group-linked lifecycle is unchanged.
+- Enforce source-specific ActiveEffect identity and deduplication, exact PF1 Action and DC provenance, and final effectiveTotal.
+- Check native `getConditionImmunities()` before applying new statuses such as stunned. Unknown immunity data fails closed with a GM warning.
+- Consume standalone rule targets once their confirmed save is resolved.
+- Add regression tests; Foundry v13/PF1 v11.11 live acceptance remains required.
+
 ## v1.12.9 — SaveBridge initialization diagnostics and permanent hooks
 
 - Register native PF1 PRE/POST hooks at init and recheck at ready without duplicate registration.
