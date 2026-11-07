@@ -68,8 +68,8 @@ const rule={actor:monk,key:'stunning-fist',groupKey:'stunning-fist',sourceItemUu
  harpy.immunities.add('stunned');
  await api.saveOutcomes.register(rule);await api.saveOutcomes.resolve(evt('immune',8));
  assert.equal(harpy.effects.size,1,'Immune target receives no condition');
- assert.equal(api.saveOutcomes.list().length,1);
- await api.saveOutcomes.unregister({actor:monk,key:'stunning-fist'});
+ assert.equal(api.saveOutcomes.list().length,0,'Immune save consumes one-shot rule');
+ assert.equal(messages.get('immune').getFlag(ns,'saveOutcomes')[monk.uuid+':stunning-fist'].rejected,true);
  harpy.immunities.clear();ctx.game.combat=null;
  await api.saveOutcomes.register(rule);await api.saveOutcomes.resolve(evt('outside',8));
  assert.equal(worldTimers.length,1);assert.equal(worldTimers[0].duration.value,6);
