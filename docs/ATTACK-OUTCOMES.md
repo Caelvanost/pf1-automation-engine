@@ -18,7 +18,7 @@ await api.attackOutcomes.register({
     itemUuid:stunningFist.uuid,
     actionId:saveAction.id,
     saveOutcome:{
-      key:'stunning-fist',groupKey:'stunning-fist',
+      key:'sf-unique-instance',groupKey:'stunning-fist',
       sourceItemUuid:stunningFist.uuid,sourceActionId:saveAction.id,
       targets:[victim.actor.uuid],
       onFailure:{type:'linkedBuff',name:'Étourdi — Moine',img:stunningFist.img,
@@ -37,7 +37,7 @@ await api.attackOutcomes.bindAttack({actor:monk,key:'sf-unique-instance',sourceM
 
 Le module n'agit **qu'après** le retour réussi de `ActorPF.applyDamage()` et la constatation de dégâts effectifs sur les PV normaux ou en dégâts non létaux structurés. Une réduction des PV temporaires seule n'est pas retenue comme preuve suffisante. Les dégâts de type énergie, DR et immunités sont laissés à PF1 ; ce sont les valeurs réellement modifiées qui servent de vérification. Ce comportement est volontairement conservateur, notamment pour les variantes de points de vie et certains modèles PF1 non létaux.
 
-La carte doit porter `itemSource` / `actionSource` structurés et l'indice d'attaque doit être présent dans les options natives du dialogue. L'acteur de cette carte, l'objet, l'Action, l'indice et l'Actor cible doivent correspondre strictement à **un seul** enregistrement en attente. Sinon le module n'agit pas, et journalise pourquoi. L'action native PF1 est déclenchée une seule fois avec `item.use({actionId})`, sur le client MJ leader. La règle `saveOutcomes` est enregistrée **avant** la publication de la carte de sauvegarde ; la sauvegarde garde son DD et son résultat natifs.
+La carte doit porter `itemSource` / `actionSource` structurés et l'indice d'attaque doit être présent dans les options natives du dialogue. L'acteur de cette carte, l'objet, l'Action, l'indice et l'Actor cible doivent correspondre strictement à **un seul** enregistrement en attente. Sinon le module n'agit pas, et journalise pourquoi. L'action native PF1 est déclenchée une seule fois avec `item.use({actionId,cost:0,chatMessage:true})`, sur le client MJ leader. La règle `saveOutcomes` est enregistrée **avant** la publication de la carte de sauvegarde ; la sauvegarde garde son DD et son résultat natifs.
 
 ## Limites et sécurité
 
