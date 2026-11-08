@@ -1,5 +1,5 @@
 /**
- * PF1 Automation Engine — Attack Outcomes (v1.14.3).
+ * PF1 Automation Engine — Attack Outcomes (v1.14.4).
  * Fail-closed tracking for source-specific attacks whose damage is manually
  * applied from PF1's native ApplyDamage dialog. Only the elected GM mutates
  * the persistent registry or executes a subsequent PF1 ItemAction.
@@ -51,13 +51,49 @@ function aoPrepareDirect(record){
    requestId:record.requestId,expected:aoDescribe(record.context)});
  },AO_DIRECT_TTL);
 }
-function aoUpdateHasDamage(changes){
- return ['system.attributes.hp.value','system.attributes.hp.nonlethal',
-  'system.attributes.hp.nl','system.attributes.hp.temp'].some(key=>
-    Object.prototype.hasOwnProperty.call(changes??{},key)||
-    (typeof foundry.utils?.hasProperty==='function'&&foundry.utils.hasProperty(changes,key)));
+/** PF1 v11.11 unlinked tokens update hp.offset; Foundry changes can be
+ * represented as nested objects or flattened dotted-path changes.
+ */
+function aoUpdateField(object,path){
+ if(!object||typeof object!=='object')return undefined;
+ if(Object.prototype.hasOwnProperty.call(object,path))return object[path];
+ return path.split('.').reduce((value,key)=>value?.[key],object);
 }
-function aoAfterNativeActorUpdate(actor,changes,_opts,userId){
+function aoUpdateHasDamage(changes){
+ return ['system.attributes.hp.value','system.attributes.hp.offset',
+  'system.attributes.hp.nonlethal','system.attributes.hp.nl',
+  'system.attributes.hp.temp'].some(key=>aoUpdateField(changes,key)!==undefined);
+}
+function aoOffsetEvidence(options){
+ const hp=options?.pf1?.deltas?.hp??{};
+ const raw=aoUpdateField(hp,'offset');
+ const offset=raw==null?null:Number(raw);
+ const previous=options?._nasPrevHp==null?null:Number(options._nasPrevHp);
+ return {offset:Number.isFinite(offset)?offset:null,
+   previousHp:Number.isFinite(previous)?previous:null};
+}
+/** A changed offset is never proof on its own: compare effective actor HP. */
+function aoConfirmNativeDelta(record,actor,changes,options){
+ const after=aoDamageSnapshot(actor);
+ const delta=aoDamageDelta(record.before,after);
+ const pre=record.nativeEvidence??aoOffsetEvidence(null);
+ const post=aoOffsetEvidence(options);
+ const evidence={pre,post,before:record.before,after,
+   changedOffset:aoUpdateField(changes,'system.attributes.hp.offset')??null,
+   changedValue:aoUpdateField(changes,'system.attributes.hp.value')??null};
+ const described=pre.offset??post.offset;
+ if(described!=null&&described>=0&&delta.hitPointLoss>0)
+   return {delta:{...delta,provenDamage:false},evidence,
+     reason:'PF1 native HP delta contradicts the observed effective HP loss'};
+ for(const item of [pre,post]){
+   if(item.previousHp!=null&&Number.isFinite(record.before.hp)&&
+      item.previousHp!==record.before.hp)
+     return {delta:{...delta,provenDamage:false},evidence,
+       reason:'Native prior HP does not match the before-damage snapshot'};
+ }
+ return {delta,evidence,reason:null};
+}
+function aoAfterNativeActorUpdate(actor,changes,options,userId){
  if(!aoActive()||!actor?.uuid||!aoUpdateHasDamage(changes))return;
  const record=AO_DIRECT_PENDING.get(actor.uuid);
  if(!record)return;
@@ -70,10 +106,15 @@ function aoAfterNativeActorUpdate(actor,changes,_opts,userId){
     conflicted:record.conflicted});
   aoDrop(record);return;
  }
- const delta=aoDamageDelta(record.before,aoDamageSnapshot(actor));
+ const confirmed=aoConfirmNativeDelta(record,actor,changes,options);
+ const {delta,evidence,reason}=confirmed;
  aoLog('Native damage actor update observed',{
   requestId:record.requestId,expected:aoDescribe(record.context),
-  actual:{targetUuid:actor.uuid,userId},delta});
+  actual:{targetUuid:actor.uuid,userId},delta,evidence,reason});
+ if(reason){
+  aoLog('Native PF1 HP delta refused',{requestId:record.requestId,reason,evidence});
+  aoDrop(record);return;
+ }
  if(!delta.provenDamage)return;
  record.completed=true;aoDrop(record);
  aoLog('Native damage applied; dispatching verified outcome',{
@@ -363,8 +404,10 @@ function aoOnNativeApplyDamage(actor,options){
   return;
  }
  record.nativePre=true;
+ record.nativeEvidence=aoOffsetEvidence(options);
  aoLog('pf1ApplyDamage received',{requestId:record.requestId,matchMethod,
-    expected:aoDescribe(record.context),actual:{targetUuid:uuid}});
+    expected:aoDescribe(record.context),actual:{targetUuid:uuid},
+    nativeEvidence:record.nativeEvidence});
  if(record.createdAt){
   const previous=AO_DIRECT_PENDING.get(uuid);
   if(previous&&previous!==record){
