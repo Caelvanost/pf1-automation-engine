@@ -36,8 +36,11 @@ await (async () => {
   const useAction = useActions[0];
   // L'action de sauvegarde repasse éventuellement par le Script Call « Utilisation ».
   // En ce cas elle ne doit pas relancer l'attaque, ni la consommation du pouvoir.
-  if (typeof action !== 'undefined' && action?.id === saveAction.id) return;
-  if (typeof action !== 'undefined' && action?.id !== useAction.id) return;
+  if (typeof action === 'undefined' || !action?.id) {
+    throw new Error('Contexte Action PF1 absent : arrêt sécurisé pour éviter la récursion.');
+  }
+  if (action.id === saveAction.id) return;
+  if (action.id !== useAction.id) return;
   const targets = [...game.user.targets];
   if (targets.length !== 1 || !targets[0].actor?.uuid) {
     throw new Error('Cibler exactement une créature avant Coup étourdissant.');
@@ -82,7 +85,7 @@ await (async () => {
       itemUuid: stunningFist.uuid,
       actionId: saveAction.id,
       saveOutcome: {
-        key: 'stunning-fist',
+        key, // unique pour chaque frappe enregistrée
         groupKey: 'stunning-fist',
         sourceItemUuid: stunningFist.uuid,
         sourceActionId: saveAction.id,
