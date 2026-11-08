@@ -73,6 +73,39 @@ vm.createContext(ctx);vm.runInContext(fs.readFileSync(file,'utf8'),ctx,{filename
  await apply(card,0,2);assert.equal(fired,1,'Duplicate damage must not trigger twice');
  const registry=api.attackOutcomes.list();assert.equal(registry[0].state,'done');
  assert.equal(registry[0].sourceMessageId,card.id);
+ // Reproduce PF1 direct damage: target options hook does not enter _onApply.
+ // PF1 may then clone the options before the native pre-apply hook.
+ await api.attackOutcomes.register({...req,key:'stun-direct'});
+ await api.attackOutcomes.bindAttack({actor:monk,key:'stun-direct',sourceMessageId:card.id});
+ const directApp={extraOptions:{message:card,attackIndex:0}};
+ for(const fn of calls.events.get('pf1ApplyDamageTargetOptions')??[])
+   fn(directApp,{actor:target},{});
+ for(const fn of calls.events.get('pf1ApplyDamage')??[])fn(target,{});
+ target.system.attributes.hp.value-=5;
+ for(const fn of calls.events.get('updateActor')??[])
+   fn(target,{'system.attributes.hp.value':target.system.attributes.hp.value},{},gm.id);
+ await new Promise(r=>setTimeout(r,30));
+ assert.equal(fired,2,'Direct native damage triggers the follow-up once');
+ assert.equal(saved,2,'SaveOutcome is registered before follow-up Action');
+ assert(log.some(x=>String(x[0]).includes('Direct native damage options captured')));
+ assert(log.some(x=>String(x[0]).includes('Native damage actor update observed')));
+ // An unrelated actor HP change alone is not a native damage receipt.
+ target.system.attributes.hp.value-=1;
+ for(const fn of calls.events.get('updateActor')??[])
+   fn(target,{'system.attributes.hp.value':target.system.attributes.hp.value},{},gm.id);
+ await new Promise(r=>setTimeout(r,20));
+ assert.equal(fired,2,'Arbitrary actor HP loss must not trigger');
+ await api.attackOutcomes.register({...req,key:'stun-conflicting'});
+ await api.attackOutcomes.bindAttack({actor:monk,key:'stun-conflicting',sourceMessageId:card.id});
+ const otherStrike={extraOptions:{message:card,attackIndex:1}};
+ for(const fn of calls.events.get('pf1ApplyDamageTargetOptions')??[])
+   fn(otherStrike,{actor:target},{});
+ for(const fn of calls.events.get('pf1ApplyDamage')??[])fn(target,{attackIndex:0});
+ target.system.attributes.hp.value-=2;
+ for(const fn of calls.events.get('updateActor')??[])
+   fn(target,{'system.attributes.hp.value':target.system.attributes.hp.value},{},gm.id);
+ await new Promise(r=>setTimeout(r,20));
+ assert.equal(fired,2,'Conflicting attack index must be rejected');
  await assert.rejects(api.attackOutcomes.register({...req,key:'bad',sourceActionId:'wrong'}),/Source Action/);
  await assert.rejects(api.attackOutcomes.register({...req,key:'bad',targets:['Actor.missing']}),/Invalid target/);
  await assert.rejects(api.attackOutcomes.register({...req,key:'bad',attackIndex:undefined}),/attackIndex/);
