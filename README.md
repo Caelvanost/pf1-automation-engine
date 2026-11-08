@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.14.2 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.14.3 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 A generic automation module for PF1 Item Script Calls. It provides reusable, persistent services while leaving the rules of individual spells, feats and class abilities in the relevant PF1 Items. It does **not** include ready-to-use character-specific ability scripts.
 
@@ -111,3 +111,7 @@ The regression tests are in `tests/*.test.cjs`; run with `node --test tests/*.te
 ## License and maintenance
 
 Version history: [CHANGELOG.md](CHANGELOG.md). Issues and changes: [GitHub repository](https://github.com/Caelvanost/pf1-automation-engine).
+
+### Native PF1 direct damage update (v1.14.3)
+
+An attack card may apply its damage without entering `ApplyDamage._onApply`. The module now correlates `pf1ApplyDamageTargetOptions`, `pf1ApplyDamage`, and the resulting `updateActor` to preserve a verified native card/action/attack-index/target chain. A mere HP decrease never triggers an outcome. A very short correlation window and ambiguity checks are essential because PF1 does not expose a permanent transaction ID across these hooks. See [Attack Outcomes](docs/ATTACK-OUTCOMES.md).
