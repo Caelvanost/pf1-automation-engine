@@ -1,4 +1,4 @@
-# PF1 Attack Outcomes — v1.14.3 (expérimental)
+# PF1 Attack Outcomes — v1.14.4 (expérimental)
 
 **Fondement :** Foundry VTT 13, système PF1 11.11. L'implémentation surveille le hook PF1 `pf1ApplyDamageTargetOptions`, dont les arguments documentés sont `(app, target, options)` et dont les options sont envoyées ensuite à `ActorPF.applyDamage()`. La carte d'origine est fournie par `app.extraOptions.message`, et l'indice d'attaque par `app.extraOptions.attackIndex`. Le module ne déduit jamais la provenance d'une simple modification de PV.
 
@@ -98,3 +98,9 @@ Cette corrélation reste expérimentale : les hooks de PF1 ne fournissent pas d'
 6. Vérifier zéro dégât, mauvaise carte, autre indice, double clic, dégâts temporaires absorbés et deuxième utilisateur. Tous les cas sans preuve suffisante doivent échouer sans lancer une Action.
 
 L'API `api.attackOutcomes.register/bindAttack/unregister/list` est inchangée, de même que les Script Calls existants.
+
+## v1.14.4 — HP offset for unlinked PF1 synthetic Actors
+
+PF1 v11.11 may represent unlinked token damage using an `updateActor` change under `system.attributes.hp.offset` instead of `hp.value`. The bridge accepts flattened and nested forms but only confirms damage when the Actor's effective HP decreases (or nonlethal damage increases), with native source-card, ItemAction, attack index, target UUID, and both PF1 damage hooks already validated. `options.pf1.deltas.hp.offset` and `_nasPrevHp` are cross-checked if provided. The original synthetic `Scene.<scene>.Token.<token>.Actor.<actor>` UUID remains unchanged.
+
+Regression: nonlinked Pirate with 11 HP, the GM applies 5 damage from the registered card; the actor update is `{system:{attributes:{hp:{offset:-5}}}}`, native options include `{pf1:{deltas:{hp:{offset:-5}}},_nasPrevHp:11}`, and effective HP is 6. This triggers exactly one Fortitude save. If effective HP stays at 11, the same offset change must not trigger any save.

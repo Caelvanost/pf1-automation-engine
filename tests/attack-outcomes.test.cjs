@@ -106,6 +106,49 @@ vm.createContext(ctx);vm.runInContext(fs.readFileSync(file,'utf8'),ctx,{filename
    fn(target,{'system.attributes.hp.value':target.system.attributes.hp.value},{},gm.id);
  await new Promise(r=>setTimeout(r,20));
  assert.equal(fired,2,'Conflicting attack index must be rejected');
+ // Regression PF1 v11.11 unlinked synthetic Actor 11 -> 6 through hp.offset.
+ const synthetic=actor('SyntheticPirate');
+ docs.delete(synthetic.uuid);
+ synthetic.uuid='Scene.scene42.Token.token17.Actor.SyntheticPirate';
+ synthetic.system.attributes.hp={value:11,offset:0,temp:0,nonlethal:0};
+ docs.set(synthetic.uuid,synthetic);
+ const syntheticKey='stun-synthetic-offset';
+ await api.attackOutcomes.register({...req,key:syntheticKey,targets:[synthetic.uuid],
+   onDamageApplied:{...req.onDamageApplied,saveOutcome:{...req.onDamageApplied.saveOutcome,
+     targets:[synthetic.uuid]}}});
+ await api.attackOutcomes.bindAttack({actor:monk,key:syntheticKey,sourceMessageId:card.id});
+ const syntheticApp={extraOptions:{message:card,attackIndex:0}};
+ for(const fn of calls.events.get('pf1ApplyDamageTargetOptions')??[])
+   fn(syntheticApp,{actor:synthetic},{});
+ const pre={pf1:{deltas:{hp:{offset:-5}}},_nasPrevHp:11};
+ for(const fn of calls.events.get('pf1ApplyDamage')??[])fn(synthetic,pre);
+ synthetic.system.attributes.hp.offset=-5;
+ synthetic.system.attributes.hp.value=6;
+ for(const fn of calls.events.get('updateActor')??[])
+   fn(synthetic,{system:{attributes:{hp:{offset:-5}}}},
+     {pf1:{deltas:{hp:{offset:-5}}},_nasPrevHp:11},gm.id);
+ await new Promise(r=>setTimeout(r,35));
+ assert.equal(fired,3,'Synthetic PF1 unlinked token must trigger on verified offset damage');
+ assert.equal(saved,3,'SaveOutcome must register before the synthetic follow-up');
+ assert.equal(api.attackOutcomes.list().find(x=>x.key===syntheticKey).state,'done');
+ // Offset -5 without any observed effective HP loss is NOT enough.
+ synthetic.system.attributes.hp.value=11;
+ synthetic.system.attributes.hp.offset=0;
+ const noLossKey='stun-offset-no-loss';
+ await api.attackOutcomes.register({...req,key:noLossKey,targets:[synthetic.uuid],
+   onDamageApplied:{...req.onDamageApplied,saveOutcome:{...req.onDamageApplied.saveOutcome,
+     targets:[synthetic.uuid]}}});
+ await api.attackOutcomes.bindAttack({actor:monk,key:noLossKey,sourceMessageId:card.id});
+ for(const fn of calls.events.get('pf1ApplyDamageTargetOptions')??[])
+   fn({extraOptions:{message:card,attackIndex:0}},{actor:synthetic},{});
+ for(const fn of calls.events.get('pf1ApplyDamage')??[])
+   fn(synthetic,{pf1:{deltas:{hp:{offset:-5}}},_nasPrevHp:11});
+ synthetic.system.attributes.hp.offset=-5;
+ for(const fn of calls.events.get('updateActor')??[])
+   fn(synthetic,{system:{attributes:{hp:{offset:-5}}}},
+     {pf1:{deltas:{hp:{offset:-5}}},_nasPrevHp:11},gm.id);
+ await new Promise(r=>setTimeout(r,30));
+ assert.equal(fired,3,'Offset alone must not be interpreted as actual damage');
  await assert.rejects(api.attackOutcomes.register({...req,key:'bad',sourceActionId:'wrong'}),/Source Action/);
  await assert.rejects(api.attackOutcomes.register({...req,key:'bad',targets:['Actor.missing']}),/Invalid target/);
  await assert.rejects(api.attackOutcomes.register({...req,key:'bad',attackIndex:undefined}),/attackIndex/);
