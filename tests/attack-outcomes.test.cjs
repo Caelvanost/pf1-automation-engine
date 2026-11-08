@@ -23,11 +23,27 @@ function actor(id){const a={uuid:'Actor.'+id,name:id,documentName:'Actor',isOwne
   async applyDamage(value,options={}){if(value>0)this.system.attributes.hp.value-=value;return this;}};
  docs.set(a.uuid,a);return a;}
 const monk=actor('Monk'),target=actor('Harpy');
-ctx.CONFIG.Actor.documentClass=function ActorPF(){};
-// ActorPF.prototype owns applyDamage; model the Foundry actor class.
-const proto={applyDamage:target.applyDamage};
-ctx.CONFIG.Actor.documentClass.prototype=proto;
-Object.setPrototypeOf(target,proto);delete target.applyDamage;
+// PF1 11.11 exposes a NON-CONFIGURABLE accessor. The setter must never run.
+function ActorPF(){}
+let nativeApplyDamage=async function(value,options={}){
+ for(const hook of calls.events.get('pf1ApplyDamage')??[])hook(this,options);
+ if(value>0)this.system.attributes.hp.value-=value;
+ return this;
+};
+Object.defineProperty(ActorPF.prototype,'applyDamage',{
+ configurable:false,enumerable:false,
+ get(){return nativeApplyDamage},
+ set(){throw Error('Must not invoke ActorPF.applyDamage setter')}
+});
+Object.setPrototypeOf(target,ActorPF.prototype);delete target.applyDamage;
+ctx.CONFIG.Actor.documentClass=ActorPF;
+const ApplyDamage={_onApply:async function(){
+ const options={};
+ for(const hook of calls.events.get('pf1ApplyDamageTargetOptions')??[])
+   hook(this,{actor:this.actor},options);
+ return this.actor.applyDamage(this.value,options);
+}};
+ctx.pf1={applications:{ApplyDamage}};
 const attackAction={id:'attack-0'},saveAction={id:'save'};
 const attack={documentName:'Item',id:'unarmed',uuid:monk.uuid+'.Item.unarmed',name:'Unarmed strike',actor:monk,actions:new Map([[attackAction.id,attackAction]])};
 let fired=0,saved=0;const stun={documentName:'Item',id:'stun',uuid:monk.uuid+'.Item.stun',actor:monk,
@@ -46,9 +62,9 @@ vm.createContext(ctx);vm.runInContext(fs.readFileSync(file,'utf8'),ctx,{filename
  sourceActionId:saveAction.id,targets:[target.uuid],onFailure:{type:'linkedBuff',statusId:'stunned'}}}};
  assert.equal((await api.attackOutcomes.register(req)).registered,true);
  const apply=async (card,index,value,actorRef=target)=>{
-  const options={};const app={extraOptions:{message:card,attackIndex:index}};
-  for(const hook of calls.events.get('pf1ApplyDamageTargetOptions')??[])hook(app,{actor:actorRef},options);
-  await actorRef.applyDamage(value,options);await new Promise(r=>setTimeout(r,20));
+  const app={extraOptions:{message:card,attackIndex:index},actor:actorRef,value};
+  await ApplyDamage._onApply.call(app);
+  await new Promise(r=>setTimeout(r,20));
  };
  await apply(card,0,0);assert.equal(fired,0,'No damage must not trigger');
  await apply(card,1,4);assert.equal(fired,0,'Different attack index must not trigger');

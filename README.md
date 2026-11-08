@@ -169,3 +169,6 @@ check the browser console for module import errors and installed source version.
 ## Attack Outcomes — v1.14.0 (experimental)
 
 `api.attackOutcomes` tracks exact PF1 Action chat cards and the native damage-application dialog. It triggers a configured follow-up ItemAction only after verified, applied damage to a registered target. See [API, limitations and tests](docs/ATTACK-OUTCOMES.md) and the [complete configurable Stunning Fist Script Call](scripts-exemples/coup-etourdissant-utilisation.js). A confirmed native PF1 message and attack index are mandatory; no HP-only inference. Live PF1 v11.11 acceptance remains required.
+## v1.14.1 — Native PF1 damage dialog bridge
+
+The non-configurable `ActorPF.prototype.applyDamage` getter/setter is untouched. Attack Outcomes now waits for the native `pf1.applications.ApplyDamage._onApply` handler to finish and requires matching `pf1ApplyDamageTargetOptions` and `pf1ApplyDamage` hooks for the exact card, attack index and target, followed by observed actual HP/nonlethal loss. No simple HP watcher, no direct Actor prototype assignment. See [Attack Outcomes](docs/ATTACK-OUTCOMES.md).

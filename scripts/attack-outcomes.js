@@ -1,11 +1,11 @@
 /**
- * PF1 Automation Engine — Attack Outcomes (v1.14.0).
+ * PF1 Automation Engine — Attack Outcomes (v1.14.1).
  * Fail-closed tracking for source-specific attacks whose damage is manually
  * applied from PF1's native ApplyDamage dialog. Only the elected GM mutates
  * the persistent registry or executes a subsequent PF1 ItemAction.
  *
- * Important: pf1ApplyDamage is PRE-application. We observe the *returned*
- * ActorPF.applyDamage promise and actual HP/nonlethal changes instead.
+ * The pf1ApplyDamage hook is PRE-application; verify native dialog completion
+ * and final actor resources instead of replacing ActorPF.applyDamage.
  * Damage source is established by the native dialog's structured message and
  * attack index (pf1ApplyDamageTargetOptions), never by an arbitrary HP update.
  */
@@ -14,6 +14,9 @@ const AO_REG='attackOutcomeRegistry';
 const AO_SOCKET='module.'+AO_NS;
 const AO_CHANNEL='pf1ae-attack-outcomes-v1';
 const AO_PENDING=new Map();
+const AO_ACTIVE_DIALOGS=new WeakSet();
+const AO_DIALOG_DAMAGE=new WeakMap();
+const AO_SOURCE_OPTIONS=new WeakMap();
 const AO_SEEN=new Map();
 const AO_MAX=200;
 const AO_TIMEOUT=15000;
@@ -228,54 +231,102 @@ function aoAppContext(app,target,options){
    sourceActionId:source.actionId,actorUuid:source.actorUuid,
    attackIndex,targetUuid:targetActor.uuid};
 }
+
 function aoOnApplyOptions(app,target,options){
  if(!aoActive()||!options||typeof options!=='object')return;
  const context=aoAppContext(app,target,options);
  if(!context)return;
- // PF1's hook is fired just before options are passed to ActorPF.applyDamage.
- // Preserve the existing options and attach provenance for the wrapping client.
  options.pf1aeAttackOutcome=context;
- aoLog('Native damage options annotated',{
-   sourceMessageId:context.sourceMessageId,attackIndex:context.attackIndex,
-   targetUuid:context.targetUuid});
+ const actor=aoActor(target?.actor??target)??aoActor(target?.token);
+ const attempts=AO_DIALOG_DAMAGE.get(app)??[];
+ const record={context,actor,before:aoDamageSnapshot(actor),nativePre:false,
+   conflicted:false,requestId:foundry.utils.randomID()};
+ if(!AO_ACTIVE_DIALOGS.has(app)){
+   aoLog('Damage options outside tracked native dialog; ignored',context);return;
+ }
+ for(const prior of attempts)if(prior.actor?.uuid===actor?.uuid){
+   prior.conflicted=true;record.conflicted=true;
+ }
+ attempts.push(record);
+ AO_DIALOG_DAMAGE.set(app,attempts);
+ AO_SOURCE_OPTIONS.set(options,record);
+ aoLog('Native damage options annotated',{sourceMessageId:context.sourceMessageId,
+   attackIndex:context.attackIndex,targetUuid:context.targetUuid,requestId:record.requestId});
 }
+function aoOnNativeApplyDamage(actor,options){
+ const record=options&&AO_SOURCE_OPTIONS.get(options);
+ if(!record){aoLog('pf1ApplyDamage without matching card context',{targetUuid:actor?.uuid});return;}
+ if(actor?.uuid!==record.context.targetUuid || actor?.uuid!==record.actor?.uuid){
+   record.conflicted=true;
+   aoLog('pf1ApplyDamage actor mismatch',{expected:record.context.targetUuid,actual:actor?.uuid});
+   return;
+ }
+ record.nativePre=true;
+ aoLog('pf1ApplyDamage received',{targetUuid:actor.uuid,
+   sourceMessageId:record.context.sourceMessageId,requestId:record.requestId});
+}
+async function aoFinishNativeDialog(app,completed){
+ const attempts=AO_DIALOG_DAMAGE.get(app)??[];
+ AO_DIALOG_DAMAGE.delete(app);
+ if(!completed){
+   aoLog('Native damage dialog cancelled/failed; no outcome',{attempts:attempts.length});return;
+ }
+ for(const record of attempts){
+   const {context,actor,before}=record;
+   if(!record.nativePre||record.conflicted||!actor||actor.uuid!==context.targetUuid){
+     aoLog('Damage unverified; outcome refused',{sourceMessageId:context.sourceMessageId,
+       targetUuid:context.targetUuid,nativePre:record.nativePre,conflicted:record.conflicted});
+     continue;
+   }
+   const delta=aoDamageDelta(before,aoDamageSnapshot(actor));
+   aoLog('Native damage dialog completed',{sourceMessageId:context.sourceMessageId,
+     attackIndex:context.attackIndex,targetUuid:actor.uuid,delta});
+   if(!delta.provenDamage)continue;
+   const payload={channel:AO_CHANNEL,op:'damage',requestId:record.requestId,userId:game.user.id,
+     context:{...context,delta},targetUuid:actor.uuid};
+   if(aoLeader())await aoResolveDamage(payload);
+   else game.socket.emit(AO_SOCKET,payload);
+ }
+}
+/**
+ * PF1's ActorPF.prototype.applyDamage is a NON-CONFIGURABLE accessor in v11.11.
+ * Do not invoke its setter or replace it. Observe the native ApplyDamage
+ * dialogue's completion and corroborate both native provenance hooks instead.
+ */
 function aoInstallDamageBridge(){
  if(aoInstalled)return;
  aoInstalled=true;
  Hooks.on('pf1ApplyDamageTargetOptions',aoOnApplyOptions);
- // CONFIG.Actor.documentClass is PF1's installed actor class. Do not replace
- // system files; wrap its method once and preserve original return semantics.
- const prototype=CONFIG.Actor?.documentClass?.prototype;
- const original=prototype?.applyDamage;
- if(typeof original!=='function'){
-   console.warn('[PF1AE][AttackOutcome] ActorPF.applyDamage unavailable; native bridge disabled');
+ Hooks.on('pf1ApplyDamage',aoOnNativeApplyDamage);
+ const klass=globalThis.pf1?.applications?.ApplyDamage;
+ const staticDesc=klass&&Object.getOwnPropertyDescriptor(klass,'_onApply');
+ const protoDesc=klass?.prototype&&Object.getOwnPropertyDescriptor(klass.prototype,'_onApply');
+ const holder=typeof staticDesc?.value==='function'&&staticDesc.writable?klass:
+   typeof protoDesc?.value==='function'&&protoDesc.writable?klass.prototype:null;
+ if(!holder){
+   console.warn('[PF1AE][AttackOutcome] Native ApplyDamage._onApply unavailable or non-writable. ActorPF.applyDamage accessor untouched; automatic damage outcome disabled.');
    return;
  }
- if(original.pf1aeAttackOutcomeWrapped)return;
- async function wrappedApplyDamage(value,options={}){
-   const context=options?.pf1aeAttackOutcome??null;
-   const before=context?aoDamageSnapshot(this):null;
-   const result=await original.call(this,value,options);
-   if(context && aoActive()&&result!==false){
-     const delta=aoDamageDelta(before,aoDamageSnapshot(this));
-     aoLog('Damage applied',{actorUuid:this.uuid,sourceMessageId:context.sourceMessageId,
-       value,delta});
-     // Provenance is part of native PF1 ApplyDamage options, not a chat-text
-     // or a coincidental health update.
-     if(delta.provenDamage&&this.uuid===context.targetUuid){
-       // A player may apply damage; delivery is performed by the GM leader.
-       const requestId=foundry.utils.randomID();
-       const msg={channel:AO_CHANNEL,op:'damage',requestId,userId:game.user.id,
-         context:{...context,delta},targetUuid:this.uuid};
-       if(aoLeader())void aoResolveDamage(msg).catch(e=>console.error('[PF1AE][AttackOutcome] Resolve failure',e));
-       else game.socket.emit(AO_SOCKET,msg);
-     }
+ const original=holder._onApply;
+ if(original?.pf1aeAttackDialogWrapped)return;
+ const wrapper=async function(...args){
+   const app=this;
+   if(!app||typeof app!=='object')return original.apply(this,args);
+   AO_ACTIVE_DIALOGS.add(app);
+   let completed=false;
+   try{
+     const result=await original.apply(this,args);
+     completed=true;return result;
+   }finally{
+     AO_ACTIVE_DIALOGS.delete(app);
+     try{await aoFinishNativeDialog(app,completed)}
+     catch(error){console.error('[PF1AE][AttackOutcome] Native damage completion bridge failed',error)}
    }
-   return result;
- }
- wrappedApplyDamage.pf1aeAttackOutcomeWrapped=true;
- prototype.applyDamage=wrappedApplyDamage;
- aoLog('Installed native damage bridge',{hook:'pf1ApplyDamageTargetOptions',method:'ActorPF.applyDamage'});
+ };
+ wrapper.pf1aeAttackDialogWrapped=true;
+ holder._onApply=wrapper;
+ aoLog('Installed native damage bridge',{hooks:['pf1ApplyDamageTargetOptions','pf1ApplyDamage'],
+   completion:'ApplyDamage._onApply',actorAccessor:'untouched',static:holder===klass});
 }
 async function aoResolveDamage(data){
  if(!aoLeader()||!aoActive())return {processed:false,reason:'not elected GM'};
