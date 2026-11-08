@@ -1,41 +1,49 @@
-## v1.13.0 — Native PF1 conditions and timed saving throw outcomes
+## v1.14.0 — Source-bound attack damage outcomes (experimental)
 
-- Extend `saveOutcomes.register` beyond fascinated using the installed `pf1.registry.conditions` IDs.
-- Add optional `onFailure.duration` with rounds/seconds, source turn-start/turn-end and elapsed expiration.
-- Standalone timed effects use existing elected-GM timer services; existing Fascination group-linked lifecycle is unchanged.
-- Enforce source-specific ActiveEffect identity and deduplication, exact PF1 Action and DC provenance, and final effectiveTotal.
-- Check native `getConditionImmunities()` before applying new statuses such as stunned. Unknown immunity data fails closed with a GM warning.
-- Consume standalone rule targets once their confirmed save is resolved.
-- Add regression tests; Foundry v13/PF1 v11.11 live acceptance remains required.
+- Add `api.attackOutcomes.register/bindAttack/unregister/list`, with source ItemAction, attack index and target validation, persistent GM-owned registry, socket acknowledgements, and deduplication.
+- Correlate native `pf1ApplyDamageTargetOptions` to the specific Action ChatMessage and wrap PF1 `ActorPF.applyDamage()` without altering its result.
+- Trigger the configured PF1 follow-up Action only after actual HP/nonlethal damage, after registering `saveOutcomes`; no saving throw on a miss or uncommitted damage.
+- Guard against ambiguous sources, wrong target, duplicate clicks, non-GM remote attestation and interrupted execution.
+- Preserve all existing v1.13.0 bardic automations and native save pipeline.
+- Add Node test coverage and a complete configurable Stunning Fist example; live Foundry testing required.
 
-## v1.12.9 — SaveBridge initialization diagnostics and permanent hooks
+## v1.13.0 — Generic PF1 save-outcome conditions and timed effects (experimental)
 
-- Register native PF1 PRE/POST hooks at init and recheck at ready without duplicate registration.
-- Log `Installed PF1 save hooks` and `SaveBridge ready` when generic debugging is enabled.
-- Log PRE/POST at callback entry even if the generic automation feature is disabled; explicitly log the disabled state.
-- Keep the verified source-card context, elected-GM dispatch, effectiveTotal, Countersong, Distraction and Fascination Script Calls unchanged.
-- Add regression coverage for empty registries and disabled automation at initialization.
-- Runtime verification is still needed to confirm execution under the installed PF1 11.11 client.
+- Replace hardcoded fascinated-only validation with live `pf1.registry.conditions` status validation, preserving legacy Fascination.
+- Add optional `onFailure.duration` for conditions independent of a parent group, including `rounds`/`seconds` and source turn-start/turn-end expiration.
+- Use existing elected-GM timers and actor-specific ActiveEffect deletion. In combat, source-turn boundaries are used; outside combat durations use world time.
+- Use PF1 actor `getConditionImmunities()` for native stunned and other condition immunity; fail closed and warn if immunity cannot be determined.
+- Preserve source Action, real save DC, effectiveTotal, message-based deduplication and native PF1 save card behavior.
+- Consume each target in a standalone rule after its verified saving throw; linked Fascination remains managed by its parent effect group.
+- Requires a live-world acceptance test of stunning fist timing, token actors, and PF1 v11.11 conditions.
 
-## v1.12.9 — Native PF1 PRE/POST saving throw lifecycle bridge
+## v1.12.9 — SaveBridge bootstrapping and universal PF1 hook diagnostics
 
-- Log native `pf1PreActorRollSave` and `pf1ActorRollSave` for every enabled save, including sheet saves.
-- Read the native `ChatMessagePF` from the POST hook rather than guessing the last chat message.
-- Pair PRE and POST only with one unambiguous pending save for the Actor and save type; reject overlapping ambiguous rolls.
-- Keep Action ChatMessage provenance through structured `rollOptions.reference` / `saveContext`; never trigger outcomes on manual sheet rolls.
-- Dispatch the effective total to the elected GM and `saveOutcomes` even when no override applies.
-- Preserve Countersong and Distraction resolution, deduplication and existing native PF1 card display.
-- Simulated integration tests passed; runtime validation in PF1 11.11 remains required.
+- Install native PF1 PRE/POST hooks unconditionally at init, with a guarded ready fallback and strict single-install protection.
+- Emit `Installed PF1 save hooks` at initialization and `SaveBridge ready` at ready when generic debugging is enabled.
+- Log native PRE/POST at callback entry, *before* the `genericEnabled` feature gate: logs now explain when a save was received but processing is disabled.
+- No changes to source-card correlation, result resolution, Countersong, Distraction, Fascination Script Calls, or the Pathfinder 1 system.
+- Add an isolated initialization regression test with no registered rules and `genericEnabled=false`.
+- Runtime testing remains necessary to distinguish disabled automation from an unloaded module script.
 
-## v1.12.9 — Native PF1 SaveBridge post-roll correlation (candidate)
+## v1.12.8 — Native PF1 PRE/POST saving throw lifecycle bridge
 
-- Add explicit SaveBridge diagnostics at native save click, pre-save hook, post-save and authoritative GM resolution.
-- Correlate native PF1 d20-roll results without directly returned ChatMessage using structured saving throw metadata, verified author and speaker, and one pending source-card save.
-- Handle chat messages created before or shortly after the PF1 post-save hook; never infer source provenance from chat text.
-- Instrument both exported PF1 native save handlers when present without altering their original behavior.
-- Preserve final Save Override evaluation before Save Outcomes, including saves with zero applicable overrides.
-- Add regression tests for delayed chat messages and isolation of unrelated saves.
-- Live Foundry v13 / PF1 11.11 integration and both button variants require verification; no PF1 system file is modified.
+- Log native `pf1PreActorRollSave` and `pf1ActorRollSave` for every enabled save, regardless of source context.
+- Read the actual `ChatMessagePF` from POST and use its native roll total.
+- Correlate PRE to POST only when one unambiguous pending save exists for an Actor/save type; fail closed on concurrent ambiguity.
+- Preserve structured source-card provenance via `rollOptions.reference` / saveContext and suppress manual sheet rolls.
+- Dispatch verified final totals through elected GM to `saveOutcomes`, including saves with no matching override.
+- Preserve Countersong/Distraction effective totals, per-message idempotence and native card display.
+
+## v1.12.8 — Native PF1 SaveBridge post-roll correlation (candidate)
+
+- Add explicit `SaveBridge` diagnostics at native save click, pre-save hook, post-save, GM context validation and final outcome dispatch.
+- Correlate PF1 d20-roll results that do not return ChatMessage objects to their separately created saving-throw ChatMessage, only when author, Actor speaker, actual rolls and structured save type match one pending native source-card save.
+- Support message creation both before and shortly after `pf1ActorRollSave` without inspecting localized chat text, guessing a source Item or processing unrelated sheet saves.
+- Install diagnostics for both `targetSavingThrowClick` and `Actions.onRollSave` when available, preserving native PF1 handlers.
+- Keep the single elected-GM `saveOverrides` → final result → `saveOutcomes.resolve` pipeline, including saves with no applicable override.
+- Add regression tests for delayed chat messages, no-override Fascination, and unrelated saving throws.
+- Live PF1 11.11 click-handler/source-message acceptance testing is still required; no system files were modified.
 
 ## v1.12.6 — Silent, GM-authoritative multi-target automation
 

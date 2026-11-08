@@ -14,7 +14,7 @@ The GM adds JavaScript to the **native PF1 Script Calls** of the **Spell** or **
 - **Event-driven automations** linked to a named PF1 Item Script Call.
 - **Save-result override infrastructure** with dynamic Actor flags, hearing/range checks and one elected-GM result comparison for annotated native PF1 saving throws.
 - **Native PF1 actor rest hooks** (`pf1PreActorRest` and `pf1ActorRest`): before/after snapshots, 8-hour filtering, independent health/daily-recharge flags and player-to-GM relay.
-- **Silent GM-leader authorization, persistent registries, controlled player requests and one elected GM** when multiple GMs are connected.
+- **GM approval, persistent registries, controlled player requests and one elected GM** when multiple GMs are connected.
 
 No spell catalogue, class-specific handler, or exhaustive rule database is bundled. An ordinary GM can configure **only the spells/features actually needed in their campaign**, without modifying module source code.
 
@@ -146,14 +146,26 @@ The Windows build script is `build_release.ps1`. GitHub Actions runs the Node re
 
 **Compatibility:** target versions are Foundry v13.351 and PF1 11.11. The Engine was tested in a live world for the v1.8.0 duration and turn features. Native rest hooks in v1.9.0 require live-world acceptance testing, especially player-initiated rests and two-GM handoff. Other combinations and exceptional edge cases should be validated before use in a live campaign.
 
-## Native PF1 SaveBridge v1.12.9
+## Native PF1 SaveBridge v1.12.8
 
-The bridge hooks `pf1PreActorRollSave(actor,options,saveType)` and `pf1ActorRollSave(actor,ChatMessagePF,saveType)`. Enable generic debug to see `[PF1AE][SaveBridge] PRE`, `PRE options`, `POST` and `Source context restored`. Only an explicitly linked source-card roll is forwarded to `saveOutcomes`; a manual sheet save remains unannotated. Simultaneous ambiguous same-actor/same-save-type rolls fail closed.
+The engine observes the verified `pf1PreActorRollSave(actor,options,saveType)` and `pf1ActorRollSave(actor,ChatMessagePF,saveType)` hooks. Enable generic debug logging to see `SaveBridge PRE`, `PRE options`, `POST`, and `Source context restored`. Only a verified source-card context is routed to the elected GM and to `saveOutcomes`; manual sheet rolls are ignored. Simultaneous ambiguous rolls fail closed.
 
-## SaveBridge startup diagnostics (v1.12.9)
+## SaveBridge initialization diagnostics (v1.12.9)
 
-After F5, with `genericDebug` enabled, expect `[PF1AE][SaveBridge] Installed PF1 save hooks` and `[PF1AE][SaveBridge] SaveBridge ready` (with `genericEnabled` and the hook IDs). Any PF1 save emits PRE/POST even if `genericEnabled` is false; an additional message then explains that processing is disabled. An empty rules registry never prevents listeners from installing. If neither installation nor ready message appears, check the module's JavaScript loading errors and installed version.
+On F5 with **genericDebug enabled**, the browser console should display
+`[PF1AE][SaveBridge] Installed PF1 save hooks` and
+`[PF1AE][SaveBridge] SaveBridge ready`, including the `genericEnabled` setting.
+For **every** native PF1 save, PRE and POST logs should appear even if the
+**genericEnabled** automation toggle is off. In that case the logs explicitly
+report `automation disabled` and no buffs/overrides/outcomes are processed.
+An empty rules registry never prevents hook installation. A missing installation
+message after F5 suggests the module file did not execute at initialization;
+check the browser console for module import errors and installed source version.
 
 ## Timed official PF1 conditions after a save (v1.13.0)
 
-`api.saveOutcomes.register()` now accepts any verified ID in the installed `pf1.registry.conditions`, including `stunned`, and `onFailure.duration:{rounds:1,expire:'sourceTurnStart'}` for effects independent of an `effectGroups` group. During combat the condition expires at the source Actor's next turn-start boundary; out of combat one round uses six seconds of world time. Existing durationless Fascination remains tied to its parent group. For new conditions, failed immunity verification blocks application and warns the GM. See [Save Outcomes](docs/SAVE-OUTCOMES.md).
+`api.saveOutcomes.register()` now accepts `onFailure.statusId` for IDs present in the *current* `pf1.registry.conditions` and `onFailure.duration:{rounds:1,expire:'sourceTurnStart'}` for standalone effects such as Stunning Fist. Other duration modes: `sourceTurnEnd` or `elapsed`, and `{seconds:N,expire:'elapsed'}`. During combat a source turn-boundary timer is used; outside combat a round is six elapsed game seconds. Standalone timed outcomes do **not** need an active `effectGroups` group and are consumed once per target. Existing undurationed Fascination remains linked to its parent group. Unknown immunity data rejects newly requested conditions with a GM warning; no silent bypass. See `docs/SAVE-OUTCOMES.md`.
+
+## Attack Outcomes — v1.14.0 (experimental)
+
+`api.attackOutcomes` tracks exact PF1 Action chat cards and the native damage-application dialog. It triggers a configured follow-up ItemAction only after verified, applied damage to a registered target. See [API, limitations and tests](docs/ATTACK-OUTCOMES.md) and the [complete configurable Stunning Fist Script Call](scripts-exemples/coup-etourdissant-utilisation.js). A confirmed native PF1 message and attack index are mandatory; no HP-only inference. Live PF1 v11.11 acceptance remains required.
