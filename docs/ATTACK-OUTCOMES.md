@@ -69,9 +69,9 @@ La carte doit porter `itemSource` / `actionSource` structurés et l'indice d'att
 
 **Prérequis à la validation réelle :** confirmer que le dialogue PF1 11.11 de l'installation conserve bien `extraOptions.message` et `extraOptions.attackIndex` lors du hook `pf1ApplyDamageTargetOptions`, et que `ActorPF.applyDamage()` est la méthode appelée. La documentation publique expose ces champs, mais cela n'a pas encore été testé en direct dans votre monde.
 
-## Exemple de Script Call complet
+## Intégration avec les Script Calls PF1
 
-Voir [`scripts-exemples/coup-etourdissant-utilisation.js`](../scripts-exemples/coup-etourdissant-utilisation.js). Cet exemple exige l'ajustement du nom de l'arme et de la configuration native des charges. Il ne remplace pas automatiquement un ancien Script Call dont le code n'a pas été fourni.
+Les Script Calls spécifiques aux personnages ne sont plus distribués dans ce dépôt. Configurez directement la capacité sur l’Item PF1 concerné : consommation de la tentative avant l’attaque, enregistrement de la frappe avec `attackOutcomes`, association de la carte exacte via `bindAttack`, puis publication conditionnelle de l’Action « Sauvegarde » après confirmation des dégâts. Voir l’API et les validations décrites ci-dessus. Les paramètres d’attaque, de ressources et d’Actions doivent être vérifiés sur la fiche réelle.
 ## v1.14.1 — Protocole de validation de l'accesseur PF1
 
 L'accesseur `ActorPF.prototype.applyDamage` n'est jamais assigné, redéfini ou remplacé, et son setter n'est pas appelé. Le pont observe `pf1.applications.ApplyDamage._onApply` uniquement si cette méthode est accessible et inscriptible. Pendant le dialogue, `pf1ApplyDamageTargetOptions(app,target,options)` attache les identifiants source; `pf1ApplyDamage(actor,options)` confirme que PF1 traite les mêmes options. Après la fin du dialogue, il mesure la variation réelle des PV/dégâts non létaux avant d'envoyer l'événement au MJ élu. En cas de désaccord, de dialogue annulé ou d'absence d'un hook, il refuse l'automatisation.
