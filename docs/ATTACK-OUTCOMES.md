@@ -1,4 +1,4 @@
-# PF1 Attack Outcomes — v1.14.0 (expérimental)
+# PF1 Attack Outcomes — v1.14.1 (expérimental)
 
 **Fondement :** Foundry VTT 13, système PF1 11.11. L'implémentation surveille le hook PF1 `pf1ApplyDamageTargetOptions`, dont les arguments documentés sont `(app, target, options)` et dont les options sont envoyées ensuite à `ActorPF.applyDamage()`. La carte d'origine est fournie par `app.extraOptions.message`, et l'indice d'attaque par `app.extraOptions.attackIndex`. Le module ne déduit jamais la provenance d'une simple modification de PV.
 
@@ -47,7 +47,7 @@ La carte doit porter `itemSource` / `actionSource` structurés et l'indice d'att
 - Le moteur ne compense pas automatiquement les dégâts annulés ou corrigés ultérieurement. Si l'application des dégâts est modifiée après la publication de la sauvegarde, le MJ doit arbitrer.
 - Un échec d'exécution après réservation de l'instance la place en `needsReview` pour empêcher des relances produisant plusieurs cartes. Résoudre le problème manuellement puis enregistrer une nouvelle tentative.
 - L'API native `ItemPF.use()` peut exécuter des Script Calls embarqués dans l'Item avec les permissions de son exécutant. **Ne confier le déclenchement automatique qu'à des Items dont le MJ a validé les Script Calls.** Éviter toute exécution de code non fiable sur un acteur contrôlé par un joueur.
-- Certains modules (notamment les automatismes de dégâts tiers) peuvent remplacer `ActorPF.applyDamage()` ; vérifier la compatibilité et l'ordre de chargement. Le module wrappe la méthode sans changer les dégâts que PF1 calcule.
+- Certains modules (notamment les automatismes de dégâts tiers) peuvent remplacer `ActorPF.applyDamage()` ; vérifier la compatibilité et l'ordre de chargement. Le module ne remplace plus `ActorPF.applyDamage()`, exposée par un accesseur non configurable. Il observe la fin du dialogue natif, après les hooks de provenance.
 - Le Script Call « Utiliser » ne doit pas se réexécuter lorsque l'Action « Sauvegarde » est appelée. Ajouter un garde sur l'Action dans le Script Call.
 - L'intégration avec « Déluge de coups » exige une entrée `attackIndex` propre à chaque frappe, sans relancer `use()` de l'attaque. Le présent module ne modifie pas le script Déluge existant.
 
@@ -72,3 +72,10 @@ La carte doit porter `itemSource` / `actionSource` structurés et l'indice d'att
 ## Exemple de Script Call complet
 
 Voir [`scripts-exemples/coup-etourdissant-utilisation.js`](../scripts-exemples/coup-etourdissant-utilisation.js). Cet exemple exige l'ajustement du nom de l'arme et de la configuration native des charges. Il ne remplace pas automatiquement un ancien Script Call dont le code n'a pas été fourni.
+## v1.14.1 — Protocole de validation de l'accesseur PF1
+
+L'accesseur `ActorPF.prototype.applyDamage` n'est jamais assigné, redéfini ou remplacé, et son setter n'est pas appelé. Le pont observe `pf1.applications.ApplyDamage._onApply` uniquement si cette méthode est accessible et inscriptible. Pendant le dialogue, `pf1ApplyDamageTargetOptions(app,target,options)` attache les identifiants source; `pf1ApplyDamage(actor,options)` confirme que PF1 traite les mêmes options. Après la fin du dialogue, il mesure la variation réelle des PV/dégâts non létaux avant d'envoyer l'événement au MJ élu. En cas de désaccord, de dialogue annulé ou d'absence d'un hook, il refuse l'automatisation.
+
+**Logs attendus :** `Installed native damage bridge`, `Native damage options annotated`, `pf1ApplyDamage received`, `Native damage dialog completed`, `Triggered source-specific follow-up Action`. Si `_onApply` est inaccessible ou non inscriptible, le module avertit et ne remplace pas l'accesseur Actor.
+
+**Limites :** ce pont concerne le dialogue PF1 natif ; il ne détecte pas les dommages infligés par une macro externe appelant directement `ActorPF.applyDamage`. La simulation des hooks et de l'accesseur passe, mais le comportement exact de `_onApply` et la propagation des options restent à vérifier dans votre installation.
