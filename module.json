@@ -2,7 +2,7 @@
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
   "description": "Generic PF1 automation: native PF1 action-save reference context, Compendium buffs, rest and effective save overrides.",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "authors": [
     {
       "name": "Module personnalisé"
@@ -34,6 +34,7 @@
     "scripts/rest-automation.js",
     "scripts/save-overrides.js",
     "scripts/save-context.js",
-    "scripts/save-outcomes.js"
+    "scripts/save-outcomes.js",
+    "scripts/attack-outcomes.js"
   ]
 }
