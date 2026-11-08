@@ -31,7 +31,7 @@ Object.setPrototypeOf(target,proto);delete target.applyDamage;
 const attackAction={id:'attack-0'},saveAction={id:'save'};
 const attack={documentName:'Item',id:'unarmed',uuid:monk.uuid+'.Item.unarmed',name:'Unarmed strike',actor:monk,actions:new Map([[attackAction.id,attackAction]])};
 let fired=0,saved=0;const stun={documentName:'Item',id:'stun',uuid:monk.uuid+'.Item.stun',actor:monk,
- actions:new Map([[saveAction.id,saveAction]]),use:async ({actionId})=>{assert.equal(actionId,'save');fired++;return true}};
+ actions:new Map([[saveAction.id,saveAction]]),use:async ({actionId,cost,chatMessage})=>{assert.equal(actionId,'save');assert.equal(cost,0);assert.equal(chatMessage,true);fired++;return true}};
 docs.set(attack.uuid,attack);docs.set(stun.uuid,stun);
 const card={id:'attack-card',documentName:'ChatMessage',speaker:{actorUuid:monk.uuid},itemSource:attack,actionSource:attackAction,
  testUserPermission:()=>true};messages.set(card.id,card);
@@ -52,7 +52,7 @@ vm.createContext(ctx);vm.runInContext(fs.readFileSync(file,'utf8'),ctx,{filename
  };
  await apply(card,0,0);assert.equal(fired,0,'No damage must not trigger');
  await apply(card,1,4);assert.equal(fired,0,'Different attack index must not trigger');
- await apply(card,0,3);console.log('TESTLOG',JSON.stringify(log).slice(-3000));assert.equal(fired,1,'Correct card damage triggers once');
+ await apply(card,0,3);assert.equal(fired,1,'Correct card damage triggers once');
  assert.equal(saved,1,'SaveOutcome must register before the save action');
  await apply(card,0,2);assert.equal(fired,1,'Duplicate damage must not trigger twice');
  const registry=api.attackOutcomes.list();assert.equal(registry[0].state,'done');
