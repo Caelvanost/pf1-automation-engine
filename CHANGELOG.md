@@ -1,3 +1,11 @@
+## v1.14.1 — Non-configurable ActorPF accessor damage bridge
+
+- Never assign to or redefine the non-configurable `ActorPF.prototype.applyDamage` accessor (getter and setter remain native).
+- Observe the native PF1 ApplyDamage dialogue's completion, corroborate the per-target and pre-apply hooks, then inspect actual damage.
+- Fail closed for missing provenance, ambiguous target operations, cancelled dialogs and fully absorbed damage.
+- Preserve saveOutcomes, Fascination, Countersong, Distraction, temporary conditions and source-specific deduplication.
+- Test the non-configurable getter/setter and refuse to invoke its setter; live PF1 11.11 acceptance remains necessary.
+
 ## v1.14.0 — Source-bound attack damage outcomes (experimental)
 
 - Add `api.attackOutcomes.register/bindAttack/unregister/list`, with source ItemAction, attack index and target validation, persistent GM-owned registry, socket acknowledgements, and deduplication.
