@@ -310,7 +310,11 @@ function aoOnApplyOptions(app,target,options){
  const record={context,actor,before:aoDamageSnapshot(actor),nativePre:false,
    conflicted:false,requestId:foundry.utils.randomID()};
  if(!AO_ACTIVE_DIALOGS.has(app)){
-   aoLog('Damage options outside tracked native dialog; ignored',context);return;
+   aoPrepareDirect(record);
+   AO_SOURCE_OPTIONS.set(options,record);
+   aoLog('Direct native damage options captured (no dialog)',{
+     requestId:record.requestId,expected:aoDescribe(context),trackedDialog:false});
+   return;
  }
  for(const prior of attempts)if(prior.actor?.uuid===actor?.uuid){
    prior.conflicted=true;record.conflicted=true;
@@ -322,17 +326,55 @@ function aoOnApplyOptions(app,target,options){
    attackIndex:context.attackIndex,targetUuid:context.targetUuid,requestId:record.requestId});
 }
 function aoOnNativeApplyDamage(actor,options){
- const record=options&&AO_SOURCE_OPTIONS.get(options);
- if(!record){aoLog('pf1ApplyDamage without matching card context',{targetUuid:actor?.uuid});return;}
- if(actor?.uuid!==record.context.targetUuid || actor?.uuid!==record.actor?.uuid){
-   record.conflicted=true;
-   aoLog('pf1ApplyDamage actor mismatch',{expected:record.context.targetUuid,actual:actor?.uuid});
-   return;
+ const uuid=actor?.uuid,carried=options?.pf1aeAttackOutcome??null;
+ let record=options&&AO_SOURCE_OPTIONS.get(options);
+ let matchMethod=record?'same options object':null;
+ const recent=(AO_DIRECT_OPTIONS.get(uuid)??[])
+   .filter(x=>!x.completed&&aoNow()-x.createdAt<=AO_OPTIONS_WINDOW);
+ if(!record&&carried){
+  const matches=recent.filter(x=>!aoDifferent(x.context,carried));
+  if(matches.length===1){record=matches[0];matchMethod='copied provenance';}
+ }
+ if(!record&&recent.length===1){
+  // PF1 may clone options between the two hooks. Only one immediate,
+  // non-conflicting native per-target context is acceptable.
+  const candidate=recent[0];
+  const card=aoMessage(options?.message??options?.reference);
+  const messageId=card?.id??(typeof options?.reference==='string'
+    ?options.reference.replace(/^ChatMessage\./,''):null);
+  if((messageId&&messageId!==candidate.context.sourceMessageId)||
+     (options?.attackIndex!=null&&Number(options.attackIndex)!==candidate.context.attackIndex)||
+     (carried&&aoDifferent(candidate.context,carried)))candidate.conflicted=true;
+  else if(!candidate.conflicted){record=candidate;matchMethod='unique adjacent native hooks';}
+ }
+ if(!record){
+  aoLog('pf1ApplyDamage without matching card context',{
+    expected:recent.map(x=>aoDescribe(x.context)),actual:{
+      targetUuid:uuid,sourceMessageId:carried?.sourceMessageId??null,
+      attackIndex:options?.attackIndex??carried?.attackIndex??null,
+      reference:options?.reference??null},candidateCount:recent.length});
+  return;
+ }
+ if(record.context.targetUuid!==uuid||record.actor?.uuid!==uuid||record.conflicted){
+  record.conflicted=true;
+  aoLog('pf1ApplyDamage actor/provenance mismatch',{expected:aoDescribe(record.context),
+    actual:{targetUuid:uuid,sourceMessageId:carried?.sourceMessageId??null,
+      attackIndex:options?.attackIndex??null},matchMethod});
+  return;
  }
  record.nativePre=true;
- aoLog('pf1ApplyDamage received',{targetUuid:actor.uuid,
-   sourceMessageId:record.context.sourceMessageId,requestId:record.requestId});
+ aoLog('pf1ApplyDamage received',{requestId:record.requestId,matchMethod,
+    expected:aoDescribe(record.context),actual:{targetUuid:uuid}});
+ if(record.createdAt){
+  const previous=AO_DIRECT_PENDING.get(uuid);
+  if(previous&&previous!==record){
+    previous.conflicted=true;record.conflicted=true;
+    aoLog('Overlapping native damage applications; refused',{
+      first:aoDescribe(previous.context),second:aoDescribe(record.context)});
+  }else AO_DIRECT_PENDING.set(uuid,record);
+ }
 }
+
 async function aoFinishNativeDialog(app,completed){
  const attempts=AO_DIALOG_DAMAGE.get(app)??[];
  AO_DIALOG_DAMAGE.delete(app);
@@ -366,13 +408,15 @@ function aoInstallDamageBridge(){
  aoInstalled=true;
  Hooks.on('pf1ApplyDamageTargetOptions',aoOnApplyOptions);
  Hooks.on('pf1ApplyDamage',aoOnNativeApplyDamage);
+ Hooks.on('updateActor',aoAfterNativeActorUpdate);
  const klass=globalThis.pf1?.applications?.ApplyDamage;
  const staticDesc=klass&&Object.getOwnPropertyDescriptor(klass,'_onApply');
  const protoDesc=klass?.prototype&&Object.getOwnPropertyDescriptor(klass.prototype,'_onApply');
  const holder=typeof staticDesc?.value==='function'&&staticDesc.writable?klass:
    typeof protoDesc?.value==='function'&&protoDesc.writable?klass.prototype:null;
  if(!holder){
-   console.warn('[PF1AE][AttackOutcome] Native ApplyDamage._onApply unavailable or non-writable. ActorPF.applyDamage accessor untouched; automatic damage outcome disabled.');
+   console.warn('[PF1AE][AttackOutcome] ApplyDamage._onApply unavailable; native hooks and updateActor fallback remain installed; ActorPF.applyDamage untouched.');
+   aoLog('Installed native damage bridge',{hooks:['pf1ApplyDamageTargetOptions','pf1ApplyDamage','updateActor'],completion:'verified actor-update fallback',actorAccessor:'untouched'});
    return;
  }
  const original=holder._onApply;
@@ -394,7 +438,7 @@ function aoInstallDamageBridge(){
  wrapper.pf1aeAttackDialogWrapped=true;
  holder._onApply=wrapper;
  aoLog('Installed native damage bridge',{hooks:['pf1ApplyDamageTargetOptions','pf1ApplyDamage'],
-   completion:'ApplyDamage._onApply',actorAccessor:'untouched',static:holder===klass});
+   completion:'ApplyDamage._onApply plus native actor-update fallback',actorAccessor:'untouched',static:holder===klass});
 }
 async function aoResolveDamage(data){
  if(!aoLeader()||!aoActive())return {processed:false,reason:'not elected GM'};
