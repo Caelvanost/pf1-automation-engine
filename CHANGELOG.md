@@ -1,3 +1,11 @@
+## v1.14.4 — PF1 synthetic Actor HP offset confirmation
+
+- Recognize both nested and flattened updates to `system.attributes.hp.value` and `system.attributes.hp.offset`.
+- Confirm native `options.pf1.deltas.hp.offset` and `_nasPrevHp` against effective Actor HP before/after, never equating a negative offset alone with applied damage.
+- Preserve exact native attack card/ItemAction/index/target identity, including unlinked Scene.Token.Actor UUIDs; no changes to public API, multiclick deduplication or GM authority.
+- Regression: 11 effective HP -> 6 HP with offset -5 triggers exactly one follow-up; no effective HP loss triggers none.
+- No changes to Fascination, saveOutcomes, timers or character Item Script Calls. Live PF1 11.11 validation remains necessary.
+
 ## v1.14.3 — Direct native attack damage bridge
 
 - Preserve exact native Action-card provenance when damage options arrive outside tracked `ApplyDamage._onApply`.
