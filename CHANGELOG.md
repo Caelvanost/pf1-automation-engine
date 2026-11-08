@@ -1,3 +1,10 @@
+## v1.14.2 — README refresh and removal of standalone example scripts
+
+- Rewrite the README around the current public APIs, installation, debugging, permissions and compatibility requirements.
+- Remove the standalone `scripts-exemples/coup-etourdissant-utilisation.js` script from the repository.
+- Replace the deleted script link in `docs/ATTACK-OUTCOMES.md` with Item Script Call integration guidance.
+- No runtime JavaScript, Foundry hooks, save resolution or automation behavior changed.
+
 ## v1.14.1 — Non-configurable ActorPF accessor damage bridge
 
 - Never assign to or redefine the non-configurable `ActorPF.prototype.applyDamage` accessor (getter and setter remain native).
