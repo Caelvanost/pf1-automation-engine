@@ -1,5 +1,5 @@
 /**
- * PF1 Automation Engine — Attack Outcomes (v1.14.1).
+ * PF1 Automation Engine — Attack Outcomes (v1.14.3).
  * Fail-closed tracking for source-specific attacks whose damage is manually
  * applied from PF1's native ApplyDamage dialog. Only the elected GM mutates
  * the persistent registry or executes a subsequent PF1 ItemAction.
@@ -17,6 +17,74 @@ const AO_PENDING=new Map();
 const AO_ACTIVE_DIALOGS=new WeakSet();
 const AO_DIALOG_DAMAGE=new WeakMap();
 const AO_SOURCE_OPTIONS=new WeakMap();
+const AO_DIRECT_OPTIONS=new Map();
+const AO_DIRECT_PENDING=new Map();
+const AO_DIRECT_TTL=1800,AO_OPTIONS_WINDOW=700;
+function aoDescribe(x){
+ return x?{sourceMessageId:x.sourceMessageId??null,sourceItemUuid:x.sourceItemUuid??null,
+   sourceActionId:x.sourceActionId??null,attackIndex:x.attackIndex??null,
+   targetUuid:x.targetUuid??null}:null;
+}
+function aoDifferent(a,b){
+ return !a||!b||['sourceMessageId','sourceItemUuid','sourceActionId','attackIndex','targetUuid']
+   .some(k=>a[k]!==b[k]);
+}
+function aoDrop(record){
+ if(record?.timer)clearTimeout(record.timer);
+ for(const [key,items] of AO_DIRECT_OPTIONS){
+  const kept=items.filter(x=>x!==record);
+  if(kept.length)AO_DIRECT_OPTIONS.set(key,kept);else AO_DIRECT_OPTIONS.delete(key);
+ }
+ if(record&&AO_DIRECT_PENDING.get(record.context.targetUuid)===record)
+  AO_DIRECT_PENDING.delete(record.context.targetUuid);
+}
+function aoPrepareDirect(record){
+ const key=record.context.targetUuid;
+ const items=(AO_DIRECT_OPTIONS.get(key)??[])
+   .filter(x=>!x.completed&&aoNow()-x.createdAt<=AO_OPTIONS_WINDOW);
+ for(const other of items){other.conflicted=true;record.conflicted=true;}
+ record.createdAt=aoNow();record.completed=false;
+ items.push(record);AO_DIRECT_OPTIONS.set(key,items);
+ record.timer=setTimeout(()=>{
+  aoDrop(record);
+  aoLog('Direct native damage candidate expired',{
+   requestId:record.requestId,expected:aoDescribe(record.context)});
+ },AO_DIRECT_TTL);
+}
+function aoUpdateHasDamage(changes){
+ return ['system.attributes.hp.value','system.attributes.hp.nonlethal',
+  'system.attributes.hp.nl','system.attributes.hp.temp'].some(key=>
+    Object.prototype.hasOwnProperty.call(changes??{},key)||
+    (typeof foundry.utils?.hasProperty==='function'&&foundry.utils.hasProperty(changes,key)));
+}
+function aoAfterNativeActorUpdate(actor,changes,_opts,userId){
+ if(!aoActive()||!actor?.uuid||!aoUpdateHasDamage(changes))return;
+ const record=AO_DIRECT_PENDING.get(actor.uuid);
+ if(!record)return;
+ const invalid=record.completed||record.conflicted||!record.nativePre||
+   record.actor?.uuid!==actor.uuid||aoNow()-record.createdAt>AO_DIRECT_TTL||
+   !game.user.isGM||(userId&&userId!==game.user.id);
+ if(invalid){
+  aoLog('Direct native damage update rejected',{expected:aoDescribe(record.context),
+    actual:{targetUuid:actor.uuid,userId},nativePre:record.nativePre,
+    conflicted:record.conflicted});
+  aoDrop(record);return;
+ }
+ const delta=aoDamageDelta(record.before,aoDamageSnapshot(actor));
+ aoLog('Native damage actor update observed',{
+  requestId:record.requestId,expected:aoDescribe(record.context),
+  actual:{targetUuid:actor.uuid,userId},delta});
+ if(!delta.provenDamage)return;
+ record.completed=true;aoDrop(record);
+ aoLog('Native damage applied; dispatching verified outcome',{
+   requestId:record.requestId,expected:aoDescribe(record.context),delta});
+ const payload={channel:AO_CHANNEL,op:'damage',requestId:record.requestId,
+   userId:game.user.id,context:{...record.context,delta},targetUuid:actor.uuid};
+ if(aoLeader())void aoResolveDamage(payload).catch(e=>
+    console.error('[PF1AE][AttackOutcome] Direct damage dispatch failed',e));
+ else game.socket.emit(AO_SOCKET,payload);
+}
+
 const AO_SEEN=new Map();
 const AO_MAX=200;
 const AO_TIMEOUT=15000;
