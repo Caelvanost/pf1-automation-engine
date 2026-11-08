@@ -1,3 +1,11 @@
+## v1.14.3 — Direct native attack damage bridge
+
+- Preserve exact native Action-card provenance when damage options arrive outside tracked `ApplyDamage._onApply`.
+- Correlate native target-options and pre-apply hooks with a real actor update, tolerating cloned options only for a unique, recent candidate.
+- Reject wrong attack index, ambiguous actor updates, stale options and no proven HP/nonlethal damage; no changes to the `ActorPF.applyDamage` accessor.
+- Keep `saveOutcomes`, Fascination, bard automations, source-specific duration and elected-GM deduplication intact.
+- Add direct-damage regression coverage; live PF1 11.11 validation remains essential.
+
 ## v1.14.2 — README refresh and removal of standalone example scripts
 
 - Rewrite the README around the current public APIs, installation, debugging, permissions and compatibility requirements.

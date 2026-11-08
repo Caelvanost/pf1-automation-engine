@@ -1,4 +1,4 @@
-# PF1 Attack Outcomes — v1.14.1 (expérimental)
+# PF1 Attack Outcomes — v1.14.3 (expérimental)
 
 **Fondement :** Foundry VTT 13, système PF1 11.11. L'implémentation surveille le hook PF1 `pf1ApplyDamageTargetOptions`, dont les arguments documentés sont `(app, target, options)` et dont les options sont envoyées ensuite à `ActorPF.applyDamage()`. La carte d'origine est fournie par `app.extraOptions.message`, et l'indice d'attaque par `app.extraOptions.attackIndex`. Le module ne déduit jamais la provenance d'une simple modification de PV.
 
@@ -79,3 +79,22 @@ L'accesseur `ActorPF.prototype.applyDamage` n'est jamais assigné, redéfini ou 
 **Logs attendus :** `Installed native damage bridge`, `Native damage options annotated`, `pf1ApplyDamage received`, `Native damage dialog completed`, `Triggered source-specific follow-up Action`. Si `_onApply` est inaccessible ou non inscriptible, le module avertit et ne remplace pas l'accesseur Actor.
 
 **Limites :** ce pont concerne le dialogue PF1 natif ; il ne détecte pas les dommages infligés par une macro externe appelant directement `ActorPF.applyDamage`. La simulation des hooks et de l'accesseur passe, mais le comportement exact de `_onApply` et la propagation des options restent à vérifier dans votre installation.
+
+## v1.14.3 — Application native directe des dégâts PF1
+
+La v1.14.1 associait le hook `pf1ApplyDamageTargetOptions` uniquement à un dialogue `ApplyDamage._onApply` suivi. PF1 11.11 peut appeler ce hook sans traverser ce wrapper. Le contexte de la carte était alors écarté, puis `pf1ApplyDamage` ne retrouvait plus l'attaque.
+
+Le bridge conserve désormais ce contexte pour les applications directes et exige successivement : une carte native structurée avec `ItemAction.id`, l'indice de frappe exact, l'UUID de cible, le hook natif `pf1ApplyDamage` correspondant sur le même acteur, puis un `updateActor` initié par le même MJ et montrant une perte effective de PV ou une augmentation de dégâts non létaux. Si les options ont été copiées entre les hooks, une unique association très récente et non contradictoire est admise. Les candidats expirent après 1,8 seconde. `ActorPF.applyDamage` n'est jamais remplacée.
+
+Cette corrélation reste expérimentale : les hooks de PF1 ne fournissent pas d'identifiant transactionnel permanent jusqu'à `updateActor`. Si deux opérations concurrentes visent la même cible, le moteur refuse de déclencher une sauvegarde plutôt que d'inventer une provenance.
+
+### Test de Coup étourdissant
+
+1. Activer `genericDebug` et vérifier le message d'installation du pont au chargement.
+2. Jouer l'Action « Utiliser », puis contrôler `Registered` et `Bound native attack card`.
+3. Depuis le client MJ, appliquer des dégâts positifs à la cible **depuis la carte liée**.
+4. Vérifier `Direct native damage options captured (no dialog)`, `pf1ApplyDamage received`, `Native damage actor update observed`, `Native damage applied; dispatching verified outcome`, puis `Triggered source-specific follow-up Action`.
+5. Confirmer une seule carte Vigueur, la condition Étourdi après échec, et sa disparition au début du prochain tour du moine.
+6. Vérifier zéro dégât, mauvaise carte, autre indice, double clic, dégâts temporaires absorbés et deuxième utilisateur. Tous les cas sans preuve suffisante doivent échouer sans lancer une Action.
+
+L'API `api.attackOutcomes.register/bindAttack/unregister/list` est inchangée, de même que les Script Calls existants.
