@@ -321,7 +321,7 @@ async function aoResolveDamage(data){
     if(trigger.uuid===rule.sourceItemUuid && rule.onDamageApplied.actionId===rule.sourceActionId)
       throw Error('Triggering the original attack Action is prohibited');
     if(typeof trigger.use!=='function')throw Error('PF1 Item.use unavailable');
-    await trigger.use({actionId:rule.onDamageApplied.actionId});
+    await trigger.use({actionId:rule.onDamageApplied.actionId,cost:0,chatMessage:true});
     await game.settings.set(AO_NS,AO_REG,aoEntries().map(r=>r.id===rule.id
       ?{...r,state:'done',completedAt:aoNow()}:r));
     aoLog('Triggered source-specific follow-up Action',{ruleId:rule.id,
