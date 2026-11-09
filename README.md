@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.16.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.16.1 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 A generic automation module for PF1 Item Script Calls. It provides reusable, persistent services while leaving the rules of individual spells, feats and class abilities in the relevant PF1 Items. It does **not** include ready-to-use character-specific ability scripts.
 
@@ -124,6 +124,10 @@ The damage bridge recognizes both `hp.value` and `hp.offset` updates on native `
 
 The existing `saveOutcomes.register` now also accepts `onFailure:{type:'templateEffect',templateUuid,duration,stacking}`. A native PF1 saving-throw failure clones an **approved, unchanged** PF1 Item Buff or Actor ActiveEffect with its own mechanical changes. Copies use existing `effectGroups`, `ItemPF.setActive`, the world ledger and duration/turn timers. Stacking modes: `stack`, `replace`, `refresh`, `ignore`, with a shared target key that may span multiple source Actors. **Dynamic `parameters` are not supported in v1.15.0**; supply fixed-value models approved in Foundry. The `linkedBuff` API, bardic automations and all existing save/damage bridges remain unchanged. [Full template effect API](docs/TEMPLATE-SAVE-OUTCOMES.md).
 
-## Dynamic native PF1 effects — v1.16.0
+## Dynamic native PF1 effects — v1.16.1
 
 PF1AE now provides `api.effects.approve/apply/revoke/listApprovals` for GM-approved, temporary native PF1 mechanical buffs without a precreated Item or ActiveEffect template. The approval is tied to an Item Action fingerprint and an explicit mechanical target/modifier/magnitude allowlist. `saveOutcomes.register` now supports `onFailure.type:'dynamicEffect'` after verified native saving throws. Existing `linkedBuff` and `templateEffect` are unchanged. For API, security limitations and acceptance steps see [Dynamic Effects](docs/DYNAMIC-EFFECTS.md).
+
+## Effets automatiques sans approbation manuelle
+
+Avec `saveOutcomes.dynamicEffect`, un effet purement déclaratif n'exige plus d'appel préalable à `api.effects.approve()` dans les limites par défaut : au plus **3 changements**, valeur absolue **≤ 10**, et types/champs reconnus par PF1. Les modèles `templateEffect` passifs et source-bound non encore approuvés sont approuvés automatiquement et leur empreinte reste contrôlée. Les effets directs demandés par un joueur sans autorisation explicite sont limités à son propre acteur ; pour affecter un ennemi, employer le jet natif vérifié par `saveOutcomes`. Les restrictions explicites et révocations MJ prévalent.

@@ -1,4 +1,4 @@
-/** PF1AE v1.16 — GM-authorized declarative native PF1 buffs. */
+/** PF1AE v1.16.1 — automatically authorized declarative native PF1 buffs. */
 const FX_NS='pf1-automation-engine';
 const FX_REG='dynamicEffectApprovals',FX_SOCKET='module.'+FX_NS,FX_CHANNEL='pf1ae-dynamic-effects-v1';
 const FX_PENDING=new Map(),FX_SEEN=new Set(),FX_KEYS=/^[a-zA-Z0-9_-]{1,80}$/;
@@ -6,6 +6,8 @@ const FX_TARGETS=new Set(['ac','tac','ffac','mattack','rattack','nattack','fort'
 'str','dex','con','int','wis','cha','landSpeed','damage','wdamage']);
 const FX_MODIFIERS=new Set(['penalty','untyped','dodge','deflection','enh','morale','luck','sacred',
 'profane','insight','competence','circumstance','resist']);
+const FX_AUTO_LIMIT=10,FX_AUTO_MAX_CHANGES=3;
+const FX_AUTO_TARGETS=new Set(['ac','tac','ffac','mattack','rattack','nattack','fort','ref','will','str','dex','con','int','wis','cha','landSpeed','damage','wdamage']);
 const fxLeader=()=>[...game.users].filter(u=>u.active&&u.isGM).sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user.id;
 const fxEnabled=()=>game.modules.get(FX_NS)?.active&&game.settings.get(FX_NS,'genericEnabled');
 const fxRead=()=>game.settings.get(FX_NS,FX_REG)??{};
@@ -44,15 +46,26 @@ async function fxCheck(data){
  return {source,item,fingerprint};
 }
 async function fxAuthorize(data){
- const {fingerprint}=await fxCheck(data),record=fxRead()[data.sourceUuid+':'+data.approvalKey];
- if(!record||record.sourceItemUuid!==data.sourceItemUuid||record.sourceActionId!==data.sourceActionId||
-    record.fingerprint!==fingerprint||!record.channels.includes(data.channel??'direct'))
-  throw Error('Unapproved or modified PF1 source Action.');
+ const {fingerprint}=await fxCheck(data);
+ const record=fxRead()[data.sourceUuid+':'+data.approvalKey];
  const changes=fxValidateChanges(data.changes);
- for(const c of changes)
-  if(!record.allowed.some(a=>a.target===c.target&&a.modifier===c.modifier&&Math.abs(c.value)<=a.maxAbs))
-   throw Error('Mechanical change exceeds GM authorization.');
- return {authorized:true,changes};
+ if(record){
+  if(record.denied)throw Error('This PF1 source Action was explicitly blocked by the GM.');
+  if(record.sourceItemUuid!==data.sourceItemUuid||record.sourceActionId!==data.sourceActionId||
+     record.fingerprint!==fingerprint||!record.channels?.includes(data.channel??'direct'))
+   throw Error('Unapproved or modified PF1 source Action.');
+  for(const c of changes)
+   if(!record.allowed.some(a=>a.target===c.target&&a.modifier===c.modifier&&Math.abs(c.value)<=a.maxAbs))
+    throw Error('Mechanical change exceeds GM authorization.');
+  return {authorized:true,automatic:false,changes};
+ }
+ // Silent bounded auto-policy, never a grant of arbitrary JS or field paths.
+ // Source Actor+Item+Action are checked above; native card provenance is
+ // enforced on player direct calls and by SaveBridge for save outcomes.
+ if(changes.length>FX_AUTO_MAX_CHANGES||
+    changes.some(c=>!FX_AUTO_TARGETS.has(c.target)||Math.abs(c.value)>FX_AUTO_LIMIT))
+  throw Error('Automatic mechanical effect exceeds safe policy; explicit GM grant required.');
+ return {authorized:true,automatic:true,changes};
 }
 async function fxApprove(data){
  if(!fxLeader()||!game.user.isGM)throw Error('GM-only approval.');
@@ -77,15 +90,15 @@ async function fxApprove(data){
 }
 async function fxRevoke({actor,approvalKey}){
  if(!fxLeader()||!game.user.isGM)throw Error('GM-only revoke.');
- const key=actor?.uuid+':'+approvalKey,records={...fxRead()};delete records[key];
- await game.settings.set(FX_NS,FX_REG,records);return {revoked:true};
+ const key=actor?.uuid+':'+approvalKey,records={...fxRead()};records[key]={denied:true};
+ await game.settings.set(FX_NS,FX_REG,records);return {revoked:true,blocked:true};
 }
 async function fxApplyOnGM(data,requester){
  if(!fxLeader())throw Error('Elected GM required.');
  const {source}=await fxCheck(data);
  if(!requester?.active||(!requester.isGM&&!source.testUserPermission?.(requester,'OWNER')))
   throw Error('Source Actor OWNER permission required.');
- const {changes}=await fxAuthorize({...data,channel:'direct'});
+ const {changes,automatic}=await fxAuthorize({...data,channel:'direct'});
  // Player-originating requests additionally require the exact PF1 source card.
  // A self-declared socket userId alone does not authenticate the sender.
  if(!requester.isGM){
@@ -97,6 +110,8 @@ async function fxApplyOnGM(data,requester){
  }
  if(!Array.isArray(data.targets)||!data.targets.length||data.targets.length>30)throw Error('1–30 target UUIDs required.');
  if(!fxSafeId(data.requestId,100))throw Error('requestId required for idempotency.');
+ if(automatic&&!requester.isGM&&data.targets.some(t=>t!==source.uuid))
+  throw Error('Automatic direct player effects are self-only; use verified saveOutcomes for enemy debuffs.');
  const out=[];
  for(const targetUuid of [...new Set(data.targets)]){
   const target=await fromUuid(targetUuid);
@@ -118,7 +133,7 @@ async function fxApply(data){
  const targets=(data.targets??[]).map(t=>typeof t==='string'?t:t?.uuid);
  const changes=fxValidateChanges(data.effect?.changes),requestId=data.requestId??foundry.utils.randomID();
  const payload={sourceUuid:actor.uuid,sourceItemUuid:data.sourceItemUuid,
-  sourceActionId:data.sourceActionId,approvalKey:data.approvalKey,targets,
+  sourceActionId:data.sourceActionId,approvalKey:data.approvalKey??'auto',targets,
   sourceMessageId:data.sourceMessageId??null,
   effect:{name:data.effect.name,img:data.effect.img,duration:data.effect.duration,
     stacking:data.effect.stacking},changes,requestId};

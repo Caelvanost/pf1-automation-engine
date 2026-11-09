@@ -1,3 +1,12 @@
+## v1.16.1 — Autorisation automatique des effets mécaniques déclaratifs
+
+- Plus d'approbation MJ manuelle pour `dynamicEffect` dans les limites automatiques : 3 changements, amplitude de 10, modificateurs et cibles PF1 vérifiés.
+- `approvalKey` devient facultatif ; l'ancienne API et les approbations explicites restent utilisables.
+- Approbation automatique des nouveaux modèles `templateEffect` passifs ; modèles avec scripts/macros ou empreintes déjà approuvées mais modifiées restent refusés.
+- Une révocation MJ est persistante et bloque le mode automatique pour cette clé.
+- Sans autorisation explicite, un joueur ne peut pas demander directement un debuff sur un ennemi : passer par une sauvegarde source-bound vérifiée.
+- Aucun changement aux autres automations.
+
 ## v1.16.0 — GM-authorized native dynamic PF1 buffs
 
 - New `api.effects` service for direct declarative mechanical buffs, source ItemAction GM grants, bounded numerical values and strict allowed targets/modifiers.

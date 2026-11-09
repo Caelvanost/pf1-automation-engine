@@ -754,7 +754,10 @@ async function effectValidateTemplateOutcome(data){
   const template=await effectResolveTemplate(data.templateUuid);
   if(!source || !template || !effectOwnedBy(template,source))
     throw Error('Template must be an actor-owned buff/AE of the source or a Compendium buff.');
-  effectCheckApproval(template); // Explicitly trust the exact approved fingerprint.
+  // Passive templates are silently approved once. Existing changed
+  // fingerprints are never renewed without explicit reauthorization.
+  if(effectApprovals()[template.uuid])effectCheckApproval(template);
+  else await effectAutoApprove(template,source,game.user,false);
   return {templateUuid:template.uuid,kind:effectTemplateKind(template)};
 }
 function effectTemplateOutcomeDuration(duration){

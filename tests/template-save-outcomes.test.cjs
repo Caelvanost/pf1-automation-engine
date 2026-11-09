@@ -80,7 +80,8 @@ function rule(key,recipient=target,mode='stack',tpl=template){
    duration:{seconds:60,expire:'elapsed'},stacking:{mode,key:'shared-ac'}}};
 }
 (async()=>{
- await assert.rejects(api.saveOutcomes.register(rule('unapproved')),/approved|approuvé/i);
+ await api.saveOutcomes.register(rule('auto-passive'));
+ await api.saveOutcomes.unregister({actor:caster,key:'auto-passive'});
  await api.effectGroups.approveTemplate({actor:caster,templateUuid:template.uuid});
  await api.effectGroups.approveTemplate({actor:caster,templateUuid:activeTemplate.uuid});
  await assert.rejects(api.saveOutcomes.register({...rule('arbitrary'),
