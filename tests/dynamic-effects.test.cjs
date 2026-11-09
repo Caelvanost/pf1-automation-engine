@@ -88,7 +88,9 @@ stacking:{mode,key:'shared-defense'}}};}
 (async()=>{
  const grant={actor:bard,approvalKey:'approved-malus',sourceItemUuid:item.uuid,
   sourceActionId:'save',allowed:[{target:'ac',modifier:'penalty',maxAbs:6}],channels:['save','direct']};
- await assert.rejects(api.saveOutcomes.register(rule('unapproved')),/approved|approval/i);
+ await api.saveOutcomes.register(rule('auto-pass'));
+ await api.saveOutcomes.unregister({actor:bard,key:'auto-pass'});
+ await assert.rejects(api.saveOutcomes.register(rule('auto-oversize',target,-11)),/Automatic mechanical effect exceeds safe policy/);
  await api.effects.approve(grant);
  await assert.rejects(api.saveOutcomes.register(rule('oversize',target,-7)),/authorization/);
  await assert.rejects(api.saveOutcomes.register(rule('positive',target,4)),/penalty cannot be positive/);
@@ -128,5 +130,7 @@ stacking:{mode,key:'shared-defense'}}};}
  assert.equal(synthetic.items.size,1,'Direct replay idempotent');
  item.actions.get('save').name='Changed Action';
  await assert.rejects(api.effects.apply({...direct,requestId:'tamper'}),/modified|Unapproved/i);
+ await api.effects.revoke({actor:bard,approvalKey:'approved-malus'});
+ await assert.rejects(api.saveOutcomes.register(rule('revoked')),/explicitly blocked/);
  console.log('PASS dynamic effects: GM grants, sign and bounds, native PF1 buff, saves, stacking, timers, synthetic Actor and replay');
 })().catch(error=>{console.error(error);process.exitCode=1});
