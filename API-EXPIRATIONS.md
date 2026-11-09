@@ -137,3 +137,7 @@ await game.modules.get('pf1-automation-engine').api.generic.extendTimer(
 Ce décalage est **additif à la date d'expiration**, sans réinitialisation. Pour un **groupe d'effets**, préférer `api.effectGroups.extendGroup({actor,key,rounds:1})`, qui accepte les demandes des joueurs contrôlant l'acteur source. L'extension n'exécute aucun script de bascule et ne recrée pas les buffs. Le MJ responsable demeure l'unique client autorisé à écrire `timerRegistry`.
 
 Limites : les tours sans combattant identifiable, des changements d'initiative exceptionnels et les retours manuels de round peuvent nécessiter une intervention du MJ. Les positions et échéances sont évaluées avec l'ordre des combattants dans le combat actif ; aucun tour manqué n'est inventé.
+
+## v1.16.3 — Suppression/arrêt des combats
+
+À la fin d'un combat, les minuteurs de scripts sont annulés **sans exécution** ; les effets et groupes réellement gérés par PF1AE sont nettoyés avant d'effacer leur minuteur. Les cibles indisponibles sont réessayées après reconnexion ou retour sur scène. Les durées exprimées en temps de jeu continuent indépendamment avec `game.time.worldTime`. Détails : [docs/COMBAT-CLEANUP.md](docs/COMBAT-CLEANUP.md).

@@ -108,3 +108,7 @@ When `duration` is provided, this is an **independent effect** and no active par
 A duration may be `{rounds:1,expire:"sourceTurnStart"}`, `{rounds:N,expire:"sourceTurnEnd"}`, `{rounds:N,expire:"elapsed"}`, or `{seconds:N,expire:"elapsed"}`. Outside combat, round duration falls back to elapsed Foundry world time at six seconds per round; the world clock must advance.
 
 The module does **not** perform or confirm melee attacks, damage, resource expenditures or extra actions. The source PF1 Script Call must do those checks and register the rule **before** publishing the native Fortitude save Action card, using `item.use({actionId: saveAction.id})` when its system workflow supports that call. Resource consumption must be handled once by the Script Call. A successful hit is not inferred from the save card.
+
+## v1.16.3 — Expiration de conditions et fin de combat
+
+Une condition autonome `linkedBuff` avec `duration:{rounds:1,expire:'sourceTurnStart'}` est retirée quand le combat concerné est arrêté ou supprimé, sans attendre un tour qui n'aura plus lieu. Une suppression temporairement impossible reste dans la file persistante. Voir [Nettoyage de combat](COMBAT-CLEANUP.md).
