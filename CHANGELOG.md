@@ -1,3 +1,14 @@
+## v1.16.3 — Nettoyage sécurisé des conditions à échéance de tour
+
+- Sur `deleteCombat` et lorsqu'un Combat est arrêté, supprime les effets de tour **avant** de retirer leurs minuteurs ; annule les minuteurs de Script Call sans les exécuter.
+- Pour chaque `ActiveEffect` autonome, vérifie `timerId`, `outcomeId`, `outcomeRuleId`, `sourceUuid`, l'Item/Action source, la clé et l'origine. Les effets permanents et étrangers sont préservés.
+- Réutilise `effectGroups.expireGroup` pour les buffs gérés et conserve une entrée `cleanupPending` si la cible est temporairement inaccessible.
+- Reprise automatique après F5, reconnexion ou changement de scène, même lorsque le combat est déjà supprimé.
+- Récupération conservatrice des anciennes conditions orphelines : flags PF1AE complets, minuteur absent des registres de phase **et** de durée, âge d'au moins 30 secondes.
+- Une suppression normale échouée est désormais retentée au lieu de perdre le minuteur.
+- Nouveau test `combat-cleanup.test.cjs` et non-régression des moteurs existants.
+- Aucune modification des API publiques, des Script Calls, de Fascination ou de Coup étourdissant.
+
 ## v1.16.2 — Interopérabilité attackOutcomes / saveOutcomes
 
 - Accepte `linkedBuff`, `templateEffect` et `dynamicEffect` dans `onDamageApplied.saveOutcome.onFailure.type`.
