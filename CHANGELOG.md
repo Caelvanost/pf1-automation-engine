@@ -1,3 +1,12 @@
+## v1.17.0 — Événements génériques de jets d’attaque pour Item Script Calls
+
+- Ajout du pont natif `pf1AttackRoll` / `pf1PostActionUse` : un événement `attack:resolved` par jet évalué, émis après la fin de l’action native.
+- Abonnement déclaratif par un Script Call PF1 `postUse` nommé `PF1AE:attack:resolved` ; découverte automatique sur les Items de l’acteur, sans hooks installés par les objets.
+- Contexte d’attaque normalisé et prudent : attaquant, Item, Action, token, jet, ordre et cibles explicites ; `hit: null` faute de touche fiable.
+- Protections contre doublons, récursion, abonnements en double et exécution par client sans droits.
+- Un nouveau test automatisé couvre les attaques multiples, le déclenchement après utilisation native, les tokens synthétiques et les permissions.
+- Aucun changement aux SaveBridge, attackOutcomes, saveOutcomes, Fascination, durées, conditions ou autres services.
+
 ## v1.16.3 — Nettoyage sécurisé des conditions à échéance de tour
 
 - Sur `deleteCombat` et lorsqu'un Combat est arrêté, supprime les effets de tour **avant** de retirer leurs minuteurs ; annule les minuteurs de Script Call sans les exécuter.
