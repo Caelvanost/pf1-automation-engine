@@ -710,7 +710,9 @@ async function effectCreateTimedOutcome(data){
     const flags={[EFFECT_NS]:{
       sourceUuid:source.uuid,key:data.key,outcomeId:data.outcomeId,
       outcomeRuleId:data.ruleId,sourceItemUuid:data.sourceItemUuid,
-      sourceActionId:data.sourceActionId,timerId
+      sourceActionId:data.sourceActionId,timerId,
+      combatId:isCombat&&duration.expire!=='elapsed'?game.combat.id:null,
+      managedOutcomeVersion:1
     }};
     const created=(await target.createEmbeddedDocuments('ActiveEffect',[{
       name:raw.label,img:raw.img,icon:raw.img,disabled:false,
