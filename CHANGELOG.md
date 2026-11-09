@@ -1,3 +1,13 @@
+## v1.15.0 — Native mechanical template effects after a PF1 saving throw
+
+- Add `saveOutcomes.onFailure.type='templateEffect'` for approved mechanical PF1 Item Buff and ActiveEffect models.
+- Require fingerprint-based GM approval on registration and application; retain strict source Actor/ItemAction provenance and target Actor UUIDs.
+- Reuse existing `effectGroups` storage, PF1 buff activation/deactivation, persistent duration and turn-boundary expiration.
+- Support `stack`, `replace`, `refresh`, `ignore` and deduplication by save message/outcome, including multiple sources sharing a stacking key on one target.
+- Reject arbitrary `parameters` in this first version; fixed-value approved mechanics only.
+- Preserve all `linkedBuff` paths including Fascination and timed Stunning Fist, SaveBridge, countersong, distraction and Attack Outcomes.
+- Add simulated regression coverage; real Foundry 13/PF1 11.11 validation is still required.
+
 ## v1.14.4 — PF1 synthetic Actor HP offset confirmation
 
 - Recognize both nested and flattened updates to `system.attributes.hp.value` and `system.attributes.hp.offset`.
