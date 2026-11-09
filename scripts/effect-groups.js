@@ -905,6 +905,151 @@ async function effectCreateTemplateOutcome(data){
   });
 }
 
+/** Dynamic native PF1 Item buff, reusing template group timers and stacking.
+ * GM approval is verified again immediately before creation.
+ */
+async function effectCreateDynamicOutcome(data){
+  effectRequireLeader();
+  if(!effectEnabled() || !data || !effectValidKey(data.key) ||
+      typeof data.outcomeId!=='string' || data.outcomeId.length>150 ||
+      typeof data.targetUuid!=='string')throw Error('Invalid template outcome request.');
+  const dur=effectTemplateOutcomeDuration(data.duration);
+  const changes=game.modules.get(EFFECT_NS)?.api?.effects?._validateChanges?.(data.changes);
+  if(!changes)throw Error('Dynamic change validation service unavailable.');
+  if(typeof data.name!=='string'||!data.name.trim()||data.name.length>120||
+     typeof data.img!=='string'||!data.img||data.img.length>500)
+    throw Error('Invalid dynamic effect name or image.');
+  const policy=data.stacking??{mode:'stack'};
+  if(!['stack','replace','refresh','ignore'].includes(policy.mode)||
+      (policy.mode!=='stack' && !effectValidKey(policy.key)) ||
+      (policy.key!=null && !effectValidKey(policy.key)))throw Error('Invalid stacking policy.');
+  if(data.parameters!=null)throw Error('Arbitrary parameters forbidden.');
+  return effectQueue(async()=>{
+    const source=await effectResolveActor(data.sourceUuid);
+    const target=await effectResolveActor(data.targetUuid);
+    if(!source||!target)throw Error('Missing source or target Actor.');
+    await game.modules.get(EFFECT_NS)?.api?.effects?._authorize?.({
+      sourceUuid:source.uuid,sourceItemUuid:data.sourceItemUuid,
+      sourceActionId:data.sourceActionId,approvalKey:data.approvalKey,
+      changes,channel:data.channel??'save'});
+    const ledger=effectGroups();
+    for(const g of Object.values(ledger)){
+      if(!g.dynamicOutcome || g.pendingCleanup || g.outcomeId!==data.outcomeId ||
+         g.targetUuid!==target.uuid)continue;
+      const copy=g.copies?.[0];
+      const doc=copy?effectDocumentFor(target,copy):null;
+      if(doc?.getFlag?.(EFFECT_NS,'effectGroupId')===g.id)
+        return {applied:true,duplicate:true,groupId:g.id,effectUuid:doc.uuid};
+    }
+    // The stacking identity intentionally spans source Actors: multiple casters
+    // can share a key on the same recipient without additive nonstacking effects.
+    const existing=Object.values(ledger).filter(g=>(g.templateOutcome||g.dynamicOutcome) &&
+      !g.pendingCleanup && g.targetUuid===target.uuid &&
+      g.stackingKey===policy.key && policy.key!=null);
+    if(policy.mode!=='stack' && existing.length>1)
+      throw Error('Ambiguous existing template effects for this stacking key.');
+    if(existing.length && ['ignore','refresh'].includes(policy.mode)){
+      const g=existing[0],copy=g.copies?.[0];
+      const doc=copy?effectDocumentFor(target,copy):null;
+      if(!doc || doc.getFlag?.(EFFECT_NS,'effectGroupId')!==g.id)
+        throw Error('Existing stacked template effect cannot be verified.');
+      if(policy.mode==='refresh'){
+        // Do not silently change the mechanical effect or its source; a refresh
+        // is only permitted for the same approved template and duration mode.
+        if(!g.dynamicOutcome||g.mechanicsSignature!==JSON.stringify(changes)||
+            (g.duration? 'elapsed':'phase') !== (dur.expire==='elapsed'?'elapsed':'phase'))
+          throw Error('Refresh requires the same template and expiration mode.');
+        const api=game.modules.get(EFFECT_NS).api;
+        if(g.duration){
+          await api.duration.schedule({id:g.timerId,effectGroupId:g.id,
+            duration:{value:dur.seconds??dur.rounds*6,unit:'seconds'}});
+        }else{
+          const combat=game.combat;
+          const actor=await effectResolveActor(g.sourceUuid);
+          if(!combat?.started||!actor)throw Error('Source combat is unavailable for refresh.');
+          const c=effectFindCombatant(actor,combat,null);
+          if(g.combatId!==combat.id||g.combatantId!==c.id)
+            throw Error('Cannot refresh a turn-bound effect in a different combat.');
+          await api.generic.scheduleTurn({id:g.timerId,effectGroupId:g.id,
+            combatId:combat.id,combatantId:c.id,
+            timing:dur.expire==='sourceTurnEnd'?'turnEnd':'turnStart',
+            occurrences:dur.rounds});
+        }
+      }
+      effectDebug('template-outcome-stacking',{mode:policy.mode,groupId:g.id,targetUuid:target.uuid});
+      return {applied:true,duplicate:false,stacking:policy.mode,groupId:g.id,effectUuid:doc.uuid};
+    }
+    // Build and validate expiry BEFORE removing the old effect.
+    const combat=game.combat;
+    const useTurn=dur.expire!=='elapsed' && !!combat?.started;
+    let combatant=null;
+    if(useTurn)combatant=effectFindCombatant(source,combat,null);
+    const id=foundry.utils.randomID();
+    const timerId='dynamic-outcome:'+id;
+    const duration=useTurn?null:{value:dur.seconds??dur.rounds*6,unit:'seconds'};
+    // Creation first preserves the old effect if the template is invalid.
+    const copy={name:data.name,img:data.img,type:'buff',system:{active:false,
+      changes:changes.map(change=>({target:change.target,type:change.modifier,
+        formula:String(change.value),operator:'add'}))}};
+    copy.flags??={};
+    copy.flags[EFFECT_NS]={effectGroupId:id,sourceUuid:source.uuid,key:'dynamic_'+id,
+      dynamicOutcome:true,outcomeId:data.outcomeId,outcomeRuleId:data.ruleId,
+      sourceItemUuid:data.sourceItemUuid,sourceActionId:data.sourceActionId,
+      stackingKey:policy.key??null};
+    const documentType='Item';
+    let created=null;
+    try{
+      if(documentType==='Item'){
+        copy.system??={};copy.system.active=false;
+      }else{copy.disabled=false;delete copy.duration;}
+      created=(await target.createEmbeddedDocuments(documentType,[copy],
+        {[EFFECT_NS]:{skip:true}}))?.[0];
+      if(!created)throw Error('Failed to create native dynamic mechanical buff.');
+      if(documentType==='Item'){
+        if(typeof created.setActive==='function')await created.setActive(true,{[EFFECT_NS]:{skip:true}});
+        else await created.update({'system.active':true},{[EFFECT_NS]:{skip:true}});
+      }
+      const session={id,key:'dynamic_'+id,sourceUuid:source.uuid,
+        targetUuid:target.uuid,dynamicOutcome:true,mechanicsSignature:JSON.stringify(changes),
+        approvalKey:data.approvalKey,channel:data.channel??'save',
+        stackingKey:policy.key??null,outcomeId:data.outcomeId,
+        combatId:useTurn?combat.id:null,combatantId:combatant?.id??null,
+        timing:useTurn?(dur.expire==='sourceTurnEnd'?'turnEnd':'turnStart'):null,
+        occurrences:useTurn?dur.rounds:null,duration,timerId,
+        copies:[{actorUuid:target.uuid,documentType,documentId:created.id}]};
+      // Persist the exact copy and timer target so expiry survives reload/F5.
+      await game.settings.set(EFFECT_NS,GROUPS_SETTING,{...effectGroups(),[id]:session});
+      const api=game.modules.get(EFFECT_NS).api;
+      if(duration)await api.duration.schedule({id:timerId,effectGroupId:id,duration});
+      else await api.generic.scheduleTurn({id:timerId,effectGroupId:id,
+        combatId:combat.id,combatantId:combatant.id,
+        timing:session.timing,occurrences:dur.rounds});
+      // Old instance is removed only after the replacement exists and is timed.
+      if(policy.mode==='replace')for(const old of existing){
+        // A failed removal must not leave two nonstacking copies active.
+        // Roll back the new copy in the catch handler below.
+        await effectExpireGroupInternal(old.id);
+      }
+      effectDebug('dynamic-outcome-created',{targetUuid:target.uuid,
+        effectUuid:created.uuid,stacking:policy.mode,timerId,changes});
+      return {applied:true,duplicate:false,groupId:id,effectUuid:created.uuid,timerId};
+    }catch(error){
+      const pending=created ? await effectDeleteCopies([{
+        actorUuid:target.uuid,documentType,documentId:created.id
+      }],id) : [];
+      const groups={...effectGroups()};
+      if(pending.length)groups[id]={id,key:'dynamic_'+id,
+        sourceUuid:source.uuid,targetUuid:target.uuid,
+        dynamicOutcome:true,
+        duration:duration??null,timerId,copies:pending,pendingCleanup:true};
+      else delete groups[id];
+      await game.settings.set(EFFECT_NS,GROUPS_SETTING,groups);
+      if(pending.length)console.error('[PF1AE][SaveOutcome] Dynamic effect rollback deferred',pending);
+      throw error;
+    }
+  });
+}
+
 /** Extend the existing group's timer without touching any beneficiary copies. */
 async function effectExtendInternal(data,requester,socketOrigin=false) {
   if (!effectEnabled() || !effectIsLeader()) throw Error('Le MJ responsable est indisponible.');
@@ -1046,6 +1191,7 @@ Hooks.once('ready',()=>{
     _createTimedOutcome:effectCreateTimedOutcome, // GM internal; independent condition timer
     _validateTemplateOutcome:effectValidateTemplateOutcome,
     _createTemplateOutcome:effectCreateTemplateOutcome,
+    _createDynamicOutcome:effectCreateDynamicOutcome,
     expireGroup:effectExpireGroup,
     canExpireGroup:effectCanExpireGroup,
     validateGroupTimer:effectValidateGroupTimer,
