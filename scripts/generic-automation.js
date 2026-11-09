@@ -582,6 +582,10 @@ async function executeTimer(t,combat) {
   if (t.effectUuid) {
     const effect=await fromUuid(t.effectUuid);
     if (!isExpirable(effect)) return;
+    if (t.id?.startsWith('outcome:') && !isManagedTimedOutcome(effect,t.id)) {
+      console.warn(`${NS} | Minuteur outcome non propriétaire, suppression refusée`,t.id,t.effectUuid);
+      return;
+    }
     try {
       // PF1 ItemBuffPF.setActive is the native way to switch a buff off.
       if (effect.documentName === 'Item') {
@@ -598,7 +602,7 @@ async function executeTimer(t,combat) {
         await effect.update({disabled:true},{[NS]:{skip:true}});
       }
       log('Effet expiré',t.id,t.effectUuid,t.phase);
-    } catch(error) {console.error(`${NS} | Expiration de l'effet ${t.id} impossible`,error);}
+    } catch(error) {console.error(`${NS} | Expiration de l'effet ${t.id} impossible`,error);throw error;}
     return;
   }
   await runHandler(t,{
@@ -628,7 +632,7 @@ async function runDueTimers(list,combat,forceWrite=false) {
     try { await executeTimer(timer,combat); }
     catch(error) {
       console.error(`${NS} | Expiration ${timer.id} à réessayer`,error);
-      if (timer.effectGroupId) retry.push({...timer,due:true});
+      if (timer.effectGroupId || timer.effectUuid) retry.push({...timer,due:true});
     }
   }
   if (retry.length) {
@@ -721,12 +725,17 @@ function install() {
   // the Combat's round/turn changes, independent of transition history.
   // resumeDueTimers and advanceTimers use the same serialized write queue.
   Hooks.on('updateCombat',(combat,changes)=>{
-    if (combat?.id && (Object.hasOwn(changes??{},'round') ||
-      Object.hasOwn(changes??{},'turn'))) {
+    if(!combat?.id)return;
+    if (!combat.started) {
+      // Also handle combats stopped without deleting the Combat document.
+      void cleanupCombatTimers(combat.id,'combatStopped').catch(e=>
+        console.error(`${NS} | Nettoyage d'un combat arrêté`,e));
+    } else if (Object.hasOwn(changes??{},'round') || Object.hasOwn(changes??{},'turn')) {
       void resumeDueTimers();
     }
   });
-  Hooks.on('deleteCombat',combat=>{if(!enabled()||!leader())return;void appendQueue('__pf1_timer_write__',async()=>{const old=getTimers();if(old.some(t=>t.combatId===combat.id))await game.settings.set(NS,TIMERS,old.filter(t=>t.combatId!==combat.id));});});
+  Hooks.on('deleteCombat',combat=>{void cleanupCombatTimers(combat?.id,'deleteCombat').then(()=>recoverCombatCleanup()).catch(e=>console.error(`${NS} | Erreur de nettoyage de combat`,e));});
+  Hooks.on('canvasReady',()=>{void recoverCombatCleanup();});
 }
 Hooks.once('init',()=>{
   game.settings.register(NS,ENABLED,{name:'Activer les automatisations génériques',hint:'Active les événements persistants, synchronisations et minuteurs.',scope:'world',config:true,type:Boolean,default:true});
@@ -737,7 +746,10 @@ Hooks.once('init',()=>{
 });
 Hooks.once('ready',async()=>{
   game.modules.get(NS).api ??= {};
-  game.modules.get(NS).api.generic = Object.freeze({register,unregister,schedule,scheduleTurn,expireEffectAt,extendTimer,cancelTimer,listEvents:()=>clone(getRegistry()),listTimers:()=>clone(getTimers()),isLeader:leader,validateRule,validateTarget:async r=>{const i=await fromUuid(r.itemUuid);if(i?.documentName!=='Item')throw Error('Objet de script introuvable');return resolveTarget(i,r);},
+  game.modules.get(NS).api.generic = Object.freeze({register,unregister,schedule,scheduleTurn,expireEffectAt,extendTimer,cancelTimer,listEvents:()=>clone(getRegistry()),listTimers:()=>clone(getTimers()),isLeader:leader,
+    _recoverCombatCleanup:recoverCombatCleanup,
+    _cleanupCombatTimers:cleanupCombatTimers,
+    validateRule,validateTarget:async r=>{const i=await fromUuid(r.itemUuid);if(i?.documentName!=='Item')throw Error('Objet de script introuvable');return resolveTarget(i,r);},
     // Internal rest bridge. It accepts only typed PF1 rest notifications from
     // rest-automation.js; never an arbitrary script or generic event payload.
     _dispatchRestEvent: ev => {
@@ -750,6 +762,7 @@ Hooks.once('ready',async()=>{
   try { await game.modules.get(NS).api.migration?.whenReady(); }
   catch(error) { console.error(`${NS} | Automatisations suspendues : échec de migration`, error); return; }
   await game.modules.get(NS).api.discovery?.scan();
+  await recoverCombatCleanup();
   await resumeDueTimers();
   if(leader()&&enabled())void dispatch({type:'ready',documentUuid:null,actorUuid:null,itemUuid:null,changedPaths:[],buffState:null});
 });
