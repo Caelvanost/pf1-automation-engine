@@ -1,3 +1,11 @@
+## v1.16.0 — GM-authorized native dynamic PF1 buffs
+
+- New `api.effects` service for direct declarative mechanical buffs, source ItemAction GM grants, bounded numerical values and strict allowed targets/modifiers.
+- Native PF1 `system.changes` ItemChange creation with literal numeric formulas and activation of temporary Items.
+- New `saveOutcomes` consequence `dynamicEffect` after verified native saving throws; `linkedBuff` and `templateEffect` unchanged.
+- Reuse managed group ledger, stacking policies and persistent world-time/combat turn timers; preserve unlinked Token Actors.
+- Add dedicated regression suite. Runtime PF1 calculated AC still requires in-world verification.
+
 ## v1.15.0 — Native mechanical template effects after a PF1 saving throw
 
 - Add `saveOutcomes.onFailure.type='templateEffect'` for approved mechanical PF1 Item Buff and ActiveEffect models.
