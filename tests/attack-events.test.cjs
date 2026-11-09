@@ -15,8 +15,10 @@ const rogue={documentName:'Actor',uuid:'Scene.a.Token.b.Actor.rogue',
  getActiveTokens:()=>[{document:{documentName:'Token',uuid:'Scene.a.Token.b',actor:{uuid:'Scene.a.Token.b.Actor.rogue'}}}]};
 const weapon={documentName:'Item',uuid:rogue.uuid+'.Item.rapier',actor:rogue};
 const attack={id:'rapier-attack',item:weapon,actor:rogue};
-let reacting=false;
+let reacting=false, damageUses=0;
 const reactive={documentName:'Item',uuid:rogue.uuid+'.Item.reaction',actor:rogue,
+ actions:new Map([['damage',{id:'damage'}]]),
+ async use(options){assert.deepEqual(options,{actionId:'damage',cost:0,chatMessage:true});damageUses++;},
  scriptCalls:{contents:[{id:'reaction',name:'PF1AE:attack:resolved',category:'postUse',
  async execute(shared,extra){
    outcomes.push(extra.event);
@@ -25,6 +27,9 @@ const reactive={documentName:'Item',uuid:rogue.uuid+'.Item.reaction',actor:rogue
    assert.equal(extra.event.itemUuid,weapon.uuid);
    assert.equal(extra.event.type,'attack:resolved');
    assert.equal(extra.api.subscriptionName,'PF1AE:attack:resolved');
+   // Generic Item chooses whether its existing native action should fire.
+   // 22 is an arbitrary unit-test predicate, NOT a hit/AC rule.
+   if(extra.event.roll.total===22) await reactive.use({actionId:'damage',cost:0,chatMessage:true});
    if(!reacting){reacting=true;
      // Simulate a recursively generated attack while the reaction runs.
      for(const cb of calls.events.get('pf1AttackRoll'))cb(attack,{total:30,id:'reaction-roll'},{});
@@ -55,6 +60,7 @@ const tick=()=>new Promise(resolve=>setTimeout(resolve,15));
  assert.equal(outcomes[0].targets[0].tokenUuid,'Scene.a.Token.target');
  assert.equal(outcomes[0].attackerTokenUuid,'Scene.a.Token.b');
  assert.equal(outcomes.length,2,'Recursive attack ignored');
+ assert.equal(damageUses,1,'Existing native damage action used once, without another attack roll');
  assert.equal(api.attackEvents.listSubscriptions(rogue).length,1);
  // Same action, new roll instance, a second successful use.
  for(const cb of calls.events.get('pf1AttackRoll'))cb(attack,{total:12},{});
