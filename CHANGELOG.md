@@ -1,3 +1,12 @@
+## v1.16.2 — Interopérabilité attackOutcomes / saveOutcomes
+
+- Accepte `linkedBuff`, `templateEffect` et `dynamicEffect` dans `onDamageApplied.saveOutcome.onFailure.type`.
+- Transmet intégralement la règle à `saveOutcomes.register()`, en imposant le personnage source et la cible vérifiés par le MJ.
+- Conserve les validations strictes d’Item, d’Action, de carte, d’indice d’attaque et de cibles.
+- Laisse `saveOutcomes` et `api.effects` valider les champs `changes`, `duration`, `stacking`, `approvalKey` et les autorisations.
+- Nouveau test intégré : sauvegarde échouée/réussie, buff mécanique, `templateEffect`, `linkedBuff`, acteur synthétique et déduplication.
+- Aucun changement aux Script Calls de personnage.
+
 ## v1.16.1 — Autorisation automatique des effets mécaniques déclaratifs
 
 - Plus d'approbation MJ manuelle pour `dynamicEffect` dans les limites automatiques : 3 changements, amplitude de 10, modificateurs et cibles PF1 vérifiés.
