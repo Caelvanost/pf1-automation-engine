@@ -1,4 +1,4 @@
-# Dynamic Effects — PF1 Automation Engine 1.16.0
+# Dynamic Effects — PF1 Automation Engine 1.16.1
 
 Foundry VTT 13 / PF1 11.11. No buff template is required. The engine generates temporary, active, native PF1 Item buffs with **mechanical** ItemChange entries. It reuses the persistent managed-effect group ledger, existing timer services, and all four stacking policies.
 
@@ -10,7 +10,15 @@ Allowed targets in this version: `ac`, `tac`, `ffac`, `mattack`, `rattack`, `nat
 
 Allowed modifiers: `penalty`, `untyped`, `dodge`, `deflection`, `enh`, `morale`, `luck`, `sacred`, `profane`, `insight`, `competence`, `circumstance`, `resist`. Native exclusions are respected. Values must be finite integers in [-100,100]; `penalty` accepts negative or zero and other types positive or zero. Null, arbitrary keys, JS, formulas and unchecked paths are rejected. Other modifiers require separate verification.
 
-## 1. GM approval — no buff template
+## 1. Autorisation automatique et limites
+
+Aucune étape d'approbation manuelle pour les effets déclaratifs respectant la politique automatique : **3 modifications maximum** et chaque `abs(value)` ≤ **10**, avec une cible et un type reconnus nativement par PF1. L'Actor source et son ItemAction sont vérifiés par le MJ élu. L'effet adversaire n'est appliqué qu'après une sauvegarde native vérifiée par SaveBridge.
+
+Les demandes directes d'un joueur sont limitées à **son propre Actor** sans autorisation explicite ; elles nécessitent également une carte PF1 de l'Item et de l'Action. Une autorisation MJ explicite reste possible pour des limites plus importantes ou des capacités particulières. Une révocation enregistre une interdiction durable qui ne revient pas au mode automatique.
+
+`approvalKey` est désormais facultatif : `auto` est utilisé pour les appels directs, la `key` de la règle pour `saveOutcomes.dynamicEffect`. Les autorisations explicites déjà présentes sont prioritaires.
+
+## 2. GM approval (optional) — no buff template
 
 An elected GM explicitly grants an Item Action permission to apply specific mechanical changes within capped magnitudes:
 
