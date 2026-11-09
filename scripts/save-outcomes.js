@@ -63,8 +63,8 @@ async function outValidate(payload,requester,remote=false){
   if(!outStr(actionId,100) || !actions.some(x=>x.id===actionId))
     throw Error('A valid sourceActionId is required (unless Item has exactly one Action).');
   const effectType=data.onFailure?.type;
-  if(!['linkedBuff','templateEffect'].includes(effectType))
-    throw Error('onFailure.type must be linkedBuff or templateEffect.');
+  if(!['linkedBuff','templateEffect','dynamicEffect'].includes(effectType))
+    throw Error('onFailure.type must be linkedBuff, templateEffect or dynamicEffect.');
   if(effectType==='linkedBuff' &&
       (!outStr(data.onFailure.name,120) || !outStr(data.onFailure.img,500)))
     throw Error('linkedBuff requires name and img.');
@@ -84,6 +84,24 @@ async function outValidate(payload,requester,remote=false){
     if(!groupsApi?._validateTemplateOutcome)throw Error('Template effect validation service unavailable.');
     await groupsApi._validateTemplateOutcome({sourceUuid:actor.uuid,
       templateUuid:data.onFailure.templateUuid});
+  }
+  if(effectType==='dynamicEffect'){
+    const e=data.onFailure;
+    if(!outStr(e.name,120)||!outStr(e.img,500)||!OUT_KEYS.test(e.approvalKey??''))
+      throw Error('dynamicEffect requires name, img and GM approvalKey.');
+    if(!e.duration)throw Error('dynamicEffect must have a duration.');
+    if(e.templateUuid!=null||e.statusId!=null||e.parameters!=null)
+      throw Error('Dynamic effects reject templates, statuses and arbitrary parameters.');
+    const stacking=e.stacking??{mode:'stack'};
+    if(!['stack','replace','refresh','ignore'].includes(stacking.mode)||
+       (stacking.mode!=='stack'&&!OUT_KEYS.test(stacking.key??''))||
+       (stacking.key!=null&&!OUT_KEYS.test(stacking.key)))
+      throw Error('Invalid dynamic effect stacking policy.');
+    const fx=game.modules.get(OUT_NS)?.api?.effects;
+    if(!fx)throw Error('Dynamic effect service unavailable.');
+    const changes=fx._validateChanges(e.changes);
+    await fx._authorize({sourceUuid:actor.uuid,sourceItemUuid:item.uuid,
+      sourceActionId:actionId,approvalKey:e.approvalKey,changes,channel:'save'});
   }
   if(data.onSuccess!==undefined)throw Error('onSuccess is not implemented in this version.');
   const status=effectType==='linkedBuff' ? data.onFailure.statusId : null;
@@ -130,8 +148,14 @@ async function outValidate(payload,requester,remote=false){
       ?{type:'templateEffect',templateUuid:data.onFailure.templateUuid,duration,
         stacking:{mode:data.onFailure.stacking?.mode??'stack',
           key:data.onFailure.stacking?.key??null}}
-      :{type:'linkedBuff',name:data.onFailure.name,img:data.onFailure.img,
-        ...(status?{statusId:status}:{}),...(duration?{duration}:{})}
+      :effectType==='dynamicEffect'
+        ?{type:'dynamicEffect',name:data.onFailure.name,img:data.onFailure.img,
+          changes:game.modules.get(OUT_NS).api.effects._validateChanges(data.onFailure.changes),
+          approvalKey:data.onFailure.approvalKey,duration,
+          stacking:{mode:data.onFailure.stacking?.mode??'stack',
+            key:data.onFailure.stacking?.key??null}}
+        :{type:'linkedBuff',name:data.onFailure.name,img:data.onFailure.img,
+          ...(status?{statusId:status}:{}),...(duration?{duration}:{})}
   };
 }
 async function outRegister(payload,requester,remote=false){
@@ -311,9 +335,15 @@ async function outResolved(event){
       ?await groupApi?._createTemplateOutcome?.({...effectData,
         templateUuid:rule.onFailure.templateUuid,duration:rule.onFailure.duration,
         stacking:rule.onFailure.stacking})
-      :outTimed(rule)
-        ?await groupApi?._createTimedOutcome?.(effectData)
-        :await groupApi?._createLinkedOutcome?.(effectData);
+      :rule.onFailure.type==='dynamicEffect'
+        ?await groupApi?._createDynamicOutcome?.({...effectData,
+          channel:'save',approvalKey:rule.onFailure.approvalKey,
+          name:rule.onFailure.name,img:rule.onFailure.img,
+          changes:rule.onFailure.changes,duration:rule.onFailure.duration,
+          stacking:rule.onFailure.stacking})
+        :outTimed(rule)
+          ?await groupApi?._createTimedOutcome?.(effectData)
+          :await groupApi?._createLinkedOutcome?.(effectData);
     if(!applied?.applied){
       const reason=applied?.reason??'unknown';
       outLog('Effect not applied',{rule:rule.key,reason,requiresGM:!!applied?.requiresGM});
