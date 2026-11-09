@@ -87,8 +87,8 @@ async function outValidate(payload,requester,remote=false){
   }
   if(effectType==='dynamicEffect'){
     const e=data.onFailure;
-    if(!outStr(e.name,120)||!outStr(e.img,500)||!OUT_KEYS.test(e.approvalKey??''))
-      throw Error('dynamicEffect requires name, img and GM approvalKey.');
+    if(!outStr(e.name,120)||!outStr(e.img,500)|| (e.approvalKey!=null&&!OUT_KEYS.test(e.approvalKey)))
+      throw Error('dynamicEffect requires name, img and optional valid approvalKey.');
     if(!e.duration)throw Error('dynamicEffect must have a duration.');
     if(e.templateUuid!=null||e.statusId!=null||e.parameters!=null)
       throw Error('Dynamic effects reject templates, statuses and arbitrary parameters.');
@@ -101,7 +101,7 @@ async function outValidate(payload,requester,remote=false){
     if(!fx)throw Error('Dynamic effect service unavailable.');
     const changes=fx._validateChanges(e.changes);
     await fx._authorize({sourceUuid:actor.uuid,sourceItemUuid:item.uuid,
-      sourceActionId:actionId,approvalKey:e.approvalKey,changes,channel:'save'});
+      sourceActionId:actionId,approvalKey:e.approvalKey??data.key,changes,channel:'save'});
   }
   if(data.onSuccess!==undefined)throw Error('onSuccess is not implemented in this version.');
   const status=effectType==='linkedBuff' ? data.onFailure.statusId : null;
@@ -151,7 +151,7 @@ async function outValidate(payload,requester,remote=false){
       :effectType==='dynamicEffect'
         ?{type:'dynamicEffect',name:data.onFailure.name,img:data.onFailure.img,
           changes:game.modules.get(OUT_NS).api.effects._validateChanges(data.onFailure.changes),
-          approvalKey:data.onFailure.approvalKey,duration,
+          approvalKey:data.onFailure.approvalKey??data.key,duration,
           stacking:{mode:data.onFailure.stacking?.mode??'stack',
             key:data.onFailure.stacking?.key??null}}
         :{type:'linkedBuff',name:data.onFailure.name,img:data.onFailure.img,
