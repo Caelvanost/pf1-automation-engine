@@ -235,9 +235,13 @@ async function aoValidate(data,user,remote=false){
  // This is pure serializable data, still revalidated by saveOutcomes.register.
  if(on.saveOutcome!=null){
   const sc=on.saveOutcome;
-  if(typeof sc!=='object'||sc.sourceItemUuid!==trigger.uuid||
-     sc.sourceActionId!==on.actionId||!aoKey(sc.key)||!aoKey(sc.groupKey)||
-     sc.onFailure?.type!=='linkedBuff'||!Array.isArray(sc.targets)||
+  // Validate only the native action/target linkage. SaveOutcomes and
+  // api.effects validate all consequence-specific fields on the elected GM.
+  if(!sc||typeof sc!=='object'||Array.isArray(sc)||
+     sc.sourceItemUuid!==trigger.uuid||sc.sourceActionId!==on.actionId||
+     !aoKey(sc.key)||!aoKey(sc.groupKey)||
+     !['linkedBuff','templateEffect','dynamicEffect'].includes(sc.onFailure?.type)||
+     !Array.isArray(sc.targets)||sc.targets.length<1||
      !sc.targets.every(t=>targets.includes(t)))
     throw Error('Invalid SaveOutcome configuration');
  }
@@ -516,10 +520,10 @@ async function aoResolveDamage(data){
   try{
     const so=rule.onDamageApplied.saveOutcome;
     if(so){
+      // Preserve the complete declarative rule. Never trust a client-
+      // supplied Actor or target in place of the GM-verified damage target.
       const result=await game.modules.get(AO_NS)?.api?.saveOutcomes?.register({
-        actor:source,key:so.key,groupKey:so.groupKey,
-        sourceItemUuid:so.sourceItemUuid,sourceActionId:so.sourceActionId,
-        targets:[data.targetUuid],onFailure:so.onFailure
+        ...so,actor:source,targets:[data.targetUuid]
       });
       if(!result?.registered)throw Error('SaveOutcome registration rejected');
     }
