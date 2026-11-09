@@ -62,11 +62,31 @@ async function outValidate(payload,requester,remote=false){
   const actionId=data.sourceActionId??(actions.length===1?actions[0]?.id:null);
   if(!outStr(actionId,100) || !actions.some(x=>x.id===actionId))
     throw Error('A valid sourceActionId is required (unless Item has exactly one Action).');
-  if(data.onFailure?.type!=='linkedBuff' ||
-      !outStr(data.onFailure.name,120) || !outStr(data.onFailure.img,500))
-    throw Error('onFailure must specify linkedBuff with name and img.');
+  const effectType=data.onFailure?.type;
+  if(!['linkedBuff','templateEffect'].includes(effectType))
+    throw Error('onFailure.type must be linkedBuff or templateEffect.');
+  if(effectType==='linkedBuff' &&
+      (!outStr(data.onFailure.name,120) || !outStr(data.onFailure.img,500)))
+    throw Error('linkedBuff requires name and img.');
+  if(effectType==='templateEffect') {
+    if(!outStr(data.onFailure.templateUuid) || !data.onFailure.duration)
+      throw Error('templateEffect requires approved templateUuid and duration.');
+    if(data.onFailure.statusId!=null || data.onFailure.name!=null || data.onFailure.img!=null)
+      throw Error('templateEffect obtains its mechanics and identity from the approved template.');
+    if(data.onFailure.parameters!=null)
+      throw Error('templateEffect.parameters is not supported in v1.15.0; use a fixed-value approved template.');
+    const stacking=data.onFailure.stacking??{mode:'stack'};
+    if(!['stack','replace','refresh','ignore'].includes(stacking?.mode) ||
+      (stacking.mode!=='stack' && !OUT_KEYS.test(stacking.key??'')) ||
+      (stacking.key!=null && !OUT_KEYS.test(stacking.key)))
+      throw Error('Invalid templateEffect stacking policy/key.');
+    const groupsApi=game.modules.get(OUT_NS)?.api?.effectGroups;
+    if(!groupsApi?._validateTemplateOutcome)throw Error('Template effect validation service unavailable.');
+    await groupsApi._validateTemplateOutcome({sourceUuid:actor.uuid,
+      templateUuid:data.onFailure.templateUuid});
+  }
   if(data.onSuccess!==undefined)throw Error('onSuccess is not implemented in this version.');
-  const status=data.onFailure.statusId;
+  const status=effectType==='linkedBuff' ? data.onFailure.statusId : null;
   if(status!=null && (!outStr(status,80) || !/^[a-z][a-z0-9_-]*$/.test(status)))
     throw Error('Invalid statusId.');
   const official=globalThis.pf1?.registry?.conditions;
@@ -106,8 +126,12 @@ async function outValidate(payload,requester,remote=false){
     groupId:data.groupId??null,
     sourceMessageId:data.sourceMessageId??null,
     sourceItemUuid:item.uuid,sourceActionId:actionId,
-    targets,onFailure:{type:'linkedBuff',name:data.onFailure.name,img:data.onFailure.img,
-      ...(status?{statusId:status}:{}),...(duration?{duration}:{})}
+    targets,onFailure:effectType==='templateEffect'
+      ?{type:'templateEffect',templateUuid:data.onFailure.templateUuid,duration,
+        stacking:{mode:data.onFailure.stacking?.mode??'stack',
+          key:data.onFailure.stacking?.key??null}}
+      :{type:'linkedBuff',name:data.onFailure.name,img:data.onFailure.img,
+        ...(status?{statusId:status}:{}),...(duration?{duration}:{})}
   };
 }
 async function outRegister(payload,requester,remote=false){
@@ -271,8 +295,9 @@ async function outResolved(event){
       continue;
     }
     outLog('Rule matched: '+rule.key,{groupId:group?.id??null,target:target.name});
-    outLog('Applying linked buff automatically',{rule:rule.key,target:target.name,
-      effect:rule.onFailure.name,groupId:group?.id??null});
+    outLog('Applying saving throw consequence automatically',{rule:rule.key,target:target.name,
+      effectType:rule.onFailure.type,templateUuid:rule.onFailure.templateUuid??null,
+      groupId:group?.id??null});
     const effectData={
       sourceUuid:rule.actorUuid,groupId:group?.id??null,key:rule.groupKey,
       targetUuid:target.uuid,sourceItemUuid:rule.sourceItemUuid,
@@ -282,9 +307,13 @@ async function outResolved(event){
         statusId:rule.onFailure.statusId??null,duration:rule.onFailure.duration??null}
     };
     const groupApi=game.modules.get(OUT_NS)?.api?.effectGroups;
-    const applied=outTimed(rule)
-      ?await groupApi?._createTimedOutcome?.(effectData)
-      :await groupApi?._createLinkedOutcome?.(effectData);
+    const applied=rule.onFailure.type==='templateEffect'
+      ?await groupApi?._createTemplateOutcome?.({...effectData,
+        templateUuid:rule.onFailure.templateUuid,duration:rule.onFailure.duration,
+        stacking:rule.onFailure.stacking})
+      :outTimed(rule)
+        ?await groupApi?._createTimedOutcome?.(effectData)
+        :await groupApi?._createLinkedOutcome?.(effectData);
     if(!applied?.applied){
       const reason=applied?.reason??'unknown';
       outLog('Effect not applied',{rule:rule.key,reason,requiresGM:!!applied?.requiresGM});

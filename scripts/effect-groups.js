@@ -741,6 +741,170 @@ async function effectCreateTimedOutcome(data){
     return {applied:true,effectUuid:created.uuid,timerId};
   });
 }
+/** Outcome templates reuse managedEffectGroups, approval fingerprints, native
+ * ItemPF activation and persistent group timers. No additional buff engine.
+ * Dynamic parameter substitution is intentionally unsupported in v1.15.0:
+ * never allow user-supplied mechanical field paths or executable expressions.
+ */
+async function effectValidateTemplateOutcome(data){
+  effectRequireLeader();
+  if(!effectEnabled() || !data || typeof data.sourceUuid!=='string' ||
+      typeof data.templateUuid!=='string')throw Error('Invalid template outcome.');
+  const source=await effectResolveActor(data.sourceUuid);
+  const template=await effectResolveTemplate(data.templateUuid);
+  if(!source || !template || !effectOwnedBy(template,source))
+    throw Error('Template must be an actor-owned buff/AE of the source or a Compendium buff.');
+  effectCheckApproval(template); // Explicitly trust the exact approved fingerprint.
+  return {templateUuid:template.uuid,kind:effectTemplateKind(template)};
+}
+function effectTemplateOutcomeDuration(duration){
+  if(!duration || typeof duration!=='object' || Array.isArray(duration))
+    throw Error('templateEffect duration required.');
+  const rounds=duration.rounds,seconds=duration.seconds;
+  if((rounds==null)===(seconds==null) ||
+      (rounds!=null && (!Number.isSafeInteger(rounds)||rounds<1||rounds>10000)) ||
+      (seconds!=null && (!Number.isSafeInteger(seconds)||seconds<1||seconds>31536000)))
+    throw Error('Invalid templateEffect duration.');
+  const expire=duration.expire??(seconds!=null?'elapsed':'sourceTurnStart');
+  if(!['elapsed','sourceTurnStart','sourceTurnEnd'].includes(expire) ||
+      (seconds!=null && expire!=='elapsed'))throw Error('Invalid templateEffect expiration.');
+  return {seconds:seconds??null,rounds:rounds??null,expire};
+}
+async function effectCreateTemplateOutcome(data){
+  effectRequireLeader();
+  if(!effectEnabled() || !data || !effectValidKey(data.key) ||
+      typeof data.outcomeId!=='string' || data.outcomeId.length>150 ||
+      typeof data.targetUuid!=='string')throw Error('Invalid template outcome request.');
+  const dur=effectTemplateOutcomeDuration(data.duration);
+  const policy=data.stacking??{mode:'stack'};
+  if(!['stack','replace','refresh','ignore'].includes(policy.mode)||
+      (policy.mode!=='stack' && !effectValidKey(policy.key)) ||
+      (policy.key!=null && !effectValidKey(policy.key)))throw Error('Invalid stacking policy.');
+  if(data.parameters!=null)throw Error('Dynamic template parameters unsupported in this version.');
+  return effectQueue(async()=>{
+    const source=await effectResolveActor(data.sourceUuid);
+    const target=await effectResolveActor(data.targetUuid);
+    const template=await effectResolveTemplate(data.templateUuid);
+    if(!source||!target||!template||!effectOwnedBy(template,source))
+      throw Error('Missing/unauthorized source, target or template.');
+    effectCheckApproval(template); // Re-check immediately before copying.
+    const kind=effectTemplateKind(template);
+    const ledger=effectGroups();
+    for(const g of Object.values(ledger)){
+      if(!g.templateOutcome || g.pendingCleanup || g.outcomeId!==data.outcomeId ||
+         g.targetUuid!==target.uuid)continue;
+      const copy=g.copies?.[0];
+      const doc=copy?effectDocumentFor(target,copy):null;
+      if(doc?.getFlag?.(EFFECT_NS,'effectGroupId')===g.id)
+        return {applied:true,duplicate:true,groupId:g.id,effectUuid:doc.uuid};
+    }
+    // The stacking identity intentionally spans source Actors: multiple casters
+    // can share a key on the same recipient without additive nonstacking effects.
+    const existing=Object.values(ledger).filter(g=>g.templateOutcome &&
+      !g.pendingCleanup && g.targetUuid===target.uuid &&
+      g.stackingKey===policy.key && policy.key!=null);
+    if(policy.mode!=='stack' && existing.length>1)
+      throw Error('Ambiguous existing template effects for this stacking key.');
+    if(existing.length && ['ignore','refresh'].includes(policy.mode)){
+      const g=existing[0],copy=g.copies?.[0];
+      const doc=copy?effectDocumentFor(target,copy):null;
+      if(!doc || doc.getFlag?.(EFFECT_NS,'effectGroupId')!==g.id)
+        throw Error('Existing stacked template effect cannot be verified.');
+      if(policy.mode==='refresh'){
+        // Do not silently change the mechanical effect or its source; a refresh
+        // is only permitted for the same approved template and duration mode.
+        if(g.templateUuid!==template.uuid ||
+            (g.duration? 'elapsed':'phase') !== (dur.expire==='elapsed'?'elapsed':'phase'))
+          throw Error('Refresh requires the same template and expiration mode.');
+        const api=game.modules.get(EFFECT_NS).api;
+        if(g.duration){
+          await api.duration.schedule({id:g.timerId,effectGroupId:g.id,
+            duration:{value:dur.seconds??dur.rounds*6,unit:'seconds'}});
+        }else{
+          const combat=game.combat;
+          const actor=await effectResolveActor(g.sourceUuid);
+          if(!combat?.started||!actor)throw Error('Source combat is unavailable for refresh.');
+          const c=effectFindCombatant(actor,combat,null);
+          if(g.combatId!==combat.id||g.combatantId!==c.id)
+            throw Error('Cannot refresh a turn-bound effect in a different combat.');
+          await api.generic.scheduleTurn({id:g.timerId,effectGroupId:g.id,
+            combatId:combat.id,combatantId:c.id,
+            timing:dur.expire==='sourceTurnEnd'?'turnEnd':'turnStart',
+            occurrences:dur.rounds});
+        }
+      }
+      effectDebug('template-outcome-stacking',{mode:policy.mode,groupId:g.id,targetUuid:target.uuid});
+      return {applied:true,duplicate:false,stacking:policy.mode,groupId:g.id,effectUuid:doc.uuid};
+    }
+    // Build and validate expiry BEFORE removing the old effect.
+    const combat=game.combat;
+    const useTurn=dur.expire!=='elapsed' && !!combat?.started;
+    let combatant=null;
+    if(useTurn)combatant=effectFindCombatant(source,combat,null);
+    const id=foundry.utils.randomID();
+    const timerId='template-outcome:'+id;
+    const duration=useTurn?null:{value:dur.seconds??dur.rounds*6,unit:'seconds'};
+    // Creation first preserves the old effect if the template is invalid.
+    const copy=effectTemplateCopy(template,kind);
+    copy.flags??={};
+    copy.flags[EFFECT_NS]={effectGroupId:id,sourceUuid:source.uuid,key:'template_'+id,
+      templateUuid:template.uuid,outcomeId:data.outcomeId,outcomeRuleId:data.ruleId,
+      sourceItemUuid:data.sourceItemUuid,sourceActionId:data.sourceActionId,
+      stackingKey:policy.key??null};
+    const documentType=template.documentName;
+    let created=null;
+    try{
+      if(documentType==='Item'){
+        copy.system??={};copy.system.active=false;
+      }else{copy.disabled=false;delete copy.duration;}
+      created=(await target.createEmbeddedDocuments(documentType,[copy],
+        {[EFFECT_NS]:{skip:true}}))?.[0];
+      if(!created)throw Error('Failed to create approved mechanical template effect.');
+      if(documentType==='Item'){
+        if(typeof created.setActive==='function')await created.setActive(true,{[EFFECT_NS]:{skip:true}});
+        else await created.update({'system.active':true},{[EFFECT_NS]:{skip:true}});
+      }
+      const session={id,key:'template_'+id,sourceUuid:source.uuid,
+        targetUuid:target.uuid,templateUuid:template.uuid,templateOutcome:true,
+        stackingKey:policy.key??null,outcomeId:data.outcomeId,
+        combatId:useTurn?combat.id:null,combatantId:combatant?.id??null,
+        timing:useTurn?(dur.expire==='sourceTurnEnd'?'turnEnd':'turnStart'):null,
+        occurrences:useTurn?dur.rounds:null,duration,timerId,
+        copies:[{actorUuid:target.uuid,documentType,documentId:created.id}]};
+      // Persist the exact copy and timer target so expiry survives reload/F5.
+      await game.settings.set(EFFECT_NS,GROUPS_SETTING,{...effectGroups(),[id]:session});
+      const api=game.modules.get(EFFECT_NS).api;
+      if(duration)await api.duration.schedule({id:timerId,effectGroupId:id,duration});
+      else await api.generic.scheduleTurn({id:timerId,effectGroupId:id,
+        combatId:combat.id,combatantId:combatant.id,
+        timing:session.timing,occurrences:dur.rounds});
+      // Old instance is removed only after the replacement exists and is timed.
+      if(policy.mode==='replace')for(const old of existing){
+        // A failed removal must not leave two nonstacking copies active.
+        // Roll back the new copy in the catch handler below.
+        await effectExpireGroupInternal(old.id);
+      }
+      effectDebug('template-outcome-created',{templateUuid:template.uuid,
+        targetUuid:target.uuid,effectUuid:created.uuid,stacking:policy.mode,
+        timerId,kind});
+      return {applied:true,duplicate:false,groupId:id,effectUuid:created.uuid,timerId};
+    }catch(error){
+      const pending=created ? await effectDeleteCopies([{
+        actorUuid:target.uuid,documentType,documentId:created.id
+      }],id) : [];
+      const groups={...effectGroups()};
+      if(pending.length)groups[id]={id,key:'template_'+id,
+        sourceUuid:source.uuid,targetUuid:target.uuid,
+        templateOutcome:true,templateUuid:template.uuid,
+        duration:duration??null,timerId,copies:pending,pendingCleanup:true};
+      else delete groups[id];
+      await game.settings.set(EFFECT_NS,GROUPS_SETTING,groups);
+      if(pending.length)console.error('[PF1AE][SaveOutcome] Template rollback deferred',pending);
+      throw error;
+    }
+  });
+}
+
 /** Extend the existing group's timer without touching any beneficiary copies. */
 async function effectExtendInternal(data,requester,socketOrigin=false) {
   if (!effectEnabled() || !effectIsLeader()) throw Error('Le MJ responsable est indisponible.');
@@ -880,6 +1044,8 @@ Hooks.once('ready',()=>{
     listGroups:()=>foundry.utils.deepClone(Object.values(effectGroups())),
     _createLinkedOutcome:effectCreateLinkedOutcome, // GM internal; serial with expiry
     _createTimedOutcome:effectCreateTimedOutcome, // GM internal; independent condition timer
+    _validateTemplateOutcome:effectValidateTemplateOutcome,
+    _createTemplateOutcome:effectCreateTemplateOutcome,
     expireGroup:effectExpireGroup,
     canExpireGroup:effectCanExpireGroup,
     validateGroupTimer:effectValidateGroupTimer,

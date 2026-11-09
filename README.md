@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.14.4 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.15.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 A generic automation module for PF1 Item Script Calls. It provides reusable, persistent services while leaving the rules of individual spells, feats and class abilities in the relevant PF1 Items. It does **not** include ready-to-use character-specific ability scripts.
 
@@ -119,3 +119,7 @@ An attack card may apply its damage without entering `ApplyDamage._onApply`. The
 ### PF1 synthetic actor HP offsets (v1.14.4)
 
 The damage bridge recognizes both `hp.value` and `hp.offset` updates on native `updateActor`, including synthetic unlinked tokens. Native `options.pf1.deltas.hp.offset` and `_nasPrevHp` are checked where present. An offset alone never triggers an outcome: the bridge requires a verified provenance chain and effective HP loss or actual nonlethal damage. All `attackOutcomes` API signatures and Item Script Calls remain unchanged.
+
+## Approved mechanical templates after a saving throw (v1.15.0)
+
+The existing `saveOutcomes.register` now also accepts `onFailure:{type:'templateEffect',templateUuid,duration,stacking}`. A native PF1 saving-throw failure clones an **approved, unchanged** PF1 Item Buff or Actor ActiveEffect with its own mechanical changes. Copies use existing `effectGroups`, `ItemPF.setActive`, the world ledger and duration/turn timers. Stacking modes: `stack`, `replace`, `refresh`, `ignore`, with a shared target key that may span multiple source Actors. **Dynamic `parameters` are not supported in v1.15.0**; supply fixed-value models approved in Foundry. The `linkedBuff` API, bardic automations and all existing save/damage bridges remain unchanged. [Full template effect API](docs/TEMPLATE-SAVE-OUTCOMES.md).
