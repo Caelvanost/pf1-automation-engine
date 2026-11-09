@@ -387,6 +387,150 @@ async function extendTimer(id,{rounds=1}={}) {
   });
 }
 
+/**
+ * An independently-timed SaveOutcome has a strong, source-bound identity.
+ * Never infer module ownership from an effect name, a PF1 status, or a timer
+ * pointing at an arbitrary document. Legacy v1.13+ outcomes have these flags.
+ */
+function isManagedTimedOutcome(effect,timerId=null) {
+  if (effect?.documentName!=='ActiveEffect' || !actorFor(effect)) return false;
+  const flag=key=>effect.getFlag?.(NS,key) ?? effect.flags?.[NS]?.[key];
+  const id=flag('timerId');
+  return safeText(id,100) && id.startsWith('outcome:') &&
+    (timerId===null || id===timerId) &&
+    safeText(flag('outcomeId'),150) && safeText(flag('outcomeRuleId'),300) &&
+    safeText(flag('sourceUuid'),400) && safeText(flag('sourceItemUuid'),400) &&
+    safeText(flag('sourceActionId'),120) && safeText(flag('key'),80) &&
+    !flag('effectGroupId') && effect.origin===flag('sourceItemUuid');
+}
+async function cleanupCombatEffectTimer(timer) {
+  const effect=await fromUuid(timer.effectUuid);
+  if (!effect) {
+    // Distinguish a deleted effect from an actor which cannot currently be
+    // resolved (e.g. an unlinked token on an unloaded scene).
+    const marker='.ActiveEffect.',at=timer.effectUuid?.lastIndexOf(marker)??-1;
+    if(at>=0) {
+      const actor=await fromUuid(timer.effectUuid.slice(0,at));
+      const effectId=timer.effectUuid.slice(at+marker.length);
+      if(actor?.documentName==='Actor' && !actor.effects?.get(effectId))
+        return {complete:true,alreadyRemoved:true};
+    }
+    return {complete:false,reason:'target temporarily unresolved'};
+  }
+  if (!isManagedTimedOutcome(effect,timer.id)) {
+    console.warn(`${NS} | Refus de suppression : effectUuid non reconnu comme outcome PF1AE`,
+      {timerId:timer.id,effectUuid:timer.effectUuid});
+    return {complete:true,refused:true}; // retire seulement notre minuteur
+  }
+  try {
+    await effect.delete({[NS]:{skip:true}});
+    log('Condition indépendante nettoyée lors de la fin de combat',timer.id,effect.uuid);
+    return {complete:true};
+  } catch(error) {
+    console.warn(`${NS} | Suppression de condition reportée`,timer.id,error);
+    return {complete:false,reason:error?.message};
+  }
+}
+/** On combat closure only document timers may clean documents. A callback
+ * timer is cancelled, NEVER dispatched or evaluated against a removed combat.
+ * Keep failed cleanup timers in persistent storage for later reconnection.
+ */
+async function cleanupCombatTimersInternal(combatId,reason='deleteCombat') {
+  if (!leader() || !enabled() || !safeText(combatId,100)) return;
+  const snapshot=getTimers();
+  const affected=snapshot.filter(t=>t.combatId===combatId);
+  const keep=[];
+  for (const t of affected) {
+    if (!leader()) return;
+    if (t.effectGroupId) {
+      const groups=game.modules.get(NS)?.api?.effectGroups;
+      if (!groups?.expireGroup) {
+        keep.push({...t,cleanupPending:true});continue;
+      }
+      try {
+        await groups.expireGroup(t.effectGroupId,{fromTimer:true});
+      } catch(error) {
+        console.warn(`${NS} | Nettoyage de groupe différé`,t.id,error);
+        keep.push({...t,cleanupPending:true});
+      }
+    } else if (t.effectUuid) {
+      const result=await cleanupCombatEffectTimer(t);
+      if (!result.complete) keep.push({...t,cleanupPending:true});
+    } else {
+      // PF1 Item Script Call timer: cancel, never execute on combat deletion.
+      log('Minuteur de script annulé sans exécution',t.id,reason);
+    }
+  }
+  // effectGroups may have persisted a group whose timer was already absent.
+  const groups=game.modules.get(NS)?.api?.effectGroups;
+  for (const group of groups?.listGroups?.()??[]) {
+    if (group.combatId!==combatId || affected.some(t=>t.effectGroupId===group.id)) continue;
+    try {await groups.expireGroup(group.id,{fromTimer:true});}
+    catch(error){console.warn(`${NS} | Groupe sans minuteur : nettoyage différé`,group.id,error);}
+  }
+  const ids=new Set(affected.map(t=>t.id));
+  const next=[...getTimers().filter(t=>!ids.has(t.id)),...keep];
+  if (affected.length) await game.settings.set(NS,TIMERS,next);
+  log('Nettoyage de combat terminé',{combatId,reason,timers:affected.length,pending:keep.length});
+}
+function cleanupCombatTimers(combatId,reason) {
+  if(!leader()||!enabled())return Promise.resolve();
+  return appendQueue('__pf1_timer_write__',()=>cleanupCombatTimersInternal(combatId,reason));
+}
+/** A v1.16.2 deleteCombat could discard an outcome timer before deleting
+ * its ActiveEffect. Scan only strongly flagged managed independent outcomes
+ * whose timer ID is missing from BOTH persistent timer registries. This is
+ * intentionally conservative; missing scenes can be retried on canvasReady.
+ */
+async function cleanupLegacyOrphanedOutcomesInternal() {
+  if(!leader()||!enabled())return {removed:0,deferred:0};
+  const duration=game.modules.get(NS)?.api?.duration;
+  if(typeof duration?.listTimers!=='function')return {removed:0,deferred:0};
+  const registered=new Set([...getTimers().map(t=>t.id),
+    ...duration.listTimers().map(t=>t.id)]);
+  const actors=new Map();
+  const addActor=actor=>{if(actor?.documentName==='Actor' && actor.uuid)actors.set(actor.uuid,actor);};
+  for(const actor of game.actors?.values?.()??[])addActor(actor);
+  for(const scene of game.scenes?.values?.()??[]) {
+    for(const token of scene.tokens?.values?.()??[]) {
+      if(token.actorLink===false)addActor(token.actor);
+    }
+  }
+  let removed=0,deferred=0;
+  for (const actor of actors.values()) {
+    for (const effect of actor.effects?.values?.()??[]) {
+      if(!isManagedTimedOutcome(effect) || registered.has(effect.getFlag?.(NS,'timerId')??effect.flags?.[NS]?.timerId))continue;
+      // A freshly-created outcome may not have scheduled its timer yet.
+      // Do not race the createEmbeddedDocuments -> scheduleTurn transaction.
+      const createdAt=Number(effect._stats?.createdTime??effect._source?._stats?.createdTime);
+      if(!Number.isFinite(createdAt) || Date.now()-createdAt<30000) {
+        deferred++;log('Orphelin potentiel : création récente ou date inconnue',effect.uuid);continue;
+      }
+      try {
+        await effect.delete({[NS]:{skip:true}});removed++;
+        log('Ancienne condition orpheline nettoyée',effect.uuid);
+      }catch(error){deferred++;console.warn(`${NS} | Orphelin conservé pour nouvel essai`,effect.uuid,error);}
+    }
+  }
+  return {removed,deferred};
+}
+function recoverCombatCleanup() {
+  if(!leader()||!enabled())return Promise.resolve();
+  return appendQueue('__pf1_timer_write__',async()=>{
+    const closures=new Set(getTimers().filter(t=>t.combatId &&
+      (t.cleanupPending || !game.combats?.get?.(t.combatId)?.started))
+      .map(t=>t.combatId));
+    // Older versions may have deleted a group timer but left its group.
+    // Reconcile the group ledger independently of the timer registry.
+    const groups=game.modules.get(NS)?.api?.effectGroups;
+    for(const group of groups?.listGroups?.()??[]) {
+      if(group.combatId && !game.combats?.get?.(group.combatId)?.started)
+        closures.add(group.combatId);
+    }
+    for(const combatId of closures) await cleanupCombatTimersInternal(combatId,'reconnect/reconcile');
+    await cleanupLegacyOrphanedOutcomesInternal();
+  });
+}
 /** Convenience wrapper for a direct effect expiration; no script will execute. */
 async function expireEffectAt(data) {
   if (!obj(data)) throw Error('Options d’expiration invalides.');
