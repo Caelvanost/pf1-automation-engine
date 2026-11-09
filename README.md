@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.16.3 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.17.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 A generic automation module for PF1 Item Script Calls. It provides reusable, persistent services while leaving the rules of individual spells, feats and class abilities in the relevant PF1 Items. It does **not** include ready-to-use character-specific ability scripts.
 
@@ -124,7 +124,7 @@ The damage bridge recognizes both `hp.value` and `hp.offset` updates on native `
 
 The existing `saveOutcomes.register` now also accepts `onFailure:{type:'templateEffect',templateUuid,duration,stacking}`. A native PF1 saving-throw failure clones an **approved, unchanged** PF1 Item Buff or Actor ActiveEffect with its own mechanical changes. Copies use existing `effectGroups`, `ItemPF.setActive`, the world ledger and duration/turn timers. Stacking modes: `stack`, `replace`, `refresh`, `ignore`, with a shared target key that may span multiple source Actors. **Dynamic `parameters` are not supported in v1.15.0**; supply fixed-value models approved in Foundry. The `linkedBuff` API, bardic automations and all existing save/damage bridges remain unchanged. [Full template effect API](docs/TEMPLATE-SAVE-OUTCOMES.md).
 
-## Dynamic native PF1 effects — v1.16.3
+## Dynamic native PF1 effects — v1.17.0
 
 PF1AE now provides `api.effects.approve/apply/revoke/listApprovals` for GM-approved, temporary native PF1 mechanical buffs without a precreated Item or ActiveEffect template. The approval is tied to an Item Action fingerprint and an explicit mechanical target/modifier/magnitude allowlist. `saveOutcomes.register` now supports `onFailure.type:'dynamicEffect'` after verified native saving throws. Existing `linkedBuff` and `templateEffect` are unchanged. For API, security limitations and acceptance steps see [Dynamic Effects](docs/DYNAMIC-EFFECTS.md).
 
@@ -132,10 +132,14 @@ PF1AE now provides `api.effects.approve/apply/revoke/listApprovals` for GM-appro
 
 Avec `saveOutcomes.dynamicEffect`, un effet purement déclaratif n'exige plus d'appel préalable à `api.effects.approve()` dans les limites par défaut : au plus **3 changements**, valeur absolue **≤ 10**, et types/champs reconnus par PF1. Les modèles `templateEffect` passifs et source-bound non encore approuvés sont approuvés automatiquement et leur empreinte reste contrôlée. Les effets directs demandés par un joueur sans autorisation explicite sont limités à son propre acteur ; pour affecter un ennemi, employer le jet natif vérifié par `saveOutcomes`. Les restrictions explicites et révocations MJ prévalent.
 
-### Interopérabilité Attack Outcomes / Save Outcomes (v1.16.3)
+### Interopérabilité Attack Outcomes / Save Outcomes (v1.17.0)
 
 Une frappe confirmée peut désormais enregistrer une sauvegarde dont `onFailure.type` vaut `linkedBuff`, `templateEffect` ou `dynamicEffect`. Les champs déclaratifs `changes`, `duration`, `stacking`, `approvalKey` et autres propriétés autorisées par `saveOutcomes` sont transmis sans transformation. L'Actor source et la cible des dégâts sont imposés par le MJ ; les vérifications de capacité, de condition, de durée et de cumul restent centralisées dans `saveOutcomes`.
 
-### Nettoyage des effets à la fin d'un combat (v1.16.3)
+### Nettoyage des effets à la fin d'un combat (v1.17.0)
 
 La suppression ou l'arrêt d'un combat retire les conditions à échéance de tour créées et suivies par PF1AE, y compris les ActiveEffects autonomes de `saveOutcomes`. Les minuteurs de Script Call sont annulés sans exécuter la capacité. Les durées en temps de jeu de `dynamicEffect` et `templateEffect` sont conservées. Si un token synthétique est temporairement inaccessible, le nettoyage est reporté et repris après F5 ou un changement de scène. Les effets permanents et étrangers ne sont jamais supprimés sur la seule base du nom ou de `statusId`. Voir [Nettoyage de combat](docs/COMBAT-CLEANUP.md).
+
+## Abonnements aux événements de jets d’attaque (v1.17.0)
+
+Les objets PF1 peuvent réagir sans utilisation manuelle : ajouter un **Script Call « Après utilisation » nommé exactement `PF1AE:attack:resolved`** dans l’Item concerné. Le moteur écoute les hooks natifs `pf1AttackRoll` et `pf1PostActionUse`, puis transmet chaque jet individuel évalué à l’appel de script. Aucune déduction de touche (`hit: null`) et aucun jet ou effet supplémentaire produit par le moteur. Voir [Attack Events](docs/ATTACK-EVENTS.md).

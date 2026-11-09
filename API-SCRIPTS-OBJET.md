@@ -43,3 +43,7 @@ La macro d’exemple `macros/declaration-automatique-generique.js` illustre l’
 Les sources PF1 11.11 confirment la méthode `ItemScriptCall.execute`, mais l'intégration complète avec votre monde doit être testée en situation. Les documents manquants ne sont pas supprimés du registre ; un avertissement est émis. Les écritures de script sont exécutées dans les privilèges du MJ : n'enregistrez que des scripts de capacités approuvés. Le contrôle ne constitue pas un sandbox contre un script dangereux déjà écrit par le MJ.
 
 Attention : `ready` ne rejoue pas rétroactivement une déclaration créée pendant la session ; faites F5. Pour un acteur avec plusieurs tokens non liés, sélectionnez son token exact lors de l'enregistrement.
+
+## Abonnement automatique à une attaque native (v1.17.0)
+
+Un Item peut contenir un appel de script **Après utilisation** (`postUse`) nommé exactement `PF1AE:attack:resolved`. Cet appel est exécuté après chaque jet individuel confirmé par `pf1AttackRoll` puis `pf1PostActionUse` d'un autre Item du même acteur. L'Item abonné n'a pas à être utilisé. La variable `event` contient le jet et la provenance, avec `hit:null` (touche inconnue). Voir [la documentation complète](docs/ATTACK-EVENTS.md).
