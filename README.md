@@ -1,145 +1,102 @@
 # PF1 Automation Engine
 
-**Version 1.17.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.18.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
-A generic automation module for PF1 Item Script Calls. It provides reusable, persistent services while leaving the rules of individual spells, feats and class abilities in the relevant PF1 Items. It does **not** include ready-to-use character-specific ability scripts.
-
-> **Status:** The latest native save and damage bridges are experimental and require testing in a live PF1 11.11 world. A registered outcome does not mean an attack, save or damage application was successfully resolved.
-
-## Features
-
-| Service | Public API | Purpose |
-| --- | --- | --- |
-| Multiple-target effects | `api.effectGroups` | Apply, extend and stop tracked PF1 buff/ActiveEffect groups across actors, using an elected GM to perform authorized writes |
-| Timers and durations | `api.generic`, `api.duration` | Turn-start/end deadlines and elapsed-world-time durations, including F5 persistence |
-| Saving throw context | `api.saveContext` | Verify native PF1 source Action cards, saving throw type and DC |
-| Save overrides | `api.saveOverrides` | Resolve a final effective saving throw total, including data-driven effects such as Countersong and Distraction |
-| Save outcomes | `api.saveOutcomes` | Apply source-bound PF1 conditions after a **real** native saving throw, based on the effective total |
-| Attack outcomes | `api.attackOutcomes` | Wait for **verified damage application** from a specific native PF1 attack card before triggering a follow-up Item Action |
-| Native rest | `api.rest` | Observe PF1 rest and resource/health changes without replacing the system's rest mechanics |
-| Discovery / event automation | `api.discovery`, `api.generic` | Register approved generic rules and Item Script Call callbacks |
-
-The API list is an overview; consult the linked reference documents for exact signatures and prerequisites.
+Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
 ## Installation
 
-1. Install the ZIP with `module.json` at the root of `Data/modules/pf1-automation-engine/`.
-2. Enable **PF1 Automation Engine** in a Foundry v13 world running **PF1 11.11**.
-3. Keep an active GM connected for authoritative mutations and world-setting writes.
-4. Create any rules-specific scripts within the appropriate PF1 Item's native **Advanced → Script Calls** (`Avancé → Appels de script`). There is no separate script-installation step in this repository.
+Extract the complete release ZIP into `Data/modules/pf1-automation-engine/` (the `module.json` must be at that directory's root), then enable PF1 Automation Engine in a PF1 11.11 world. A connected GM is required to perform authoritative mutations. `genericDebug` enables diagnostics; `genericEnabled` controls generic execution.
 
-The module supports multiple connected GMs by electing a single executor. Players may request permitted operations for source Actors they **own**; target Actors need not be owned by the requester. A request can still be refused when provenance, template trust or other validations fail.
+## Services
 
-## Getting started
+| Service | API | Purpose |
+| --- | --- | --- |
+| Managed buffs | `api.effectGroups` | Apply/extend/stop source-linked effects on multiple targets, including those owned by other users |
+| Turn and world-time timers | `api.generic`, `api.duration` | Persistent combat phase and elapsed-time expirations |
+| PF1 saving throw context | `api.saveContext` | Identify genuine PF1 Action cards, IDs and save DC |
+| Saving throw modification | `api.saveOverrides` | Countersong, Distraction and other effective-total overrides |
+| Saving throw consequences | `api.saveOutcomes` | Source-bound native conditions, including Fascination and timed Stunned |
+| Applied attack damage | `api.attackOutcomes` | Correlate a specific native attack-card strike with actual damage, then trigger a follow-up Item Action |
+| Rest/discovery | `api.rest`, `api.discovery` | Native PF1 rest observability and approved event rules |
 
-Retrieve the API from an Item Script Call:
+Read the precise APIs in [Effect Groups](API-EFFETS-GROUPES.md), [Save Outcomes](docs/SAVE-OUTCOMES.md) and [Attack Outcomes](docs/ATTACK-OUTCOMES.md). The engine requires a real native PF1 card to claim provenance; a bare HP update or a manual sheet save does not establish that provenance.
 
-```js
-const api = game.modules.get("pf1-automation-engine")?.api;
-if (!api) throw new Error("PF1 Automation Engine is unavailable.");
+## Native damage bridge (v1.14.3)
+
+PF1 11.11 can apply damage from the action card **without entering the `ApplyDamage._onApply` wrapper**. Earlier v1.14.1 rejected this path. The updated bridge listens to `pf1ApplyDamageTargetOptions` and `pf1ApplyDamage`, captures a precise card/attack index/target and follows the resulting `updateActor` event on the **same elected-GM client**. A fresh, unique pair of native hooks, exact source identity, consistent target UUID and positive effective damage are all required. Options may be cloned between hooks. The existing dialog wrapper remains available but is no longer the only success path; `ActorPF.applyDamage`'s non-configurable accessor is untouched.
+
+Fail-closed: conflicting card or attack index, overlapping damage requests to one Actor, stale options, a different update user, missing authoritative native pre-hook or no proven damage cause the follow-up to be refused. Temporary HP-only absorption does not count as proven damage under the current bridge. Attribution when multiple unrelated updates happen in the same very short window cannot be guaranteed by public hooks; check the debug diagnostics and adjudicate manually if the source cannot be established. This remains an **experimental integration**, not a transactional damage receipt from PF1.
+
+Enable debug and look for:
+
+```text
+[PF1AE][AttackOutcome] Direct native damage options captured (no dialog)
+[PF1AE][AttackOutcome] pf1ApplyDamage received
+[PF1AE][AttackOutcome] Native damage actor update observed
+[PF1AE][AttackOutcome] Native damage applied; dispatching verified outcome
+[PF1AE][AttackOutcome] Triggered source-specific follow-up Action
 ```
 
-### Managed effects
+The follow-up PF1 Action can register `saveOutcomes` **before** posting its native save card. A failed Fortitude save for Stunning Fist creates the `stunned` condition, with source-combatant turn-start expiry if configured.
 
-Use `api.effectGroups.applyGroup({actor,key,templateUuid,targets,timing})` for a precise combat-turn expiry, or provide `duration` for elapsed game time. `extendGroup()` and `stopGroup()` operate on the same actor/group key. The elected GM validates source ownership and approved template data without an interactive approval dialog. Executable, untrusted templates are not silently authorized.
+## Security and persistence
 
-See [Effect Groups](API-EFFETS-GROUPES.md), [Silent multi-player operations](docs/SILENT-EFFECT-GROUPS.md), and [Compendium buff templates](docs/COMPENDIUM-BUFF-TEMPLATES.md).
-
-### Native saving throws and conditions
-
-`saveContext` identifies the source **Item Action** on a native PF1 chat card. The SaveBridge listens to `pf1PreActorRollSave` and `pf1ActorRollSave`, preserves the native roll, resolves optional `saveOverrides` and then calls `saveOutcomes` using the **final effective total**. Manual sheet saves without verified card provenance never trigger source-bound outcomes.
-
-`api.saveOutcomes.register()` binds an effect to an exact source Item, Action ID and target Actor UUID. A durationless `linkedBuff` remains tied to an active `effectGroups` session (e.g. Fascination). A `linkedBuff` with `onFailure.duration` is an independent timed condition (e.g. Stunning Fist / `stunned`), with an optional source turn-start or turn-end expiry. Native conditions are checked against the installed PF1 registry; uncertain immunity verification fails closed for new conditions.
-
-See [Native save context](docs/NATIVE-SAVE-CONTEXT.md), [Save Overrides](docs/SAVE-OVERRIDES.md), [Distraction](docs/DISTRACTION.md), and [Save Outcomes](docs/SAVE-OUTCOMES.md).
-
-### Native attacks and applied damage
-
-`api.attackOutcomes.register()` and `bindAttack()` track one specific PF1 attack **ChatMessage**, Item Action and attack index. The damage bridge correlates PF1's damage dialog/options with the matching card, then checks whether an application **actually changed the target's damage state**. It does not infer an attack from arbitrary HP loss. On confirmation, it can register a `saveOutcomes` rule and request a follow-up PF1 Item Action (for example, the Fortitude save on Stunning Fist).
-
-PF1 v11.11 may expose `ActorPF.applyDamage` as a non-configurable accessor. The engine **does not replace that accessor**. Instead, the experimental damage bridge observes the native ApplyDamage dialog completion and corroborates source data using PF1 hooks. Missing or ambiguous provenance causes a safe refusal, not a guessed trigger.
-
-See [Attack Outcomes: API, provenance, limitations and tests](docs/ATTACK-OUTCOMES.md).
-
-### Durations, rest and events
-
-Timers are persisted in hidden world settings. Turn-boundary timers follow the appropriate combatant; elapsed timers follow Foundry `game.time.worldTime` (a PF1 round is 6 seconds). The module never advances the world clock. Native PF1 rest observation does not duplicate healing.
-
-See [Duration API](API-DUREES.md), [Turn-phase expirations](API-EXPIRATIONS.md), [Native rest](docs/PF1-NATIVE-REST.md), and [Generic automation](API-GENERIQUE.md).
+The elected GM owns world-setting registries. Remote registrations validate ownership of the source Actor; target ownership is not required. Follow-up actions must belong to the same source Actor. Each attack is bound to its native ChatMessage, Action ID, explicit zero-based attack index and target Actor UUID. Persistent states prevent double execution across F5 and GM changes. Ambiguous provenance is rejected.
 
 ## Debugging
 
-Enable the module's **generic debug** setting, then open each affected client's browser console. On F5, look for:
-
-```text
-[PF1AE][SaveBridge] Installed PF1 save hooks
-[PF1AE][SaveBridge] SaveBridge ready
-[PF1AE][AttackOutcome] Installed native damage bridge
-```
-
-Every native PF1 saving throw should log `[PF1AE][SaveBridge] PRE` and `POST`, even without a matching outcome. An Action-card save with verified context is eligible for `saveOutcomes`. The attack bridge logs card binding, native damage corroboration and triggered follow-up actions.
-
-For registry inspection:
-
 ```js
-const api = game.modules.get("pf1-automation-engine")?.api;
-console.table(api?.effectGroups?.listGroups() ?? []);
-console.table(api?.saveOutcomes?.list() ?? []);
+const api = game.modules.get('pf1-automation-engine')?.api;
 console.table(api?.attackOutcomes?.list() ?? []);
-console.table(api?.generic?.listTimers() ?? []);
-console.table(api?.duration?.listTimers() ?? []);
+console.table(api?.saveOutcomes?.list() ?? []);
+console.table(api?.effectGroups?.listGroups() ?? []);
 ```
 
-If PRE/POST appears but no result is applied, inspect source-card provenance, Action ID, target UUID, `genericEnabled`, the elected GM, PF1 condition registry and immunities. For attack outcomes, confirm the exact attack index and the completed damage-dialog path.
+Verify the native SaveBridge startup logs (`Installed PF1 save hooks`, `PRE`, `POST`) when debugging saving throws. The damage bridge uses native PF1 hooks plus the actual actor update; never assume that a native damage PRE event alone means the target took damage.
 
-## Documentation
+## Documentation and tests
 
-- [Technical architecture and permissions](docs/TECHNICAL-GUIDE.md)
-- [Native PF1 Item Script Call conventions](API-SCRIPTS-OBJET.md)
-- [Save Outcomes](docs/SAVE-OUTCOMES.md)
 - [Attack Outcomes](docs/ATTACK-OUTCOMES.md)
-- [Native rest](docs/PF1-NATIVE-REST.md)
-- [Compendium templates](docs/COMPENDIUM-BUFF-TEMPLATES.md)
-- [Full changelog](CHANGELOG.md)
+- [Save Outcomes](docs/SAVE-OUTCOMES.md)
+- [Turn-phase expirations](API-EXPIRATIONS.md)
+- [Duration manager](API-DUREES.md)
+- [Native PF1 rest](docs/PF1-NATIVE-REST.md)
+- [API for Item Script Calls](API-SCRIPTS-OBJET.md)
+- [Changelog](CHANGELOG.md)
 
-The reference material includes API usage notes. **Standalone example scripts are not distributed in this repository**; individual ability scripts should be maintained with the relevant Foundry world or character Item. The generic engine intentionally remains independent of the bard, monk or any other specific class.
+Run `node --test tests/*.test.cjs` for Node regression tests. Live Foundry testing is additionally required for each specific damage-dialog path, permissions and overlapping updates. No standalone example scripts are distributed.
 
-## Testing and compatibility
+### PF1 synthetic Actor HP offsets (v1.14.4)
 
-The regression tests are in `tests/*.test.cjs`; run with `node --test tests/*.test.cjs`. GitHub Actions builds an installable module archive. Simulated tests do not establish that a particular PF1 11.11 damage dialog or Action card will expose every metadata field in a user's world; verify source attribution, multiclicks, private saves, immunities, permission boundaries, reconnections, and turn expiry in Foundry before relying on automatic consequences in play.
+The native direct-damage bridge accepts `updateActor` changes in `system.attributes.hp.value` **or** `system.attributes.hp.offset` for linked and unlinked Token Actors. When available, the native `options.pf1.deltas.hp` and `_nasPrevHp` are checked for consistency. A negative offset is **not** sufficient to prove damage: the bridge requires a before/after loss of effective HP or an increase in nonlethal damage, and the verified attack card, action, attack index and target Actor UUID must match. No change to the public `attackOutcomes` API or Item Script Calls is necessary.
 
-## License and maintenance
+## Approved mechanical save-outcome templates (v1.15.0)
 
-Version history: [CHANGELOG.md](CHANGELOG.md). Issues and changes: [GitHub repository](https://github.com/Caelvanost/pf1-automation-engine).
+`saveOutcomes.register()` additionally accepts `onFailure.type = "templateEffect"`, copying an approved PF1 Buff or ActiveEffect with native mechanical changes to the precise save target after a failed save. Existing `linkedBuff` and bardic automations are unchanged. Use existing managed effect groups for deletion and persistent duration timers, with `stack`, `replace`, `refresh`, and `ignore` stacking policies. **Only fixed-value, GM-approved template mechanics are supported**; the new API rejects dynamic `parameters` rather than interpreting untrusted PF1 field paths. See [Template Save Outcomes](docs/TEMPLATE-SAVE-OUTCOMES.md).
 
-### Native PF1 direct damage update (v1.14.3)
+## v1.18.0 — Declarative dynamic effects
 
-An attack card may apply its damage without entering `ApplyDamage._onApply`. The module now correlates `pf1ApplyDamageTargetOptions`, `pf1ApplyDamage`, and the resulting `updateActor` to preserve a verified native card/action/attack-index/target chain. A mere HP decrease never triggers an outcome. A very short correlation window and ambiguity checks are essential because PF1 does not expose a permanent transaction ID across these hooks. See [Attack Outcomes](docs/ATTACK-OUTCOMES.md).
+The new `api.effects` service allows GM-authorized source Item Actions to create timed native PF1 mechanical buffs directly from validated numeric changes. `saveOutcomes.register` accepts `onFailure.type="dynamicEffect"`, while `linkedBuff` and `templateEffect` remain unchanged. See [Dynamic Effects](docs/DYNAMIC-EFFECTS.md).
 
-### PF1 synthetic actor HP offsets (v1.14.4)
+## Effets automatiques sans approbation manuelle (v1.18.0)
 
-The damage bridge recognizes both `hp.value` and `hp.offset` updates on native `updateActor`, including synthetic unlinked tokens. Native `options.pf1.deltas.hp.offset` and `_nasPrevHp` are checked where present. An offset alone never triggers an outcome: the bridge requires a verified provenance chain and effective HP loss or actual nonlethal damage. All `attackOutcomes` API signatures and Item Script Calls remain unchanged.
+Les buffs déclaratifs `dynamicEffect` ne requièrent plus l'appel préalable à `api.effects.approve()` lorsqu'ils restent dans la politique automatique (3 changements au maximum, valeurs de -10 à +10, chemins/types PF1 natifs vérifiés). Les modèles `templateEffect` passifs sont approuvés automatiquement lors de l'enregistrement, sous contrôle d'empreinte et sans exécuter de scripts. Les autorisations explicites existantes prévalent et une révocation bloque la capacité.
 
-## Approved mechanical templates after a saving throw (v1.15.0)
+Les joueurs ne peuvent pas utiliser ce mode pour appliquer directement un malus à un ennemi sans sauvegarde vérifiée : le mode direct automatique est limité à leur propre Actor ; pour les adversaires, utiliser `saveOutcomes.dynamicEffect`. Voir [Dynamic Effects](docs/DYNAMIC-EFFECTS.md).
 
-The existing `saveOutcomes.register` now also accepts `onFailure:{type:'templateEffect',templateUuid,duration,stacking}`. A native PF1 saving-throw failure clones an **approved, unchanged** PF1 Item Buff or Actor ActiveEffect with its own mechanical changes. Copies use existing `effectGroups`, `ItemPF.setActive`, the world ledger and duration/turn timers. Stacking modes: `stack`, `replace`, `refresh`, `ignore`, with a shared target key that may span multiple source Actors. **Dynamic `parameters` are not supported in v1.15.0**; supply fixed-value models approved in Foundry. The `linkedBuff` API, bardic automations and all existing save/damage bridges remain unchanged. [Full template effect API](docs/TEMPLATE-SAVE-OUTCOMES.md).
+### Compatibilité Attack Outcomes → Save Outcomes (v1.18.0)
 
-## Dynamic native PF1 effects — v1.17.0
+Les actions déclenchées par les dégâts peuvent désormais enregistrer `onFailure.type: linkedBuff`, `templateEffect` ou `dynamicEffect`. `attackOutcomes` ne valide que la liaison de la carte, de la source, de l’Action et des cibles ; `saveOutcomes` et `api.effects` valident les champs mécaniques, la durée et le cumul. L’objet `onFailure` est transmis intact.
 
-PF1AE now provides `api.effects.approve/apply/revoke/listApprovals` for GM-approved, temporary native PF1 mechanical buffs without a precreated Item or ActiveEffect template. The approval is tied to an Item Action fingerprint and an explicit mechanical target/modifier/magnitude allowlist. `saveOutcomes.register` now supports `onFailure.type:'dynamicEffect'` after verified native saving throws. Existing `linkedBuff` and `templateEffect` are unchanged. For API, security limitations and acceptance steps see [Dynamic Effects](docs/DYNAMIC-EFFECTS.md).
+### Expiration des effets au retrait d’un combat (v1.18.0)
 
-## Effets automatiques sans approbation manuelle
+La fin ou la suppression d’un Combat nettoie les états temporaires indépendants liés à son échéance de tour, ainsi que les groupes d’effets enregistrés. Les minuteurs de scripts sont annulés **sans lancer les scripts** ; les minuteurs en temps de jeu ne sont pas touchés. Lorsqu’une scène ou un token synthétique est indisponible, le nettoyage est conservé dans le registre pour un nouvel essai après reconnexion ou changement de scène. Les états permanents et les documents d’autres modules ne sont jamais identifiés par leur seul nom ou leur seul `statusId`. Voir [Nettoyage de combat](docs/COMBAT-CLEANUP.md).
 
-Avec `saveOutcomes.dynamicEffect`, un effet purement déclaratif n'exige plus d'appel préalable à `api.effects.approve()` dans les limites par défaut : au plus **3 changements**, valeur absolue **≤ 10**, et types/champs reconnus par PF1. Les modèles `templateEffect` passifs et source-bound non encore approuvés sont approuvés automatiquement et leur empreinte reste contrôlée. Les effets directs demandés par un joueur sans autorisation explicite sont limités à son propre acteur ; pour affecter un ennemi, employer le jet natif vérifié par `saveOutcomes`. Les restrictions explicites et révocations MJ prévalent.
-
-### Interopérabilité Attack Outcomes / Save Outcomes (v1.17.0)
-
-Une frappe confirmée peut désormais enregistrer une sauvegarde dont `onFailure.type` vaut `linkedBuff`, `templateEffect` ou `dynamicEffect`. Les champs déclaratifs `changes`, `duration`, `stacking`, `approvalKey` et autres propriétés autorisées par `saveOutcomes` sont transmis sans transformation. L'Actor source et la cible des dégâts sont imposés par le MJ ; les vérifications de capacité, de condition, de durée et de cumul restent centralisées dans `saveOutcomes`.
-
-### Nettoyage des effets à la fin d'un combat (v1.17.0)
-
-La suppression ou l'arrêt d'un combat retire les conditions à échéance de tour créées et suivies par PF1AE, y compris les ActiveEffects autonomes de `saveOutcomes`. Les minuteurs de Script Call sont annulés sans exécuter la capacité. Les durées en temps de jeu de `dynamicEffect` et `templateEffect` sont conservées. Si un token synthétique est temporairement inaccessible, le nettoyage est reporté et repris après F5 ou un changement de scène. Les effets permanents et étrangers ne sont jamais supprimés sur la seule base du nom ou de `statusId`. Voir [Nettoyage de combat](docs/COMBAT-CLEANUP.md).
-
-## Abonnements aux événements de jets d’attaque (v1.17.0)
+## Abonnements aux événements de jets d’attaque (v1.18.0)
 
 Les objets PF1 peuvent réagir sans utilisation manuelle : ajouter un **Script Call « Après utilisation » nommé exactement `PF1AE:attack:resolved`** dans l’Item concerné. Le moteur écoute les hooks natifs `pf1AttackRoll` et `pf1PostActionUse`, puis transmet chaque jet individuel évalué à l’appel de script. Aucune déduction de touche (`hit: null`) et aucun jet ou effet supplémentaire produit par le moteur. Voir [Attack Events](docs/ATTACK-EVENTS.md).
+
+## Bootstrap persistant des Script Calls (v1.18.0)
+
+Les Items peuvent demander la réinstallation de leur automatisation JavaScript après F5 via `api.bootstrap.register({actor,item,key,scriptId?})`. Les seules inscriptions persistantes sont restaurées sur le client propriétaire, en utilisant `ItemScriptCall.execute()` dans un contexte `bootstrap:restore` sans provoquer un véritable toggle. Pour un nettoyage sûr, le script appelle `bootstrap.listen(hook,callback)` au lieu de `Hooks.on()` brut. Voir [Bootstrap persistant](docs/BOOTSTRAP.md).
