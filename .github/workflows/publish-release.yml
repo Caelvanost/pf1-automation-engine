@@ -1,0 +1,87 @@
+name: Publish Foundry Module Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - module.json
+      - .github/workflows/publish-release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-foundry-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout exact release commit
+        uses: actions/checkout@v4
+
+      - name: Verify release metadata and run regression tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content -Raw module.json | ConvertFrom-Json
+          $tag = "v$($manifest.version)"
+          $name = "pf1-automation-engine-$tag.zip"
+          $base = "https://github.com/$($env:GITHUB_REPOSITORY)"
+          $expectedManifest = "https://raw.githubusercontent.com/$($env:GITHUB_REPOSITORY)/main/module.json"
+          $expectedDownload = "$base/releases/download/$tag/$name"
+          if ($manifest.id -ne 'pf1-automation-engine') { throw 'Unexpected module ID' }
+          if ($manifest.manifest -ne $expectedManifest) { throw 'Wrong stable Foundry manifest URL' }
+          if ($manifest.download -ne $expectedDownload) { throw 'Wrong GitHub release asset URL' }
+          $tests = @(Get-ChildItem tests -Filter '*.test.cjs' -File | Sort-Object Name | ForEach-Object { $_.FullName })
+          if ($tests.Count -lt 15) { throw "Expected at least 15 Node test suites, found $($tests.Count)" }
+          & node --test @tests
+          if ($LASTEXITCODE -ne 0) { throw 'Node regression tests failed' }
+
+      - name: Build Foundry installable ZIP
+        shell: powershell
+        run: .\build_release.ps1
+
+      - name: Verify packaged manifest and essential files
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.IO.Compression
+          $manifest = Get-Content -Raw module.json | ConvertFrom-Json
+          $zip = Join-Path 'dist' "pf1-automation-engine-v$($manifest.version).zip"
+          if (-not (Test-Path $zip)) { throw "Missing release ZIP: $zip" }
+          $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip).Path)
+          try {
+            $entry = $archive.GetEntry('module.json')
+            if (-not $entry) { throw 'module.json missing at ZIP root' }
+            $reader = [System.IO.StreamReader]::new($entry.Open())
+            try { $packaged = $reader.ReadToEnd() | ConvertFrom-Json }
+            finally { $reader.Dispose() }
+            foreach ($field in @('id','version','manifest','download')) {
+              if ($packaged.$field -ne $manifest.$field) { throw "Packaged manifest mismatch: $field" }
+            }
+            foreach ($required in @('scripts/bootstrap.js','scripts/attack-events.js','scripts/save-outcomes.js','scripts/effect-groups.js')) {
+              if (-not $archive.GetEntry($required)) { throw "Required module file missing: $required" }
+            }
+          } finally { $archive.Dispose() }
+
+      - name: Create GitHub Release and upload module ZIP
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifest = Get-Content -Raw module.json | ConvertFrom-Json
+          $tag = "v$($manifest.version)"
+          $zip = "dist/pf1-automation-engine-$tag.zip"
+          gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release $tag exists; uploading/updating release asset"
+            gh release upload $tag $zip --repo $env:GITHUB_REPOSITORY --clobber
+          } else {
+            gh release create $tag $zip --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title "PF1 Automation Engine $tag" --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
+          gh release view $tag --repo $env:GITHUB_REPOSITORY --json tagName,assets,url
+          if ($LASTEXITCODE -ne 0) { throw 'Release verification failed' }
