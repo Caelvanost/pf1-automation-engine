@@ -47,3 +47,7 @@ Attention : `ready` ne rejoue pas rétroactivement une déclaration créée pend
 ## Abonnement automatique à une attaque native (v1.17.0)
 
 Un Item peut contenir un appel de script **Après utilisation** (`postUse`) nommé exactement `PF1AE:attack:resolved`. Cet appel est exécuté après chaque jet individuel confirmé par `pf1AttackRoll` puis `pf1PostActionUse` d'un autre Item du même acteur. L'Item abonné n'a pas à être utilisé. La variable `event` contient le jet et la provenance, avec `hit:null` (touche inconnue). Voir [la documentation complète](docs/ATTACK-EVENTS.md).
+
+## Restauration persistante des listeners (v1.18.0)
+
+Voir [docs/BOOTSTRAP.md](docs/BOOTSTRAP.md) pour l’API `api.bootstrap`, le contexte natif `ItemScriptCall.execute(...,{bootstrap,restoring,event,state:null})`, la restauration opt-in après F5 et `bootstrap.listen()` pour nettoyer les hooks lors de la désactivation de l’Item.

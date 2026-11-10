@@ -1,3 +1,12 @@
+## v1.18.0 — Bootstrap persistant des Script Calls
+
+- Nouvelle API opt-in `api.bootstrap.register/unregister/list/restoreAll` et registre de monde géré par le MJ élu.
+- Restauration après F5, reconnexion et changements de scène via `ItemScriptCall.execute(shared,extraParams)` avec le contexte `bootstrap/restoring`, sans basculer l’Item.
+- Un seul client propriétaire exécute le bootstrap d’un acteur ; fallback MJ élu, anti-doublons et listeners suivis nettoyés par `unregister()`.
+- UUID synthétiques complets, permissions OWNER, références invalides ignorées, aucune analyse des textes des Script Calls.
+- Suite de régression bootstrap, documentation détaillée et exemple complet de script générique.
+- Aucun changement aux moteurs existants : attaques, sauvegardes, buffs, durées ou autres Script Calls.
+
 ## v1.17.0 — Événements génériques de jets d’attaque pour Item Script Calls
 
 - Ajout du pont natif `pf1AttackRoll` / `pf1PostActionUse` : un événement `attack:resolved` par jet évalué, émis après la fin de l’action native.
@@ -7,83 +16,77 @@
 - Un nouveau test automatisé couvre les attaques multiples, le déclenchement après utilisation native, les tokens synthétiques et les permissions.
 - Aucun changement aux SaveBridge, attackOutcomes, saveOutcomes, Fascination, durées, conditions ou autres services.
 
-## v1.16.3 — Nettoyage sécurisé des conditions à échéance de tour
+## v1.16.3 — Nettoyage sécurisé des effets lors de la fin de combat
 
-- Sur `deleteCombat` et lorsqu'un Combat est arrêté, supprime les effets de tour **avant** de retirer leurs minuteurs ; annule les minuteurs de Script Call sans les exécuter.
-- Pour chaque `ActiveEffect` autonome, vérifie `timerId`, `outcomeId`, `outcomeRuleId`, `sourceUuid`, l'Item/Action source, la clé et l'origine. Les effets permanents et étrangers sont préservés.
-- Réutilise `effectGroups.expireGroup` pour les buffs gérés et conserve une entrée `cleanupPending` si la cible est temporairement inaccessible.
-- Reprise automatique après F5, reconnexion ou changement de scène, même lorsque le combat est déjà supprimé.
-- Récupération conservatrice des anciennes conditions orphelines : flags PF1AE complets, minuteur absent des registres de phase **et** de durée, âge d'au moins 30 secondes.
-- Une suppression normale échouée est désormais retentée au lieu de perdre le minuteur.
-- Nouveau test `combat-cleanup.test.cjs` et non-régression des moteurs existants.
-- Aucune modification des API publiques, des Script Calls, de Fascination ou de Coup étourdissant.
+- Quand un combat est supprimé **ou arrêté** (`deleteCombat` / `updateCombat` non démarré), les minuteurs de phase sont traités **avant** leur retrait du registre ; les minuteurs de Script Call sont simplement annulés, sans exécution.
+- Les ActiveEffects indépendants `saveOutcomes.linkedBuff` ne sont supprimés que si `timerId`, `outcomeId`, règle, acteur et Item/Action sources correspondent aux marqueurs PF1AE. Les buffs et effets sans ces marqueurs sont préservés.
+- Les groupes `effectGroups` sont nettoyés par leur service existant ; si leur cible est inaccessible, une entrée `cleanupPending` est conservée pour une nouvelle tentative.
+- Reprise persistante des nettoyages après F5, reconnexion ou `canvasReady`, même lorsqu'un combat a déjà été retiré de `game.combats`.
+- Détection conservatrice des conditions orphelines antérieures à la version 1.16.3 : reconnaissance complète des flags et de l'origine, absence des minuteurs dans les **deux** registres, et délai de sécurité de 30 secondes depuis la création du document.
+- Une expiration normale d'ActiveEffect en échec est désormais mise en attente pour nouvel essai, au lieu de perdre son minuteur.
+- Nouveau test `combat-cleanup.test.cjs` : 13 suites de tests réussies (dont les 12 précédentes), avec acteurs synthétiques, plusieurs sources/MJ, échéances de tour, durée écoulée, orphelins et buffs d'autres sources.
+- **Aucune modification des API publiques**, de Fascination, Coup étourdissant, Crushing Blow, `attackOutcomes`, `dynamicEffect` ou `templateEffect`.
 
 ## v1.16.2 — Interopérabilité attackOutcomes / saveOutcomes
 
-- Accepte `linkedBuff`, `templateEffect` et `dynamicEffect` dans `onDamageApplied.saveOutcome.onFailure.type`.
-- Transmet intégralement la règle à `saveOutcomes.register()`, en imposant le personnage source et la cible vérifiés par le MJ.
-- Conserve les validations strictes d’Item, d’Action, de carte, d’indice d’attaque et de cibles.
-- Laisse `saveOutcomes` et `api.effects` valider les champs `changes`, `duration`, `stacking`, `approvalKey` et les autorisations.
-- Nouveau test intégré : sauvegarde échouée/réussie, buff mécanique, `templateEffect`, `linkedBuff`, acteur synthétique et déduplication.
-- Aucun changement aux Script Calls de personnage.
+- `attackOutcomes` accepte désormais les conséquences `linkedBuff`, `templateEffect` et `dynamicEffect`, comme `saveOutcomes`.
+- Conservation de l’intégralité de l’objet déclaratif `saveOutcome` jusqu’à `saveOutcomes.register()` ; seul l’acteur source autoritaire et la cible des dégâts vérifiés sont imposés côté MJ.
+- Conservation des vérifications Item, Action, index de frappe, carte native, Actor UUID (y compris synthétique) et déduplication.
+- Tests d’intégration : échec/réussite `dynamicEffect`, copie mécanique, `templateEffect`, `linkedBuff`, acteur synthétique et minuteur.
+- Aucun changement aux Script Calls de personnages.
 
-## v1.16.1 — Autorisation automatique des effets mécaniques déclaratifs
+## v1.16.1 — Approbation automatique des effets déclaratifs
 
-- Plus d'approbation MJ manuelle pour `dynamicEffect` dans les limites automatiques : 3 changements, amplitude de 10, modificateurs et cibles PF1 vérifiés.
-- `approvalKey` devient facultatif ; l'ancienne API et les approbations explicites restent utilisables.
-- Approbation automatique des nouveaux modèles `templateEffect` passifs ; modèles avec scripts/macros ou empreintes déjà approuvées mais modifiées restent refusés.
-- Une révocation MJ est persistante et bloque le mode automatique pour cette clé.
-- Sans autorisation explicite, un joueur ne peut pas demander directement un debuff sur un ennemi : passer par une sauvegarde source-bound vérifiée.
-- Aucun changement aux autres automations.
+- Supprime l'étape `api.effects.approve()` pour les nouveaux `dynamicEffect` déclaratifs respectant des limites strictes (3 changements, amplitude ≤ 10).
+- Autorise automatiquement les modèles passifs `templateEffect` nouveaux, après validation de leur association à la source ; refuse les scripts/macros et les empreintes existantes modifiées.
+- Préserve les approbations explicites, qui restent prioritaires ; `revoke` crée désormais une interdiction persistante plutôt que de réactiver le mode automatique.
+- Pour les joueurs non-MJ, les effets directs sans autorisation explicite restent limités à soi-même, avec carte PF1 source obligatoire ; les malus adverses passent par un jet vérifié `saveOutcomes`.
+- Conserve SaveBridge, attackOutcomes, Fascination, Coup étourdissant, Countersong, Distraction, durées, cumul et tokens synthétiques.
 
-## v1.16.0 — GM-authorized native dynamic PF1 buffs
+## v1.16.0 — GM-authorized dynamic PF1 mechanical buffs
 
-- New `api.effects` service for direct declarative mechanical buffs, source ItemAction GM grants, bounded numerical values and strict allowed targets/modifiers.
-- Native PF1 `system.changes` ItemChange creation with literal numeric formulas and activation of temporary Items.
-- New `saveOutcomes` consequence `dynamicEffect` after verified native saving throws; `linkedBuff` and `templateEffect` unchanged.
-- Reuse managed group ledger, stacking policies and persistent world-time/combat turn timers; preserve unlinked Token Actors.
-- Add dedicated regression suite. Runtime PF1 calculated AC still requires in-world verification.
+- New `api.effects.approve/apply/revoke/listApprovals` API, exact ItemAction grants and numeric mechanical limits.
+- Native PF1 buff `system.changes` creation with declarative `ItemChange` entries; no arbitrary script or formula execution.
+- New `saveOutcomes` consequence `dynamicEffect` after verified native saves.
+- Reuse group ledger and timers for persistence, expiry and four stacking modes.
+- Preserve attackOutcomes, linkedBuff, templateEffect, bard automations and synthetic Actor UUIDs.
+- Additional native-mock regression suite; real PF1 derived-stat verification remains necessary.
 
-## v1.15.0 — Native mechanical template effects after a PF1 saving throw
+## v1.15.0 — Approved mechanical template effects after native saving throws
 
-- Add `saveOutcomes.onFailure.type='templateEffect'` for approved mechanical PF1 Item Buff and ActiveEffect models.
-- Require fingerprint-based GM approval on registration and application; retain strict source Actor/ItemAction provenance and target Actor UUIDs.
-- Reuse existing `effectGroups` storage, PF1 buff activation/deactivation, persistent duration and turn-boundary expiration.
-- Support `stack`, `replace`, `refresh`, `ignore` and deduplication by save message/outcome, including multiple sources sharing a stacking key on one target.
-- Reject arbitrary `parameters` in this first version; fixed-value approved mechanics only.
-- Preserve all `linkedBuff` paths including Fascination and timed Stunning Fist, SaveBridge, countersong, distraction and Attack Outcomes.
-- Add simulated regression coverage; real Foundry 13/PF1 11.11 validation is still required.
+- Add generic `saveOutcomes.onFailure.type="templateEffect"` for PF1 Item Buff and ActiveEffect templates with mechanical changes, preserving all current `linkedBuff` behavior.
+- Require exact fingerprint-based GM approval on registration and again before cloning, with unchanged source Actor/ItemAction and synthetic target verification.
+- Reuse `effectGroups` copy ledger, native `setActive` and deletion, world-duration timers and turn-phase timers; persistent after F5/leader handoff.
+- Support `stack`, `replace`, `refresh`, `ignore` (same-target global key across sources), serialized GM-authoritative deduplication and safe rollback.
+- Accept only fixed-value approved mechanics; reject dynamic `parameters` in this version until PF1 native data paths are precisely verified.
+- Add mechanical PF1 Buff and ActiveEffect regression tests, including successes, failures, synthetic targets, approval/fingerprint rejection, stacking and expiration.
+- No modifications to Attack Outcomes, SaveBridge, Fascination, Countersong, Distraction or Stunning Fist Script Calls.
 
-## v1.14.4 — PF1 synthetic Actor HP offset confirmation
+## v1.14.4 — Synthetic PF1 Actor damage confirmation (hp.offset)
 
-- Recognize both nested and flattened updates to `system.attributes.hp.value` and `system.attributes.hp.offset`.
-- Confirm native `options.pf1.deltas.hp.offset` and `_nasPrevHp` against effective Actor HP before/after, never equating a negative offset alone with applied damage.
-- Preserve exact native attack card/ItemAction/index/target identity, including unlinked Scene.Token.Actor UUIDs; no changes to public API, multiclick deduplication or GM authority.
-- Regression: 11 effective HP -> 6 HP with offset -5 triggers exactly one follow-up; no effective HP loss triggers none.
-- No changes to Fascination, saveOutcomes, timers or character Item Script Calls. Live PF1 11.11 validation remains necessary.
+- Accept both nested and flattened `updateActor` changes to `system.attributes.hp.value` and `system.attributes.hp.offset`, alongside temporary HP and nonlethal damage fields.
+- Inspect PF1-native `options.pf1.deltas.hp.offset` and `_nasPrevHp` where provided, and verify against the effective Actor HP before/after rather than inferring damage from an offset alone.
+- Maintain exact native attack-card/ItemAction/index/synthetic-target provenance, elected-GM authority, one-shot deduplication and short-lived direct-damage candidates.
+- Add an unlinked Token Actor regression: 11 effective HP, 5 damage, `hp.offset=-5`, 6 HP remaining -> one follow-up Fortitude Action. An offset-only update with no actual loss remains ineligible.
+- No public API or bard/monk Item Script Call changes. Local Foundry VTT v13/PF1 11.11 testing still required.
 
-## v1.14.3 — Direct native attack damage bridge
+## v1.14.3 — Native direct damage correlation bridge
 
-- Preserve exact native Action-card provenance when damage options arrive outside tracked `ApplyDamage._onApply`.
-- Correlate native target-options and pre-apply hooks with a real actor update, tolerating cloned options only for a unique, recent candidate.
-- Reject wrong attack index, ambiguous actor updates, stale options and no proven HP/nonlethal damage; no changes to the `ActorPF.applyDamage` accessor.
-- Keep `saveOutcomes`, Fascination, bard automations, source-specific duration and elected-GM deduplication intact.
-- Add direct-damage regression coverage; live PF1 11.11 validation remains essential.
+- Preserve exact native PF1 attack provenance when damage options arrive without entering tracked `ApplyDamage._onApply`.
+- Correlate native `pf1ApplyDamageTargetOptions` and `pf1ApplyDamage` hooks by exact target, card, Action and attack index, tolerating options cloned between hooks only for one immediate unambiguous candidate.
+- Verify actual damage in `updateActor` after the native damage PRE hook, with short timeouts and diagnostics for expected and received IDs.
+- Keep previous dialog-based completion as a second path; never touch the non-configurable `ActorPF.applyDamage` accessor.
+- Keep elected-GM authorization, persistent deduplication, native save outcomes, conditions and existing bard abilities unchanged.
+- Expand attack outcome tests to cover direct damage, cloned options, wrong attack index and unrelated HP updates.
+- This remains an experimental hook-based link and does not claim a transaction ID supplied by PF1.
 
-## v1.14.2 — README refresh and removal of standalone example scripts
+## v1.14.1 — PF1 11.11 native damage dialog completion bridge
 
-- Rewrite the README around the current public APIs, installation, debugging, permissions and compatibility requirements.
-- Remove the standalone `scripts-exemples/coup-etourdissant-utilisation.js` script from the repository.
-- Replace the deleted script link in `docs/ATTACK-OUTCOMES.md` with Item Script Call integration guidance.
-- No runtime JavaScript, Foundry hooks, save resolution or automation behavior changed.
-
-## v1.14.1 — Non-configurable ActorPF accessor damage bridge
-
-- Never assign to or redefine the non-configurable `ActorPF.prototype.applyDamage` accessor (getter and setter remain native).
-- Observe the native PF1 ApplyDamage dialogue's completion, corroborate the per-target and pre-apply hooks, then inspect actual damage.
-- Fail closed for missing provenance, ambiguous target operations, cancelled dialogs and fully absorbed damage.
-- Preserve saveOutcomes, Fascination, Countersong, Distraction, temporary conditions and source-specific deduplication.
-- Test the non-configurable getter/setter and refuse to invoke its setter; live PF1 11.11 acceptance remains necessary.
+- Stop assigning `ActorPF.prototype.applyDamage`: the installed method is exposed via a non-configurable accessor. Never invoke its setter or redefine its descriptor.
+- Observe the native `ApplyDamage._onApply` completion instead, while requiring both `pf1ApplyDamageTargetOptions` and `pf1ApplyDamage` provenance and verified post-application damage.
+- Fail closed on missing native hooks, ambiguous target operations, interrupted dialogs, zero/fully absorbed damage and unrecognized native dialog APIs.
+- Preserve attackOutcomes, saveOutcomes, SaveBridge, Fascination, Countersong, Distraction and condition timers.
+- Regression simulation covers a non-configurable accessor and verifies no setter invocation.
 
 ## v1.14.0 — Source-bound attack damage outcomes (experimental)
 
