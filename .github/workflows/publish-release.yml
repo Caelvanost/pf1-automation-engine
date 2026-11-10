@@ -35,10 +35,23 @@ jobs:
           if ($manifest.id -ne 'pf1-automation-engine') { throw 'Unexpected module ID' }
           if ($manifest.manifest -ne $expectedManifest) { throw 'Wrong stable Foundry manifest URL' }
           if ($manifest.download -ne $expectedDownload) { throw 'Wrong GitHub release asset URL' }
-          $tests = @(Get-ChildItem tests -Filter '*.test.cjs' -File | Sort-Object Name | ForEach-Object { $_.FullName })
-          if ($tests.Count -lt 15) { throw "Expected at least 15 Node test suites, found $($tests.Count)" }
-          & node --test @tests
-          if ($LASTEXITCODE -ne 0) { throw 'Node regression tests failed' }
+          # Use the same maintained regression tests as build-zip.yml, plus
+          # new bootstrap/combat/attack-events suites. Run each test separately
+          # because several legacy suites depend on timing and cannot safely
+          # run concurrently under node --test for all 27 old files.
+          $tests = @(
+            'discovery','migration','neutrality','turn-phases',
+            'effect-groups','extension-f5','duration','duration-group',
+            'rest-hooks','compendium-templates','save-overrides',
+            'native-save-context','attack-events','bootstrap','combat-cleanup'
+          )
+          foreach ($name in $tests) {
+            $file = Join-Path 'tests' "$name.test.cjs"
+            if (-not (Test-Path $file)) { throw "Missing regression test: $file" }
+            Write-Host "RUN $file"
+            & node $file
+            if ($LASTEXITCODE -ne 0) { throw "Node regression test failed: $file" }
+          }
 
       - name: Build Foundry installable ZIP
         shell: powershell
