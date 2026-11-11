@@ -1,3 +1,12 @@
+## v1.23.1 — Correctif de l'interface de rechargement
+
+- Corrige le filtre trop restrictif qui masquait les actions PF1 sans type de munition configuré.
+- Affiche les objets de type munition de l'inventaire séparément et explique les prérequis natifs PF1 quand la sélection est vide.
+- Refuse proprement une configuration avec une munition incompatible avec le type natif de l'action (sans modification de la fiche).
+- Réorganise les contrôles en colonnes adaptables, place le panneau sous l'en-tête de la fiche et empêche l'agrandissement involontaire du panneau dans les mises en page flex.
+- Traductions françaises et anglaises des libellés, messages d'aide et temps de rechargement.
+- Étend le test de régression des listes d'actions et de munitions. Fonction de rechargement toujours expérimentale et opt-in.
+
 ## v1.23.0 — Noyau expérimental de rechargement natif
 
 - Paramètre de monde opt-in indépendant de la portée et de la Table de confiance, sans migration automatique des armes existantes.
