@@ -27,6 +27,7 @@ vm.createContext(context);vm.runInContext(source,context);
 for(const cb of hooks.get('init')??[])cb();
 for(const cb of hooks.get('ready')??[])cb();
 const makeUse=(dist=6,{units='ft',sceneUnits='m',value=20,actionType='rwak',max=10,metric=false,withRange=true}={})=>{
+  attacker.document.parent=scene;
   context.pf1.settings.distance.metric=metric;
   scene.grid.units=sceneUnits;
   target=token('Enemy',[{x:dist/(scene.grid.units==='m'?1.5:5),y:0}]);
