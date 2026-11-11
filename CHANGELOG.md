@@ -1,3 +1,12 @@
+## v1.23.0 — Noyau expérimental de rechargement natif
+
+- Paramètre de monde opt-in indépendant de la portée et de la Table de confiance, sans migration automatique des armes existantes.
+- Suivi persistant des chambres chargées sur l'Item, choix des objets de munitions PF1 natifs et réservation sans consommation au rechargement.
+- Action PF1 de rechargement créée sans doublon, widget compact sur les fiches d'armes et API de recharge/décharge.
+- Contrôle avant génération des jets des armes configurées, avec refus avant carte de chat, jets d'attaque et consommation native ; coûts par action configurables pour les doubles canons.
+- Tests couvrant refus, rechargement partiel, consommation native et réduction de temps déclarative.
+- LIMITATIONS : validation en session PF1 11.11 à faire ; dons et temps d'action non automatiquement appliqués, enrayement et cartouches mélangées non intégrés, non-atomicité multijoueur.
+
 ## v1.22.0 — Traductions françaises et anglaises dans Foundry
 
 - Ajoute les ressources natives `lang/en.json` et `lang/fr.json` déclarées dans `module.json`, selon la langue de session de chaque client.
