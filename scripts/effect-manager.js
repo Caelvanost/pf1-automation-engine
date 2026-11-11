@@ -13,7 +13,9 @@ function primaryGM() {
   return game.users.filter(u => u.active && u.isGM).sort((a,b) => a.id.localeCompare(b.id))[0];
 }
 function isPrimaryGM() { return primaryGM()?.id === game.user.id; }
-function warn(message) { ui.notifications.warn(`PF1 Automatisation : ${message}`); }
+const emText=(key,fallback)=>game.i18n?.localize?.('PF1AE.Effects.'+key)??fallback;
+const emFormat=(key,data,fallback)=>game.i18n?.format?.('PF1AE.Effects.'+key,data)??fallback;
+function warn(message) { ui.notifications.warn(`${emText('Prefix','PF1 Automation')} : ${message}`); }
 function asActor(doc) {
   return doc?.actor ?? (doc?.documentName === 'Actor' ? doc : null);
 }
@@ -31,26 +33,26 @@ function combatantFor(combat, actor, requestedId) {
 }
 async function runRequest(data, requester) {
   if (!isPrimaryGM()) return;
-  if (game.modules.get('pf1-combat-automation')?.active) throw Error('Désactiver l’ancien module avant d’utiliser le nouveau.');
-  if (!data || !['start','stop'].includes(data.op) || !isValidKey(data.key)) throw Error('Requête ou clé invalide.');
+  if (game.modules.get('pf1-combat-automation')?.active) throw Error(emText('OldModule','Disable the old module before using the new one.'));
+  if (!data || !['start','stop'].includes(data.op) || !isValidKey(data.key)) throw Error(emText('InvalidRequest','Invalid request or key.'));
   const source = await resolveActor(data.sourceUuid);
-  if (!source || !canOwn(requester, source)) throw Error('Accès refusé à l’acteur source.');
+  if (!source || !canOwn(requester, source)) throw Error(emText('SourceDenied','Access to the source actor was denied.'));
   if (data.op === 'stop') return stopInternal(source, data.key);
 
   const combat = game.combat;
   const c = combatantFor(combat, source, data.combatantId);
-  if (!combat?.started || !c || combat.id !== data.combatId) throw Error('Source absente du combat actif.');
+  if (!combat?.started || !c || combat.id !== data.combatId) throw Error(emText('NoCombat','Source is not in the active combat.'));
   const template = source.effects.get(data.templateEffectId);
-  if (!template) throw Error('Effet modèle introuvable sur l’acteur source.');
-  if (template.getFlag(SCOPE, 'managed')) throw Error('Une copie temporaire ne peut pas servir de modèle.');
+  if (!template) throw Error(emText('TemplateMissing','Effect template not found on the source actor.'));
+  if (template.getFlag(SCOPE, 'managed')) throw Error(emText('TemporaryTemplate','A temporary copy cannot be used as a template.'));
   const durationTurns = Number(data.durationTurns);
-  if (!Number.isInteger(durationTurns) || durationTurns < 1 || durationTurns > 100) throw Error('Durée invalide (1 à 100 tours du lanceur).');
-  if (!Array.isArray(data.targets) || data.targets.length === 0 || data.targets.length > 30) throw Error('Liste de cibles invalide.');
+  if (!Number.isInteger(durationTurns) || durationTurns < 1 || durationTurns > 100) throw Error(emText('InvalidDuration','Invalid duration (1 to 100 turns).'));
+  if (!Array.isArray(data.targets) || data.targets.length === 0 || data.targets.length > 30) throw Error(emText('InvalidTargets','Invalid target list.'));
   const targets = [];
   for (const uuid of [...new Set(data.targets)]) {
-    if (typeof uuid !== 'string' || uuid.length > 200) throw Error('UUID cible invalide.');
+    if (typeof uuid !== 'string' || uuid.length > 200) throw Error(emText('InvalidTargetUuid','Invalid target UUID.'));
     const actor = await resolveActor(uuid);
-    if (!actor) throw Error(`Cible introuvable : ${uuid}`);
+    if (!actor) throw Error(emFormat('TargetMissing',{uuid},`Target not found: ${uuid}`));
     targets.push(actor);
   }
   await stopInternal(source, data.key);
@@ -102,8 +104,8 @@ async function stopInternal(source, key) {
 }
 function publicRequest(op, { actor, key, templateEffectId, targets, durationTurns = 1 } = {}) {
   const source = asActor(actor);
-  if (!source || !isValidKey(key)) { warn('Acteur ou clé invalide.'); return false; }
-  if (!source.isOwner && !game.user.isGM) { warn('Vous ne contrôlez pas ce personnage.'); return false; }
+  if (!source || !isValidKey(key)) { warn(emText('InvalidActorOrKey','Invalid actor or key.')); return false; }
+  if (!source.isOwner && !game.user.isGM) { warn(emText('NotOwner','You do not control this character.')); return false; }
   const data = {
     op, sourceUuid: source.uuid, key,
     templateEffectId, targets: (targets ?? [source]).map(t => asActor(t)?.uuid).filter(Boolean),
@@ -111,7 +113,7 @@ function publicRequest(op, { actor, key, templateEffectId, targets, durationTurn
     combatantId: combatantFor(game.combat, source)?.id
   };
   if (isPrimaryGM()) return runRequest(data, game.user).catch(e => {warn(e.message); console.error(e); return false;});
-  if (!primaryGM()) {warn('Un MJ connecté est nécessaire pour gérer les effets.'); return false;}
+  if (!primaryGM()) {warn(emText('GMRequired','A connected GM is required to manage effects.')); return false;}
   game.socket.emit(SOCKET, { ...data, requestId: foundry.utils.randomID(), userId: game.user.id });
   return true; // Demande envoyée, pas de confirmation d'application.
 }
