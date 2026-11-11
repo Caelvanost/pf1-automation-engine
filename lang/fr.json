@@ -90,12 +90,23 @@
       "Configure": "Configurer le chargement",
       "Capacity": "Capacité",
       "Ammo": "Munition",
-      "Count": "Quantité",
+      "Count": "Projectiles nécessaires",
       "Save": "Enregistrer",
-      "Shots": "Projectiles nécessaires pour l'action sélectionnée",
+      "Shots": "Action d'attaque (facultative)",
       "Base": "Action de rechargement normale",
       "SettingsHint": "Suivi optionnel des armes à feu et arbalètes configurées. PF1 conserve la consommation native des munitions. Configuration manuelle par arme ; désactivé par défaut.",
-      "SettingsName": "Gestion automatique du chargement des armes (expérimental)"
+      "SettingsName": "Gestion automatique du chargement des armes (expérimental)",
+      "SelectAmmo": "Choisir une munition de l'inventaire",
+      "SelectAction": "Choisir une action d'attaque (facultatif)",
+      "NoAmmo": "Aucune munition native trouvée dans l'inventaire du personnage. Ajoutez un objet de type Munition (ammo), et non un objet de butin ordinaire.",
+      "NoActions": "Cette arme n'a aucune action d'attaque native. Créez d'abord une action d'attaque dans l'onglet Actions de PF1.",
+      "NoNativeAmmo": "L'attaque à distance de cette arme n'a pas de type de munition natif. Configurez son type de munition dans l'action PF1 avant d'enregistrer.",
+      "NativeMismatch": "Le type de munition sélectionné ne correspond pas à l'attaque à distance native PF1. Configurez d'abord le type de munition de l'action pour qu'il corresponde à celui de cet objet.",
+      "Help": "Choisissez la munition et, si besoin, une attaque utilisant plusieurs projectiles. Les types de munition natifs doivent correspondre.",
+      "TimeFree": "Action libre",
+      "TimeMove": "Action de mouvement",
+      "TimeStandard": "Action simple",
+      "TimeFull": "Action complexe"
     }
   }
 }
