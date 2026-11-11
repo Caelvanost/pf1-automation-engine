@@ -81,3 +81,7 @@ Les cibles d'une utilisation à plusieurs frappes ne sont pas nécessairement li
 ## Protocole Foundry v13 / PF1 v11.11
 
 Tester successivement : attaque simple, attaque à outrance (une notification par jet), attaque d'opportunité par une Action native, Action annulée, acteur non lié, F5/reconnexion et changement de scène, deux clients joueurs + MJ, abonnement dupliqué et action lancée par le Script Call. Pour chaque essai, vérifier le nombre d'appels et les UUIDs, puis confirmer que `hit` reste `null` si la réussite contre la CA n'est pas disponible. Les tests Node simulent ces hooks ; ils ne remplacent pas le test réel des cartes PF1.
+
+## v1.19.1 — Contrôle du code exécuté en session MJ
+
+Lorsqu'une attaque est effectuée depuis la session du MJ avec un Actor possédé par un joueur (connecté ou non), les abonnés `PF1AE:attack:resolved` ne sont exécutés que si chaque Script Call possède une approbation explicite correspondant à sa source exacte. Les jets locaux lancés par les joueurs propriétaires conservent leur comportement existant. Voir [Approbations de secours](SCRIPT-FALLBACK-APPROVALS.md).
