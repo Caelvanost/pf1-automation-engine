@@ -7,6 +7,12 @@
 const RA_NS='pf1-automation-engine';
 const RA_SETTING='autoRangePenalties';
 const RA_TAG='[PF1AE][Range]';
+let raLastDiagnostic=null;
+const raReport=(status,details={})=>{
+  raLastDiagnostic={status,...details};
+  raLog(status,details);
+  return raLastDiagnostic;
+};
 const raLog=(message,details={})=>{
   try{if(game.settings.get(RA_NS,'genericDebug'))console.debug(RA_TAG,message,details);}
   catch(_){}
@@ -37,10 +43,11 @@ const raOccupied=token=>{
 };
 function raDistance(token,target,grid){
   const a=raOccupied(token),b=raOccupied(target);
-  if(!Array.isArray(a)||!Array.isArray(b)||!a.length||!b.length||
-     typeof grid?.measurePath!=='function')return null;
+  const sources=Array.isArray(a)?a:(a&&typeof a[Symbol.iterator]==='function'?[...a]:[]);
+  const targets=Array.isArray(b)?b:(b&&typeof b[Symbol.iterator]==='function'?[...b]:[]);
+  if(!sources.length||!targets.length||typeof grid?.measurePath!=='function')return null;
   let min=Infinity;
-  for(const from of a)for(const to of b){
+  for(const from of sources)for(const to of targets){
     const dist=Number(grid.measurePath([from,to])?.distance);
     if(Number.isFinite(dist)&&dist>=0)min=Math.min(min,dist);
   }
@@ -62,11 +69,14 @@ function raApply(use){
   if(raScriptSkip(shared))return {skipped:'skip increment checks'};
   const config=shared.config??{},formData=shared.formData??{},opts=shared.useOptions??{};
   // Native overrides and manual penalties always win; never stack a second modifier.
+  // PF1 may initialise a zero rangePenalty in the native dialog data.
+  // Zero is NOT a manually applied penalty and must not disable automation.
+  // Preserve nonzero manual penalties, explicit increments and custom costs.
   if((Number.isFinite(opts.rangeIncrement)&&opts.rangeIncrement!==1)||
-     Number.isFinite(opts.rangeIncrementPenalty)&&opts.rangeIncrementPenalty!==2||
-     Number.isFinite(formData.rangePenalty)||
-     Number.isFinite(config.rangePenalty)||
-     Number.isFinite(config.rangeIncrement)&&config.rangeIncrement!==1)
+     (Number.isFinite(opts.rangeIncrementPenalty)&&opts.rangeIncrementPenalty!==2)||
+     (Number.isFinite(formData.rangePenalty)&&formData.rangePenalty!==0)||
+     (Number.isFinite(config.rangePenalty)&&config.rangePenalty!==0)||
+     (Number.isFinite(config.rangeIncrement)&&config.rangeIncrement!==1))
     return {skipped:'explicit native range modifier'};
   const range=action.range??{};
   const max=Number(range.maxIncrements);
@@ -76,9 +86,15 @@ function raApply(use){
   if(targets.length!==1)return {skipped:'ambiguous targets',targets:targets.length};
   const origin=use.token?.object??use.token;
   const target=targets[0];
-  const scene=canvas?.scene;
-  if(!origin||!target||!scene||origin.document?.parent?.id!==scene.id||
-     target.document?.parent?.id!==scene.id)return {skipped:'tokens not in current scene'};
+  const scene=globalThis.canvas?.scene;
+  // ActionUse.token may be a TokenDocument (rather than its canvas Token);
+  // Foundry canvas targets are Token objects. Accept either representation,
+  // but never measure between different scenes.
+  const tokenScene=token=>(token?.document??token)?.parent?.id ?? token?.scene?.id ?? null;
+  if(!origin||!target||!scene||
+     (tokenScene(origin)&&tokenScene(origin)!==scene.id)||
+     (tokenScene(target)&&tokenScene(target)!==scene.id))
+    return {skipped:'tokens not in current scene'};
   const sceneUnit=raNormUnit(scene.grid?.units);
   // The action's getRange returns PF1 system-distance units, not raw input
   // units. For older actions without getRange, require a numeric raw value
@@ -130,13 +146,28 @@ Hooks.once('init',()=>{
     scope:'world',config:true,restricted:true,type:Boolean,default:false
   });
   Hooks.on('pf1CreateActionUse',use=>{
-    try{return raApply(use);}
-    catch(error){console.warn(RA_TAG,'Native range pre-roll failed; no change',error);}
+    try{
+      const result=raApply(use);
+      raReport(result?.skipped??'configured',{
+        reason:result?.skipped??null,
+        factor:result?.factor??null,
+        penalty:result?.penalty??null,
+        action:use?.action?.name??null,
+        actor:use?.actor?.name??null,
+        targets:game.user?.targets?.size??null
+      });
+    }catch(error){
+      raReport('exception',{message:error.message});
+      console.warn(RA_TAG,'Native range pre-roll failed; no change',error);
+    }
   });
 });
 Hooks.once('ready',()=>{
   const mod=game.modules.get(RA_NS);
   if(!mod)return;
   mod.api??={};
-  mod.api.range=Object.freeze({calculate:raCalculate,convert:raConvert,measure:raDistance});
+  mod.api.range=Object.freeze({
+    calculate:raCalculate,convert:raConvert,measure:raDistance,
+    lastDiagnostic:()=>raLastDiagnostic?{...raLastDiagnostic}:null
+  });
 });
