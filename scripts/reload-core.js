@@ -8,6 +8,7 @@ const RL_NS='pf1-automation-engine',RL_KEY='reloadState',RL_ENABLED='reloadEnabl
 const RL_ACTION='pf1ae-reload';
 const RL_REJECT=Symbol('PF1AE_RELOAD_REJECT');
 const RL_BUSY=new Set(),RL_SHOTS=new WeakMap(),RL_ABORT=new WeakSet();
+const RL_FIRING=new Set();
 const rlL=(key,data={})=>{
  const fallback={
   Empty:'Weapon is not sufficiently loaded.',
@@ -93,13 +94,21 @@ function rlCheck(use){
  const needed=rlNeeded(use,state);
  if(needed===0)return {managed:false};
  if(needed===null)return {managed:true,ok:false,reason:'unknown attack count'};
+ if(RL_FIRING.has(weapon.uuid))
+  return {managed:true,ok:false,needed,loaded:state.slots.length,
+    reason:'another shot is being processed'};
+ const actual=(use.shared?.attacks??[]).reduce((sum,a)=>sum+(a?.hasAmmo?
+   Math.max(1,Number(use.action?.ammo?.cost)||1):0),0);
+ if(actual!==needed)return {managed:true,ok:false,needed,
+   loaded:state.slots.length,reason:'native ammo usage differs from configured cost'};
  const selected=weapon?.system?.ammo?.default;
  const ammo=rlAmmo(rlActor(weapon),selected);
  const loaded=state.slots.filter(x=>x.ammoId===selected).length;
  // The native PF1 action will consume from its default ammunition Item;
  // forbid firing a different loaded ammo or an inventory deficit.
  const available=ammo?.system?.abundant?Infinity:rlQuantity(ammo);
- const ok=!!selected&&!!ammo&&loaded>=needed&&available>=needed;
+ const ok=!!selected&&!!ammo&&loaded>=needed&&available>=needed&&
+  (use.shared?.attacks??[]).every(x=>x?.ammo?.id===selected);
  return {managed:true,ok,needed,loaded,selected,
    reason:ok?null:'insufficient loaded ammo or native ammunition inventory'};
 }
@@ -187,6 +196,7 @@ async function rlReload(weapon,{ammoId,count=1,rapidReload=false}={}){
    throw error;
   }
   const timing=rlTiming(next,ammo,{rapidReload});
+  if(timing.provokes)ui.notifications?.info?.(rlL('AoO'));
   if(globalThis.ChatMessage?.create){
    const msg=rlL('Reloaded',{loaded:slots.length,capacity:current.capacity});
    void ChatMessage.create({speaker:ChatMessage.getSpeaker({actor}),
@@ -233,9 +243,11 @@ async function rlCommitShot(use){
   Hooks.callAll('pf1aeReloadShot',{actorUuid:actor?.uuid,weaponUuid:weapon.uuid,
     actionId:use.action?.id,spent:result.needed,loaded:after.length});
  }catch(error){console.error('[PF1AE][Reload] Shot state update failed',error);}
+ finally{RL_FIRING.delete(weapon.uuid);}
 }
 function rlInstall(){
- const proto=globalThis.pf1?.components?.ActionUse?.prototype;
+ const proto=(globalThis.pf1?.components?.ActionUse??
+  globalThis.pf1?.actionUse?.ActionUse)?.prototype;
  if(!proto?.process||!proto?.generateChatAttacks){
   console.warn('[PF1AE][Reload] Native PF1 ActionUse integration unavailable; automation disabled.');
   return;
@@ -251,6 +263,9 @@ function rlInstall(){
   }
   try{return await previousProcess.apply(this,args)}
   catch(error){if(error===RL_REJECT&&RL_ABORT.has(this))return undefined;throw error}
+  finally{
+   if(!this._pf1aeReloadPostUse)RL_FIRING.delete(this.item?.uuid);
+  }
  };
  proto.process.pf1aeReloadWrapped=true;
  Hooks.on('pf1CreateActionUse',use=>{
@@ -265,12 +280,16 @@ function rlInstall(){
    if(check.managed){
     if(!check.ok)rlAbort(this,check);
     RL_SHOTS.set(this,check);
+    RL_FIRING.add(this.item.uuid);
    }
    return previous.apply(this,args);
   };
   use.generateChatAttacks.pf1aeReloadWrapped=true;
  });
- Hooks.on('pf1PostActionUse',use=>{void rlCommitShot(use)});
+ Hooks.on('pf1PostActionUse',use=>{
+  if(RL_SHOTS.has(use))use._pf1aeReloadPostUse=true;
+  void rlCommitShot(use);
+ });
 }
 Hooks.once('init',()=>{
  game.settings.register(RL_NS,RL_ENABLED,{
