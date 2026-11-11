@@ -127,7 +127,7 @@ const restore=async()=>{await Promise.all([...clients.values()].map(c=>c.mod.api
  assert.equal(count('gm2'),0);
  users.get('p2').active=true;
  fire('updateUser',users.get('p2'),{active:true});await wait();await restore();
- assert.equal(count('gm1'),1,'GM relinquishes hero after owner reconnect');
+ assert.equal(count('gm1'),2,'GM relinquishes hero but still owns NPC and synthetic token');
  assert.equal(count('p2'),2,'second player becomes elected hero owner');
  users.get('p1').active=true;
  fire('updateUser',users.get('p1'),{active:true});await wait();await restore();
