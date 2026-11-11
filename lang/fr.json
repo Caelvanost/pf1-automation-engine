@@ -28,6 +28,10 @@
       "MigrationVersion": {
         "Name": "Migration de l'identifiant du module",
         "Hint": "État technique de la migration des paramètres et indicateurs de l'ancien module."
+      },
+      "ReloadEnabled": {
+        "Name": "Gestion automatique du chargement des armes (expérimental)",
+        "Hint": "Suivi optionnel des armes à feu et arbalètes configurées. PF1 conserve la consommation native des munitions. Configuration manuelle par arme ; désactivé par défaut."
       }
     },
     "Range": {
@@ -70,6 +74,28 @@
       "ItemMissing": "Objet introuvable : {uuid}",
       "NoDeclaration": "Aucune déclaration automations sur cet objet.",
       "EngineUnavailable": "Le moteur générique n'est pas initialisé."
+    },
+    "Reload": {
+      "Action": "Recharger",
+      "Empty": "L'arme n'est pas suffisamment chargée.",
+      "Insufficient": "Pas assez de munitions disponibles dans l'inventaire pour recharger.",
+      "OutOfCapacity": "Capacité maximale de l'arme dépassée.",
+      "Reloaded": "Arme rechargée : {loaded}/{capacity}.",
+      "Blocked": "Attaque impossible : {loaded} munition(s) chargée(s), {needed} nécessaire(s).",
+      "AoO": "Recharger provoque normalement une attaque d'opportunité.",
+      "Missing": "Arme ou munition indisponible.",
+      "Unconfigured": "La gestion du chargement n'est pas configurée pour cette arme.",
+      "Loaded": "Chargement : {loaded}/{capacity}",
+      "Unload": "Décharger",
+      "Configure": "Configurer le chargement",
+      "Capacity": "Capacité",
+      "Ammo": "Munition",
+      "Count": "Quantité",
+      "Save": "Enregistrer",
+      "Shots": "Projectiles nécessaires pour l'action sélectionnée",
+      "Base": "Action de rechargement normale",
+      "SettingsHint": "Suivi optionnel des armes à feu et arbalètes configurées. PF1 conserve la consommation native des munitions. Configuration manuelle par arme ; désactivé par défaut.",
+      "SettingsName": "Gestion automatique du chargement des armes (expérimental)"
     }
   }
 }
