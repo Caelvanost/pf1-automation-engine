@@ -81,3 +81,29 @@ Les tests Node simulent Foundry ; ils ne certifient pas les variables réelles d
 ## v1.19.1 — Exécution de secours approuvée
 
 Sur un acteur possédé par un joueur mais dont tous les propriétaires joueurs sont déconnectés, le MJ élu ne restaure un Script Call `toggle` que si sa version enregistrée a été approuvée explicitement dans `api.scriptApprovals`. Modifier l'Item invalide immédiatement l'empreinte ; les listeners suivis sont retirés par la restauration déclenchée sur `updateItem`. Au retour du joueur, le MJ désinstalle ses listeners et le client joueur reprend la restauration. Voir [Approbations de secours](SCRIPT-FALLBACK-APPROVALS.md).
+
+## Mode Table de confiance — v1.20.0
+
+**Réglage de monde** : dans la configuration du module, activer **Table de confiance — exécution automatique des scripts PF1AE**. Le mode est désactivé par défaut ; seuls les MJ peuvent modifier ce paramètre. Une alerte décrit la possibilité qu'un script édité par un joueur s'exécute avec les privilèges du MJ en son absence.
+
+En mode de confiance, une capacité peut simplement contenir un Script Call natif de catégorie **Basculer** (`toggle`), nommé **exactement `PF1AE:bootstrap`**. Le moteur le trouve automatiquement et installe ses listeners au chargement, sans `api.bootstrap.register()`, sans clic sur la capacité et sans consommer de charge. Exemple minimal de **contenu complet du Script Call Basculer** :
+
+```javascript
+if (typeof bootstrap !== 'undefined' && bootstrap?.restoring === true) {
+  bootstrap.listen('pf1PostActionUse', (actionUse, message) => {
+    // Vérifier ici les identités Actor/Item/Action avant toute conséquence.
+    // Ne pas déclencher de jet, de dégâts ou de dépense de ressource sans
+    // contrôle propre à la capacité.
+  });
+}
+```
+
+Le moteur fournit `bootstrap`, `restoring:true`, `state:null` et `event.type='bootstrap:restore'` à `ItemScriptCall.execute({action:null}, extraParams)`. Il n'appelle jamais `item.use()`, `item.setActive()` ou `executeScriptCalls('toggle')` pour initialiser une capacité.
+
+Le client élu est le premier propriétaire joueur connecté, ou sinon le premier MJ connecté (tri stable des identifiants). Plusieurs capacités et différents acteurs ont des abonnements indépendants. Un acteur de token non lié est découvert lorsque son token/actor est accessible. Les inscriptions manuelles existantes restent dans `bootstrapRegistry` et ne sont pas effacées en changeant de mode.
+
+La découverte complète est réalisée au démarrage et aux changements de scène/présence ; les événements ciblés `createItem`, `updateItem`, `deleteItem` et ceux des acteurs/tokens évitent des scans du monde à chaque modification. Les listeners `bootstrap.listen()` sont remplacés si le script natif change ou si le client élu change. Les hooks déclarés via `Hooks.on()` directement ne sont pas suivis, donc ne peuvent pas être nettoyés.
+
+Diagnostic optionnel : `game.modules.get('pf1-automation-engine').api.bootstrap.listAutomatic()` liste les bootstraps découverts **sur le client courant**. Cette liste n'est pas persistée ; `list()` expose seulement les inscriptions manuelles sécurisées.
+
+Le mode sécurisé ne découvre rien automatiquement et conserve l'ancien régime des approbations individuelles. Les scripts `PF1AE:damage:*` et `PF1AE:attack:resolved` gardent leurs vérifications de provenance et de non-duplication, que le mode soit actif ou non.
