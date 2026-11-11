@@ -141,7 +141,7 @@ async function changedItem(item, op='update') {
   // Recheck before executing in stillApproved(), even if cached entries remain.
 }
 Hooks.once('init',()=>{
-  game.settings.register(DISC_NS,DISC_ENABLED,{name:'Découverte automatique des automatisations des objets',hint:'Les déclarations nécessitent une approbation explicite du MJ avant exécution.',scope:'world',config:true,type:Boolean,default:true,onChange:()=>{scanOwner=null;discovered.clear();}});
+  game.settings.register(DISC_NS,DISC_ENABLED,{name:game.i18n?.localize?.('PF1AE.Settings.AutoDiscovery.Name')??'Automatically discover item automations',hint:game.i18n?.localize?.('PF1AE.Settings.AutoDiscovery.Hint')??'Item declarations require explicit GM approval before execution.',scope:'world',config:true,type:Boolean,default:true,onChange:()=>{scanOwner=null;discovered.clear();}});
   game.settings.register(DISC_NS,DISC_APPROVALS,{scope:'world',config:false,type:Object,default:{},onChange:()=>{scanOwner=null;discovered.clear();}});
   const mod=game.modules.get(DISC_NS);
   mod.api ??= {};
