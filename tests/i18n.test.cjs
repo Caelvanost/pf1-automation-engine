@@ -33,7 +33,7 @@ const scripts=['range-automation','generic-automation','script-approvals',
  'auto-discovery','effect-manager','module-migration','save-overrides'];
 for(const name of scripts){
  const src=fs.readFileSync(path.join(root,'scripts',name+'.js'),'utf8');
- for(const key of src.matchAll(/PF1AE\.([A-Za-z][A-Za-z0-9.]+)/g)){
+ for(const key of src.matchAll(/PF1AE\\.([A-Za-z][A-Za-z0-9]*(?:\\.[A-Za-z][A-Za-z0-9]*)+)/g)){
   // Some API identifiers inside strings are not translation keys. Validate
   // only names following game.i18n localize/format or the named helpers.
   const sub=src.slice(Math.max(0,key.index-60),key.index+key[0].length+20);
