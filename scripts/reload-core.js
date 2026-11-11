@@ -245,6 +245,90 @@ async function rlCommitShot(use){
  }catch(error){console.error('[PF1AE][Reload] Shot state update failed',error);}
  finally{RL_FIRING.delete(weapon.uuid);}
 }
+// Compact widget added without replacing PF1's native item sheet.
+function rlSheetWidget(sheet,html){
+ if(!rlAllowed())return;
+ const weapon=sheet?.document??sheet?.item??sheet?.object;
+ if(weapon?.type!=='weapon'||!rlActor(weapon)||!rlOwner(rlActor(weapon)))return;
+ const root=html?.[0]??html??sheet?.element?.[0]??sheet?.element;
+ if(!root?.querySelector||root.querySelector('[data-pf1ae-reload-widget]'))return;
+ const host=root.querySelector('.window-content')??root;
+ const actor=rlActor(weapon),state=rlState(weapon);
+ const actions=rlActions(weapon).filter(a=>a?.hasAttack&&a.ammo?.type&&a.actionType==='rwak');
+ if(!state&&!actions.length)return;
+ const panel=document.createElement('section');
+ panel.dataset.pf1aeReloadWidget='true';
+ panel.style.cssText='padding:6px 10px;margin:5px 0;border:1px solid var(--color-border-light-primary,#888);border-radius:5px;font-size:0.9em;';
+ const heading=document.createElement('div');
+ heading.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
+ const name=document.createElement('strong');
+ name.textContent=state?rlL('Loaded',{loaded:state.slots.length,capacity:state.capacity}):rlL('Configure');
+ heading.append(name);panel.append(heading);
+ const button=(text,handler)=>{
+  const b=document.createElement('button');b.type='button';b.textContent=text;
+  b.style.cssText='width:auto;min-width:70px;padding:2px 7px;';
+  b.addEventListener('click',()=>{void Promise.resolve().then(handler)
+   .then(()=>sheet.render?.(true)).catch(error=>ui.notifications?.warn?.(error.message));});
+  heading.append(b);
+ };
+ if(state){
+  const dots=document.createElement('span');
+  dots.textContent=Array.from({length:state.capacity},(_,i)=>i<state.slots.length?'●':'○').join(' ');
+  dots.setAttribute('aria-label',String(state.slots.length)+' / '+String(state.capacity));
+  heading.append(dots);
+  const count=document.createElement('input');count.type='number';
+  count.min='1';count.max=String(state.capacity);count.value='1';
+  count.style.cssText='width:48px;flex:none;';
+  heading.append(count);
+  button(rlL('Action'),()=>rlReload(weapon,{count:Number(count.value)}));
+  button(rlL('Unload'),()=>rlUnload(weapon,{count:Number(count.value)}));
+ }
+ const details=document.createElement('details');
+ const summary=document.createElement('summary');summary.textContent=rlL('Configure');details.append(summary);
+ const fields=document.createElement('div');
+ fields.style.cssText='display:flex;gap:5px;flex-wrap:wrap;align-items:center;';
+ const field=(label,value,min=0,max=100)=>{
+  const wrapper=document.createElement('label');wrapper.textContent=label+' ';
+  const input=document.createElement('input');input.type='number';input.min=String(min);
+  input.max=String(max);input.value=String(value);input.style.width='55px';
+  wrapper.append(input);fields.append(wrapper);return input;
+ };
+ const capacity=field(rlL('Capacity'),state?.capacity??1,1,100);
+ const ammo=document.createElement('select');
+ for(const item of actor.items??[]){
+  if(item.type!=='ammo'||item.inContainer)continue;
+  const type=state?.ammoType??actions[0]?.ammo?.type;
+  if(type&&item.system?.subType&&item.system.subType!==type)continue;
+  const option=document.createElement('option');option.value=item.id;
+  option.textContent=item.name??item.id;ammo.append(option);
+ }
+ ammo.value=weapon.system?.ammo?.default??ammo.options[0]?.value??'';
+ const ammoWrap=document.createElement('label');
+ ammoWrap.textContent=rlL('Ammo')+' ';ammoWrap.append(ammo);fields.append(ammoWrap);
+ const actionChoice=document.createElement('select');
+ const none=document.createElement('option');none.value='';none.textContent='—';actionChoice.append(none);
+ for(const a of actions){const option=document.createElement('option');
+  option.value=a.id;option.textContent=a.name??a.id;actionChoice.append(option);}
+ fields.append(actionChoice);
+ const cost=field(rlL('Shots'),2,1,100);
+ const base=document.createElement('select');
+ for(const key of ['free','move','standard','full']){
+  const option=document.createElement('option');option.value=key;option.textContent=key;base.append(option);}
+ base.value=state?.base??'standard';fields.append(base);
+ details.append(fields);panel.append(details);
+ const save=document.createElement('button');save.type='button';save.textContent=rlL('Save');
+ save.addEventListener('click',()=>{void (async()=>{
+   const selected=actor.items?.get(ammo.value);
+   if(!selected)throw Error(rlL('Missing'));
+   const costs={...(state?.actionCosts??{})};
+   if(actionChoice.value)costs[actionChoice.value]=Number(cost.value);
+   await rlConfigure(weapon,{capacity:Number(capacity.value),
+    ammoType:selected.system?.subType??actions[0]?.ammo?.type,
+    base:base.value,actionCosts:costs});
+   await sheet.render?.(true);
+  })().catch(error=>ui.notifications?.warn?.(error.message));});
+ details.append(save);host.prepend(panel);
+}
 function rlInstall(){
  const proto=(globalThis.pf1?.components?.ActionUse??
   globalThis.pf1?.actionUse?.ActionUse)?.prototype;
@@ -293,8 +377,8 @@ function rlInstall(){
 }
 Hooks.once('init',()=>{
  game.settings.register(RL_NS,RL_ENABLED,{
-  name:'PF1AE.Settings.ReloadEnabled.Name',
-  hint:'PF1AE.Settings.ReloadEnabled.Hint',
+  name:game.i18n?.localize?.('PF1AE.Settings.ReloadEnabled.Name')??'Automatic weapon reload tracking',
+  hint:game.i18n?.localize?.('PF1AE.Settings.ReloadEnabled.Hint')??'Opt-in reload tracking for configured PF1 weapons.',
   scope:'world',config:true,restricted:true,type:Boolean,default:false
  });
 });
@@ -313,4 +397,6 @@ Hooks.once('ready',()=>{
   timing:(weapon,ammo,options)=>rlTiming(rlState(weapon),ammo,options)
  });
  rlInstall();
+ Hooks.on('renderItemSheet',rlSheetWidget);
+ Hooks.on('renderItemSheetV2',rlSheetWidget);
 });
