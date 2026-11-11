@@ -141,7 +141,7 @@ const restore=async()=>{await Promise.all([...clients.values()].map(c=>c.mod.api
  assert.equal(clients.get('gm1').mod.api.bootstrap.listAutomatic().length,0);
  assert.equal(clients.get('gm1').mod.api.scriptApprovals.check(hero,main,a).approved,false);
  // Ordinary registered scripts still work in secure mode after toggle.
- await clients.get('p1').mod.api.bootstrap.register({actor:hero,item:main,key:'legacy',scriptId:'a'});
+ await clients.get('gm1').mod.api.bootstrap.register({actor:hero,item:main,key:'legacy',scriptId:'a'});
  await wait();await restore();
  assert.equal(count('p1'),1,'secure-mode manual registration preserved');
  await clients.get('gm1').ctx.game.settings.set(NS,'trustedTableMode',true);
