@@ -35,7 +35,7 @@ jobs:
           if ($manifest.id -ne 'pf1-automation-engine') { throw 'Unexpected module ID' }
           if ($manifest.manifest -ne $expectedManifest) { throw 'Wrong stable Foundry manifest URL' }
           if ($manifest.download -ne $expectedDownload) { throw 'Wrong GitHub release asset URL' }
-          # Maintained release gate: 24 suites; seven historical suites excluded.
+          # Maintained release gate: 25 suites; seven historical suites excluded.
           # Reject an unlisted suite instead of silently omitting new tests.
           # The separate manual regression audit runs all suites.
           $tests = @(
@@ -45,7 +45,7 @@ jobs:
             'native-save-context','native-save-outcome-dispatch',
             'native-save-post-chatmessage','neutrality','rest-hooks',
             'save-outcomes','template-save-outcomes','timed-save-outcomes',
-            'turn-phases','trusted-table','range-automation','i18n'
+            'turn-phases','trusted-table','range-automation','i18n','reload-core'
           )
           $legacy = @(
             'compendium-templates','duration-group','dynamic-effects',
@@ -57,7 +57,7 @@ jobs:
           if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) {
             throw 'Test inventory changed: update the maintained gate or the legacy list'
           }
-          if ($tests.Count -ne 24 -or $legacy.Count -ne 7) { throw 'Unexpected regression gate size' }
+          if ($tests.Count -ne 25 -or $legacy.Count -ne 7) { throw 'Unexpected regression gate size' }
           foreach ($name in $tests) {
             $file = Join-Path 'tests' "$name.test.cjs"
             if (-not (Test-Path $file)) { throw "Missing regression test: $file" }
