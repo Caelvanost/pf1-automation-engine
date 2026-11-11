@@ -738,8 +738,8 @@ function install() {
   Hooks.on('canvasReady',()=>{void recoverCombatCleanup();});
 }
 Hooks.once('init',()=>{
-  game.settings.register(NS,ENABLED,{name:'Activer les automatisations génériques',hint:'Active les événements persistants, synchronisations et minuteurs.',scope:'world',config:true,type:Boolean,default:true});
-  game.settings.register(NS,DEBUG,{name:'Logs de diagnostic des automatisations',scope:'world',config:true,type:Boolean,default:false});
+  game.settings.register(NS,ENABLED,{name:game.i18n?.localize?.('PF1AE.Settings.GenericEnabled.Name')??'Enable generic automations',hint:game.i18n?.localize?.('PF1AE.Settings.GenericEnabled.Hint')??'Enable persistent events, synchronization and timers.',scope:'world',config:true,type:Boolean,default:true});
+  game.settings.register(NS,DEBUG,{name:game.i18n?.localize?.('PF1AE.Settings.GenericDebug.Name')??'Automation diagnostic logs',scope:'world',config:true,type:Boolean,default:false});
   game.settings.register(NS,REG,{scope:'world',config:false,type:Array,default:[]});
   game.settings.register(NS,TIMERS,{scope:'world',config:false,type:Array,default:[]});
   install();
