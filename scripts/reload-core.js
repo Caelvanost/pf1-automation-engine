@@ -163,6 +163,24 @@ async function rlConfigure(weapon,{capacity,ammoType,base='standard',actionCosts
   return rlClone(state);
  });
 }
+// A generic Rapid Reload feat alone is NOT sufficient: PF1 chooses one weapon
+// type. Accept only an explicit weapon choice in a feat name or a trusted flag.
+function rlRapidReload(weapon){
+ const actor=rlActor(weapon),name=String(weapon?.name??'').toLowerCase();
+ const group=/pistolet|pistol/.test(name)?/(?:pistolet|pistol)/:
+  /mousquet|musket/.test(name)?/(?:mousquet|musket)/:
+  /arbal[eè]te l[eé]g[eè]re|light crossbow/.test(name)?/(?:arbal[eè]te l[eé]g[eè]re|light crossbow)/:
+  /arbal[eè]te lourde|heavy crossbow/.test(name)?/(?:arbal[eè]te lourde|heavy crossbow)/:null;
+ if(!group)return false;
+ return rlItems(actor).some(feat=>{
+  if(feat?.type!=='feat'||feat.system?.disabled===true)return false;
+  const label=String(feat.name??'').toLowerCase();
+  if(!/(?:rechargement rapide|rapid reload)/i.test(label))return false;
+  if(feat.getFlag?.(RL_NS,'rapidReloadWeaponUuid')===weapon.uuid)return true;
+  const explicit=label.match(/(?:rechargement rapide|rapid reload)\s*[\(\[—:\-]\s*([^)\\\]]+)/i);
+  return explicit&&group.test(explicit[1]);
+ });
+}
 function rlTiming(state,ammo,options){
  // Reductions must be explicitly verified/configured per weapon and ammo.
  // No unverified character feat name inference.
@@ -433,7 +451,8 @@ Hooks.once('ready',()=>{
    return {ok:!!state&&state.slots.length>=needed,needed,loaded:state?.slots.length??0};
   },
   configure:rlConfigure,reload:rlReload,unload:rlUnload,
-  timing:(weapon,ammo,options)=>rlTiming(rlState(weapon),ammo,options)
+  timing:(weapon,ammo,options)=>rlTiming(rlState(weapon),ammo,options),
+  infer:rlInfer,rapidReload:rlRapidReload,initialize:rlAutoConfigure
  });
  rlInstall();
  Hooks.on('renderItemSheet',rlSheetWidget);
