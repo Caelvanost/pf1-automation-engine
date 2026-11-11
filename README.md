@@ -238,3 +238,19 @@ A user-defined, nonattack PF1 Action named \`Recharger\` or \`Reload\` on the **
 If the auto-inferred capacity or native ammo type cannot be determined, the reload is rejected with an explicit localized warning. \`api.reload.lastDiagnostic()\` now records \`reload-started\`, \`reloaded\`, \`reload-failed\` and \`reload-unresolved\` outcomes, in addition to attack guards.
 
 One successful reload adds **one loaded slot** but **does not subtract** ammunition from inventory. Native PF1 still consumes the ammo only when fired. Concurrent clients can still cause non-atomic weapon/ammo updates, so this experimental feature remains opt-in and needs live verification.
+
+
+## v1.24.3 — Reload ammo item diagnosis and native PF1 setup
+
+**Use a native non-attack Action \`Recharger\` with ammo set to \`None / Aucune munition\`.** Inheriting the weapon's ammunition on a nonattack action may trigger a native PF1 11.11 error (\`action-use.mjs:628 Cannot read properties of null (reading 'ammo')\`), independent of PF1AE. The *attack action*, not the *reload action*, must consume ammunition.
+
+Previously, the reload core rejected any PF1 native \`ammo\` Item with \`system.identified === false\`, even though ammunition need not be identified to be loaded. This extraneous check has been removed. Additionally, if the weapon points at a deleted, incompatible or empty native ammunition Item and its chamber is empty, the reload now selects a compatible accessible native ammo Item with sufficient quantity, setting the weapon's native \`system.ammo.default\` accordingly. Reload never invents ammo, never subtracts inventory at load, and never swaps already-loaded ammunition.
+
+For debugging, run:
+\`\`\`js
+const weapon = game.actors.getName("Zéphir")?.items.find(i=>i.type==="weapon" && /double canon/i.test(i.name));
+console.log(game.modules.get("pf1-automation-engine")?.api.reload.ammoDiagnostic(weapon));
+\`\`\`
+You may need to replace the actor and weapon names; the diagnostic displays the ammo subtype expected by PF1, the native default ID, each native ammunition stack's type and quantity, and reservations. \`api.reload.lastDiagnostic()\` now embeds this inventory report on reload failures. Empty inventory or incompatible ammunition types are legitimate errors requiring a compatible native PF1 ammunition Item on the actor.
+
+**Still experimental:** the action must reach native \`pf1PostActionUse\`; no ammo is deducted during reloading, only when firing. Verify operation in the actual Foundry v13 / PF1 v11.11 world.
