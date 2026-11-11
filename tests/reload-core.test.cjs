@@ -36,7 +36,7 @@ class ActionUse{
    hasAmmo:true,ammo:{id:'am'}
   }))};
  }
- async generateChatAttacks(){count.rolls++}
+ async generateChatAttacks(){if(this.action.hasAttack)count.rolls++}
  async process(){
   events.callAll('pf1CreateActionUse',this);
   await this.generateChatAttacks();
