@@ -50,6 +50,10 @@ function bsAutoRecord(actor,item,call){
   const scriptId=bsCallId(call);
   if(!bsValidText(actor?.uuid)||!bsValidText(item?.uuid)||
     !bsValidText(scriptId,120)||typeof call.execute!=='function')return null;
+  // One native Script Call must never run twice merely because it was also
+  // registered manually before Trusted Table Mode was enabled.
+  if(bsList().some(r=>r.enabled&&r.actorUuid===actor.uuid&&
+     r.itemUuid===item.uuid&&r.scriptId===scriptId))return null;
   const key=BS_AUTO_PREFIX+scriptId;
   return {id:bsId(actor.uuid,item.uuid,key),actorUuid:actor.uuid,
     itemUuid:item.uuid,key,scriptId,enabled:true,automatic:true};
@@ -83,7 +87,7 @@ function bsAutoActors(){
   // Only synthetic Token Actors whose documents are available may be scanned.
   // Linked actors dedupe against world Actors by their full UUID.
   const scenes=[...(game.scenes?.contents??game.scenes?.values?.()??[])];
-  if(canvas?.scene&&!scenes.includes(canvas.scene))scenes.push(canvas.scene);
+  if(globalThis.canvas?.scene&&!scenes.includes(globalThis.canvas.scene))scenes.push(globalThis.canvas.scene);
   for(const scene of scenes)for(const token of scene?.tokens?.contents??scene?.tokens?.values?.()??[])
     add(token.actor??token.object?.actor);
   return [...actors.values()];
@@ -301,7 +305,11 @@ async function bsRestoreOne(record){
   try{return await job}finally{BS_INFLIGHT.delete(record.id)}
 }
 async function bsRestoreAll(){
-  if(!bsEnabled())return {restored:0,skipped:0,disabled:true};
+  if(!bsEnabled()){
+    for(const id of [...BS_ACTIVE.keys()])bsCleanup(id);
+    bsAutoCleanup();
+    return {restored:0,skipped:0,disabled:true};
+  }
   bsAutoScan();
   const records=[...bsList(),...BS_AUTO.values()];
   bsDebug('Restoring scripts',{count:records.length,automatic:BS_AUTO.size});
@@ -316,6 +324,7 @@ Hooks.once('init',()=>{
     onChange:()=>{void bsRestoreAll()}});
   Hooks.on('canvasReady',()=>{void bsRestoreAll()});
   Hooks.on('updateUser',(_user,changes)=>{if(Object.hasOwn(changes??{},'active'))void bsRestoreAll()});
+  Hooks.on('updateActor',actor=>{if(bsTrusted()&&actor?.items)void bsAutoRefreshActor(actor)});
   // Editing an approved Script Call must immediately retire any active
   // fallback listeners whose saved source no longer matches GM approval.
   Hooks.on('updateItem',item=>{
