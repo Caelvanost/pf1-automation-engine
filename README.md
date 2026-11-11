@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.21.1 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.21.2 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -154,3 +154,13 @@ console.log(game.modules.get('pf1-automation-engine')?.api?.range?.lastDiagnosti
 ```
 
 Les tests automatisés vérifient les valeurs zéro natives et les TokenDocuments. La compatibilité sur une véritable installation PF1 11.11 doit encore être confirmée en jeu.
+
+### v1.21.2 — Malus de portée dans le jet, et correction pieds/mètres
+
+Les versions 1.21.0–1.21.1 pouvaient afficher `status: configured` sans changer réellement le jet, parce que PF1 reconstruisait les valeurs du dialogue après `pf1CreateActionUse`. Le module utilise désormais **`shared.attackBonus`**, tableau officiellement consommé par `ActionUse.addAttacks()` pour construire les jets natifs : le terme `-2[Range Penalty]` est injecté une seule fois **avant le lancer** (attaque simple et attaque à outrance partageant une seule cible). Aucun changement de fiche, aucun recalcul après jet, et aucune modification de la CA de contact ou de Deadeye.
+
+Une portée numérique explicitement configurée `20 ft` est lue directement avec son unité : **20 pieds = 6 mètres** selon la convention de la table. `getRange()` n'est utilisé que pour les portées exprimées par une formule, car son résultat dépend des unités système PF1 et ne doit pas effacer l'unité déclarée sur l'action.
+
+Le réglage **Calcul automatique des pénalités de portée** reste opt-in. Les modificateurs de portée manuels non nuls existant avant l'action restent prioritaires ; ne pas ajouter manuellement une seconde pénalité dans le dialogue du même tir. Le diagnostic après tir affiche le facteur calculé : `game.modules.get('pf1-automation-engine').api.range.lastDiagnostic()`. Attention, l'étiquette dans le jet provient de la localisation PF1.
+
+**Validation** : les tests CI simulent le hook natif et vérifient l'ajout dans `shared.attackBonus` ainsi que les conversions. Le résultat sur un vrai jet dans Foundry v13.351 / PF1 v11.11 doit être confirmé en jeu.
