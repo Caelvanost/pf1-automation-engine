@@ -108,3 +108,7 @@ Regression: nonlinked Pirate with 11 HP, the GM applies 5 damage from the regist
 ## v1.16.2 — Trois conséquences SaveOutcome compatibles
 
 `onDamageApplied.saveOutcome.onFailure.type` accepte `linkedBuff`, `templateEffect` et `dynamicEffect`. Le bridge valide uniquement la provenance de l'Item/Action, la cible, l'indice d'attaque et le lien au message de frappe. Après application de dégâts vérifiés, il transmet la règle complète à `saveOutcomes.register()` avec l'acteur source et la cible autoritaires. Les champs `changes`, `duration`, `stacking` et `approvalKey` sont conservés. Les contrôles des buffs mécaniques, des modèles et des autorisations relèvent de `saveOutcomes` et `api.effects` ; ils ne sont pas dupliqués dans `attackOutcomes`.
+
+## v1.19.0 — Événements de dégâts génériques
+
+Après la corrélation native carte / ItemAction / attackIndex / cible, et la confirmation des PV effectifs, le pont `attackOutcomes` publie le hook interne `pf1aeVerifiedDamage`. Le service `api.damageEvents` consomme exclusivement cette attestation : **aucun second listener de dégâts PF1 n'est installé**. Une application de dégâts peut donc être notifiée aux Script Calls réactifs même sans règle `attackOutcomes.register()`. Voir [Damage Events](DAMAGE-EVENTS.md) pour les limites de `critMult` et du passage à 0 PV.
