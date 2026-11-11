@@ -7,12 +7,14 @@
 const RL_NS='pf1-automation-engine',RL_KEY='reloadState',RL_ENABLED='reloadEnabled';
 const RL_ACTION='pf1ae-reload';
 const RL_BUSY=new Set(),RL_SHOTS=new WeakMap(),RL_DENIED=new WeakSet();
+const RL_RELOAD_SEEN=new WeakSet();
 const RL_FIRING=new Set();
 let RL_LAST=null;
 const rlL=(key,data={})=>{
  const fallback={
   Action:'Reload',
   AutoUnavailable:'Unable to infer weapon capacity or native ammunition automatically',
+  ReloadFailed:'Reload failed',
   InitialStatus:'Reloading will initialize this weapon automatically',
   Loaded:'Loaded: {loaded}/{capacity}',Unload:'Unload',
   Configure:'Configure reload',Capacity:'Capacity',Ammo:'Ammunition',
@@ -32,7 +34,6 @@ const rlL=(key,data={})=>{
  return translated;
 };
 const rlAllowed=()=>game.modules.get(RL_NS)?.active===true &&
- game.settings.get(RL_NS,'genericEnabled')===true &&
  game.settings.get(RL_NS,RL_ENABLED)===true;
 const rlActor=weapon=>weapon?.actor??(weapon?.parent?.documentName==='Actor'?weapon.parent:null);
 const rlOwner=actor=>game.user?.isGM||actor?.testUserPermission?.(game.user,'OWNER');
@@ -45,13 +46,29 @@ const rlState=weapon=>{
  return rlClone(s);
 };
 const rlActions=weapon=>[...(weapon?.actions?.contents??weapon?.actions?.values?.()??weapon?.actions??[])];
-const rlNativeAction=use=>{
+const rlReloadName=name=>/^(?:recharger|reload)(?:\s|$)/i.test(String(name??'').trim());
+function rlReloadRequest(use){
  const item=use?.item??use?.action?.item;
+ if(!item||!use?.action)return {candidate:false,weapon:null};
  const state=rlState(item);
- if(item?.type!=='weapon'||use?.action?.hasAttack)return false;
- if(state?.actionId&&use.action?.id===state.actionId)return true;
- return /^(?:recharger|reload)(?:\s|$)/i.test(String(use?.action?.name??'').trim());
-};
+ const named=rlReloadName(use.action.name)||
+  (!use.action.hasAttack&&rlReloadName(item.name));
+ const legacy=!!state?.actionId&&use.action.id===state.actionId;
+ if(!named&&!legacy)return {candidate:false,weapon:null};
+ if(use.action.hasAttack)return {candidate:true,weapon:null,
+  reason:'Reload must be a non-attack PF1 action.'};
+ if(item.type==='weapon')return {candidate:true,weapon:item};
+ // A character ability can reload its ONLY eligible weapon. Never choose
+ // between multiple pistols/crossbows without explicit association.
+ const actor=use.actor??rlActor(item);
+ const weapons=rlItems(actor).filter(x=>x?.type==='weapon'&&
+  (rlState(x)||rlInfer(x).ok));
+ if(weapons.length===1)return {candidate:true,weapon:weapons[0]};
+ return {candidate:true,weapon:null,reason:weapons.length>1?
+  'Multiple compatible weapons: place the Reload action on the specific weapon.':
+  'No compatible weapon with native ammunition and capacity could be found.'};
+}
+const rlNativeAction=use=>rlReloadRequest(use).candidate;
 const rlCompatible=(item,capacity)=>{
  if(item?.type!=='weapon'||!rlActor(item)||!Number.isSafeInteger(capacity)||capacity<1||capacity>100)
   throw Error('An actor-owned weapon and capacity 1–100 are required.');
@@ -396,13 +413,37 @@ function rlInstall(){
   }
  });
  Hooks.on('pf1PostActionUse',use=>{
-  if(!rlAllowed()||use?.item?.type!=='weapon')return;
-  if(rlNativeAction(use)){
-   // One round loaded after the user's manually configured native action.
-   void rlAutoConfigure(use.item).then(()=>rlReload(use.item,{count:1}))
-    .catch(error=>ui.notifications?.warn?.(error.message));
-  }else if(RL_SHOTS.has(use))void rlCommitShot(use);
- });
+  if(!rlAllowed())return;
+  const request=rlReloadRequest(use);
+  if(request.candidate){
+   if(RL_RELOAD_SEEN.has(use))return;
+   RL_RELOAD_SEEN.add(use);
+   if(!request.weapon){
+    RL_LAST={status:'reload-unresolved',action:use.action?.name??null,
+     item:use.item?.name??null,reason:request.reason??'unknown weapon'};
+    ui.notifications?.warn?.(rlL('ReloadFailed')+': '+RL_LAST.reason);
+    return;
+   }
+   const weapon=request.weapon;
+   RL_LAST={status:'reload-started',weapon:weapon.name??null,
+    action:use.action?.name??null};
+   void (async()=>{
+    try{
+     await rlAutoConfigure(weapon);
+     const next=await rlReload(weapon,{count:1});
+     RL_LAST={status:'reloaded',weapon:weapon.name??null,
+      loaded:next.slots.length,capacity:next.capacity};
+    }catch(error){
+     RL_LAST={status:'reload-failed',weapon:weapon.name??null,
+      reason:String(error?.message??error)};
+     console.warn('[PF1AE][Reload] Native Reload action failed',RL_LAST);
+     ui.notifications?.warn?.(rlL('ReloadFailed')+': '+RL_LAST.reason);
+    }
+   })();
+   return;
+  }
+  if(use?.item?.type==='weapon'&&RL_SHOTS.has(use))void rlCommitShot(use);
+ });;
 }
 Hooks.once('init',()=>{
  game.settings.register(RL_NS,RL_ENABLED,{
