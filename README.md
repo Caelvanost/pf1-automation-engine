@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.19.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.19.3 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -73,7 +73,7 @@ Verify the native SaveBridge startup logs (`Installed PF1 save hooks`, `PRE`, `P
 - [API for Item Script Calls](API-SCRIPTS-OBJET.md)
 - [Changelog](CHANGELOG.md)
 
-Run `node --test tests/*.test.cjs` for Node regression tests. Live Foundry testing is additionally required for each specific damage-dialog path, permissions and overlapping updates. No standalone example scripts are distributed.
+The release workflow runs 21 maintained Node regression suites in isolation; seven historical suites are explicitly excluded because their fixtures or assertions still need maintenance. The separate **Legacy regression audit** workflow can run the full inventory for diagnosis and is not a release gate. Locally, run `node --test tests/*.test.cjs` for a full diagnostic inventory (legacy failures remain expected) or use the release workflow's per-file commands for the maintained gate. Live Foundry testing is additionally required for specific damage-dialog paths, permissions and overlapping updates. No standalone example scripts are distributed.
 
 ### PF1 synthetic Actor HP offsets (v1.14.4)
 

@@ -1,0 +1,42 @@
+name: Legacy regression audit (diagnostic)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Run every regression suite and report failures
+        shell: bash
+        run: |
+          set -uo pipefail
+          total=0
+          failures=0
+          {
+            echo "## Full Node regression audit"
+            echo ""
+            echo "| Suite | Result |"
+            echo "| --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for test in tests/*.test.cjs; do
+            total=$((total + 1))
+            echo "RUN $test"
+            if node "$test"; then
+              echo "| `$test` | PASS |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              failures=$((failures + 1))
+              echo "| `$test` | FAIL |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "**$((total - failures))/$total suites passing; $failures failing.**" >> "$GITHUB_STEP_SUMMARY"
+          if (( failures > 0 )); then
+            echo "::error::$failures regression suite(s) failed; consult the summary"
+            exit 1
+          fi
