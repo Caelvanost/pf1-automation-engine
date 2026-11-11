@@ -6,9 +6,9 @@
  */
 const RL_NS='pf1-automation-engine',RL_KEY='reloadState',RL_ENABLED='reloadEnabled';
 const RL_ACTION='pf1ae-reload';
-const RL_REJECT=Symbol('PF1AE_RELOAD_REJECT');
-const RL_BUSY=new Set(),RL_SHOTS=new WeakMap(),RL_ABORT=new WeakSet();
+const RL_BUSY=new Set(),RL_SHOTS=new WeakMap(),RL_DENIED=new WeakSet();
 const RL_FIRING=new Set();
+let RL_LAST=null;
 const rlL=(key,data={})=>{
  const fallback={
   Action:'Reload',
@@ -48,7 +48,9 @@ const rlActions=weapon=>[...(weapon?.actions?.contents??weapon?.actions?.values?
 const rlNativeAction=use=>{
  const item=use?.item??use?.action?.item;
  const state=rlState(item);
- return state?.actionId && use?.action?.id===state.actionId;
+ if(item?.type!=='weapon'||use?.action?.hasAttack)return false;
+ if(state?.actionId&&use.action?.id===state.actionId)return true;
+ return /^(?:recharger|reload)(?:\s|$)/i.test(String(use?.action?.name??'').trim());
 };
 const rlCompatible=(item,capacity)=>{
  if(item?.type!=='weapon'||!rlActor(item)||!Number.isSafeInteger(capacity)||capacity<1||capacity>100)
@@ -95,8 +97,22 @@ function rlNeeded(use,state){
  return attacks.length*Math.max(1,Number(action.ammo.cost)||1);
 }
 function rlCheck(use){
- const weapon=use?.item,state=rlState(weapon);
- if(!rlAllowed()||!state||rlNativeAction(use))return {managed:false};
+ const weapon=use?.item;
+ if(!rlAllowed()||weapon?.type!=='weapon'||rlNativeAction(use))return {managed:false};
+ const stored=rlState(weapon),inferred=stored?null:rlInfer(weapon);
+ if(!stored&&!inferred?.ok){
+  // A known firearm/crossbow with an attack must not silently fire because
+  // its native ammo configuration is incomplete. Explicitly deny it.
+  const label=String(weapon?.name??'');
+  const recognizable=/(?:pistol|pistolet|musket|mousquet|crossbow|arbal[eè]te)/i.test(label);
+  const ranged=rlActions(weapon).some(a=>a?.actionType==='rwak');
+  if(recognizable&&ranged)return {managed:true,ok:false,needed:1,loaded:0,
+    reason:inferred?.reason??'missing PF1 native ammo data'};
+  return {managed:false,reason:inferred?.reason??'unsupported'};
+ }
+ // Recognized but never reloaded means EMPTY, not unmanaged.
+ const state=stored??{schema:1,capacity:inferred.capacity,ammoType:inferred.ammoType,
+   slots:[],actionCosts:{}};
  const needed=rlNeeded(use,state);
  if(needed===0)return {managed:false};
  if(needed===null)return {managed:true,ok:false,reason:'unknown attack count'};
@@ -118,20 +134,6 @@ function rlCheck(use){
  return {managed:true,ok,needed,loaded,selected,
    reason:ok?null:'insufficient loaded ammo or native ammunition inventory'};
 }
-async function rlCreateAction(weapon){
- const systemAction=globalThis.pf1?.models?.components?.Action;
- if(typeof systemAction?.create!=='function')
-  throw Error('Native PF1 Action.create unavailable; no reload action was created.');
- const name=rlL('Action');
- const created=await systemAction.create({
-  name,
-  actionType:'other',activation:{type:'standard',cost:1},
-  ammo:{type:'none',cost:0}
- },{parent:weapon});
- const action=created?.[0];
- if(!action?.id)throw Error('Native reload action creation failed.');
- return action.id;
-}
 async function rlConfigure(weapon,{capacity,ammoType,base='standard',actionCosts={},initialLoaded=0}={}){
  rlCompatible(weapon,capacity);
  const actor=rlActor(weapon);
@@ -146,9 +148,8 @@ async function rlConfigure(weapon,{capacity,ammoType,base='standard',actionCosts
  }
  return rlLock(weapon,async()=>{
   const prev=rlState(weapon);
-  let actionId=prev?.actionId;
-  if(!actionId||!rlActions(weapon).some(x=>x.id===actionId))
-   actionId=await rlCreateAction(weapon);
+  // Preserve legacy ID; user manages native Reload action and its cost.
+  const actionId=prev?.actionId??null;
   // Preserve loaded slot identity on changes. Never silently empty a weapon.
   const slots=prev?.slots??[];
   if(slots.length>capacity)throw Error('Unload before decreasing capacity.');
@@ -163,35 +164,7 @@ async function rlConfigure(weapon,{capacity,ammoType,base='standard',actionCosts
   return rlClone(state);
  });
 }
-// A generic Rapid Reload feat alone is NOT sufficient: PF1 chooses one weapon
-// type. Accept only an explicit weapon choice in a feat name or a trusted flag.
-function rlRapidReload(weapon){
- const actor=rlActor(weapon),name=String(weapon?.name??'').toLowerCase();
- const group=/pistolet|pistol/.test(name)?/(?:pistolet|pistol)/:
-  /mousquet|musket/.test(name)?/(?:mousquet|musket)/:
-  /arbal[eè]te l[eé]g[eè]re|light crossbow/.test(name)?/(?:arbal[eè]te l[eé]g[eè]re|light crossbow)/:
-  /arbal[eè]te lourde|heavy crossbow/.test(name)?/(?:arbal[eè]te lourde|heavy crossbow)/:null;
- if(!group)return false;
- return rlItems(actor).some(feat=>{
-  if(feat?.type!=='feat'||feat.system?.disabled===true)return false;
-  const label=String(feat.name??'').toLowerCase();
-  if(!/(?:rechargement rapide|rapid reload)/i.test(label))return false;
-  if(feat.getFlag?.(RL_NS,'rapidReloadWeaponUuid')===weapon.uuid)return true;
-  const explicit=label.match(/(?:rechargement rapide|rapid reload)\s*[\(\[—:\-]\s*([^)\\\]]+)/i);
-  return explicit&&group.test(explicit[1]);
- });
-}
-function rlTiming(state,ammo,options){
- // Reductions must be explicitly verified/configured per weapon and ammo.
- // No unverified character feat name inference.
- const ladder=['full','standard','move','free'];
- let position=ladder.indexOf(state.base);
- const reduction=(options?.rapidReload===true?1:0)+
-   (ammo?.getFlag?.(RL_NS,'alchemicalPaper')===true?1:0);
- position=Math.min(3,position+reduction);
- return {action:ladder[position],provokes:true,reductions:reduction};
-}
-async function rlReload(weapon,{ammoId,count=1,rapidReload=false}={}){
+async function rlReload(weapon,{ammoId,count=1}={}){
  const actor=rlActor(weapon),state=rlState(weapon);
  if(!state)throw Error(rlL('Unconfigured'));
  if(!rlOwner(actor))throw Error('Actor OWNER permission required.');
@@ -219,16 +192,15 @@ async function rlReload(weapon,{ammoId,count=1,rapidReload=false}={}){
    }
    throw error;
   }
-  const timing=rlTiming(next,ammo,{rapidReload});
-  if(timing.provokes)ui.notifications?.info?.(rlL('AoO'));
+  // Action economy and AoOs are managed by the user-defined native Action.
   if(globalThis.ChatMessage?.create){
    const msg=rlL('Reloaded',{loaded:slots.length,capacity:current.capacity});
    void ChatMessage.create({speaker:ChatMessage.getSpeaker({actor}),
      content:foundry.utils.escapeHTML?.(msg)??msg}).catch(err=>console.warn('[PF1AE][Reload] Chat',err));
   }
   Hooks.callAll('pf1aeReload', {actorUuid:actor.uuid,weaponUuid:weapon.uuid,
-    ammoId:selected,count,loaded:slots.length,capacity:current.capacity,timing});
-  return {...rlClone(next),timing};
+    ammoId:selected,count,loaded:slots.length,capacity:current.capacity});
+  return rlClone(next);
  });
 }
 async function rlUnload(weapon,{count=1}={}){
@@ -246,14 +218,17 @@ async function rlUnload(weapon,{count=1}={}){
   return rlClone(next);
  });
 }
-function rlAbort(use,result){
- RL_ABORT.add(use);
- ui.notifications?.warn?.(rlL('Blocked',{loaded:result.loaded??0,
-  needed:result.needed??'?'}));
+function rlDeny(use,result){
+ RL_DENIED.add(use);
+ ui.notifications?.warn?.(rlL('Blocked',{
+  loaded:result.loaded??0,needed:result.needed??'?'}));
+ RL_LAST={status:'blocked',actor:use.actor?.name??null,weapon:use.item?.name??null,
+  action:use.action?.name??null,...result};
+ console.warn('[PF1AE][Reload] Attack blocked before dice',result);
  Hooks.callAll('pf1aeReloadFireDenied',{
   actorUuid:use.actor?.uuid,weaponUuid:use.item?.uuid,
-  actionId:use.action?.id,loaded:result.loaded??0,needed:result.needed??null});
- throw RL_REJECT;
+  actionId:use.action?.id,loaded:result.loaded??0,
+  needed:result.needed??null,reason:result.reason??null});
 }
 async function rlCommitShot(use){
  const actor=use.actor,weapon=use.item;
@@ -360,10 +335,7 @@ function rlSheetWidget(sheet,html){
   });
   container.append(b);
  };
- button(rlL('Action'),async()=>{
-  await rlAutoConfigure(weapon);
-  await rlReload(weapon,{count:1});
- });
+ // The user-defined native Reload action triggers loading through post-use.
  if(state?.slots.length)button(rlL('Unload'),()=>rlUnload(weapon,{count:1}));
  if(game.user?.isGM){
   // Optional correction exists only if automated capacity could not be read
@@ -387,49 +359,49 @@ function rlSheetWidget(sheet,html){
  header.append(container);
 }
 function rlInstall(){
- const proto=(globalThis.pf1?.components?.ActionUse??
-  globalThis.pf1?.actionUse?.ActionUse)?.prototype;
- if(!proto?.process||!proto?.generateChatAttacks){
-  console.warn('[PF1AE][Reload] Native PF1 ActionUse integration unavailable; automation disabled.');
-  return;
- }
- if(proto.process.pf1aeReloadWrapped)return;
- const previousProcess=proto.process;
- proto.process=async function(...args){
-  if(rlAllowed()&&rlNativeAction(this)){
-   // This is an actual PF1 Action entry. PF1AE executes reloading instead
-   // of native 'other' use to avoid a misleading chat card or resource cost.
-   try{return await rlReload(this.item,{count:1});}
-   catch(error){ui.notifications?.warn?.(error.message);return undefined;}
-  }
-  try{return await previousProcess.apply(this,args)}
-  catch(error){if(error===RL_REJECT&&RL_ABORT.has(this))return undefined;throw error}
-  finally{
-   if(!this._pf1aeReloadPostUse)RL_FIRING.delete(this.item?.uuid);
-  }
- };
- proto.process.pf1aeReloadWrapped=true;
+ // Works with private as well as public PF1 ActionUse classes. No prototype
+ // monkey-patching or dependency on undocumented global exports.
  Hooks.on('pf1CreateActionUse',use=>{
-  if(!rlAllowed()||!rlState(use?.item)||rlNativeAction(use))return;
-  // Install per-use guard, after dialog selection and filtering but before
-  // generateChatAttacks() rolls; abort with a private sentinel swallowed by
-  // the process wrapper. No chat, ammo, Grit, item charges are spent.
-  if(use.generateChatAttacks?.pf1aeReloadWrapped)return;
-  const previous=use.generateChatAttacks;
-  use.generateChatAttacks=async function(...args){
+  if(!rlAllowed()||use?.item?.type!=='weapon'||
+     rlNativeAction(use)||typeof use.generateChatAttacks!=='function')return;
+  if(use.generateChatAttacks.pf1aeReloadWrapped)return;
+  const original=use.generateChatAttacks;
+  const guarded=async function(...args){
    const check=rlCheck(this);
+   RL_LAST={status:check.managed?(check.ok?'authorized':'blocked'):'unmanaged',
+    actor:this.actor?.name??null,weapon:this.item?.name??null,
+    action:this.action?.name??null,...check};
    if(check.managed){
-    if(!check.ok)rlAbort(this,check);
+    if(!check.ok){rlDeny(this,check);return;}
     RL_SHOTS.set(this,check);
     RL_FIRING.add(this.item.uuid);
    }
-   return previous.apply(this,args);
+   try{return await original.apply(this,args)}
+   catch(error){
+    RL_SHOTS.delete(this);
+    RL_FIRING.delete(this.item?.uuid);
+    throw error;
+   }
   };
-  use.generateChatAttacks.pf1aeReloadWrapped=true;
+  guarded.pf1aeReloadWrapped=true;
+  use.generateChatAttacks=guarded;
+ });
+ // Called after attack generation but before native inventory/charge
+ // deductions. Return false to stop normal PF1 processing.
+ Hooks.on('pf1PreActionUse',use=>{
+  if(RL_DENIED.has(use)){
+   RL_DENIED.delete(use);
+   RL_FIRING.delete(use?.item?.uuid);
+   return false;
+  }
  });
  Hooks.on('pf1PostActionUse',use=>{
-  if(RL_SHOTS.has(use))use._pf1aeReloadPostUse=true;
-  void rlCommitShot(use);
+  if(!rlAllowed()||use?.item?.type!=='weapon')return;
+  if(rlNativeAction(use)){
+   // One round loaded after the user's manually configured native action.
+   void rlAutoConfigure(use.item).then(()=>rlReload(use.item,{count:1}))
+    .catch(error=>ui.notifications?.warn?.(error.message));
+  }else if(RL_SHOTS.has(use))void rlCommitShot(use);
  });
 }
 Hooks.once('init',()=>{
@@ -451,8 +423,8 @@ Hooks.once('ready',()=>{
    return {ok:!!state&&state.slots.length>=needed,needed,loaded:state?.slots.length??0};
   },
   configure:rlConfigure,reload:rlReload,unload:rlUnload,
-  timing:(weapon,ammo,options)=>rlTiming(rlState(weapon),ammo,options),
-  infer:rlInfer,rapidReload:rlRapidReload,initialize:rlAutoConfigure
+  infer:rlInfer,initialize:rlAutoConfigure,
+  lastDiagnostic:()=>RL_LAST?{...RL_LAST}:null
  });
  rlInstall();
  Hooks.on('renderItemSheet',rlSheetWidget);

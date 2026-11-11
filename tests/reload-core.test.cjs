@@ -21,7 +21,10 @@ const weapon={id:'w',uuid,type:'weapon',actor,actions:[],system:{ammo:{default:'
 actor.items.set('w',weapon);
 const events={on(n,fn){(listeners.get(n)??listeners.set(n,[]).get(n)).push(fn)},
  once(n,fn){(once.get(n)??once.set(n,[]).get(n)).push(fn)},
- callAll(n,...args){for(const fn of listeners.get(n)??[])fn(...args)}};
+ callAll(n,...args){for(const fn of listeners.get(n)??[])fn(...args)},
+ call(n,...args){let allowed=true;for(const fn of listeners.get(n)??[]){
+  if(fn(...args)===false)allowed=false;
+ }return allowed}};
 const actionType={create:async(data,{parent})=>{
  const a={...data,id:'reloadA',item:parent,hasAttack:false};
  parent.actions.push(a);return [a];
@@ -33,14 +36,18 @@ class ActionUse{
    hasAmmo:true,ammo:{id:'am'}
   }))};
  }
- async generateChatAttacks(){count.rolls++}
+ async generateChatAttacks(){if(this.action.hasAttack)count.rolls++}
  async process(){
   events.callAll('pf1CreateActionUse',this);
   await this.generateChatAttacks();
-  // No ammo or resources are consumed until the post-guard roll succeeds.
-  count.nativeAmmo+=this.shared.attacks.length*this.action.ammo.cost;
-  ammo.system.quantity-=this.shared.attacks.length*this.action.ammo.cost;
-  count.charges++;
+  // Native hook occurs after generation, before any ammo/charge cost.
+  if(events.call('pf1PreActionUse',this)===false)return;
+  if(this.action.hasAttack){
+   const cost=this.shared.attacks.length*this.action.ammo.cost;
+   count.nativeAmmo+=cost;
+   ammo.system.quantity-=cost;
+   count.charges++;
+  }
   events.callAll('pf1PostActionUse',this,null);
   return this;
  }
@@ -75,21 +82,12 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  assert.equal(api.infer(weapon).source,'description');
  const auto=await api.initialize(weapon);
  assert.equal(auto.capacity,2);
- assert.equal(weapon.actions.length,3,'auto init creates Reload once');
+ assert.equal(weapon.actions.length,2,'automatic setup never creates a native Action');
  assert.equal(api.infer(weapon).capacity,2);
  assert.equal((await api.initialize(weapon)).capacity,2,'idempotent automatic init');
- const feat={id:'rapid',type:'feat',name:'Rechargement rapide',system:{disabled:false}};
- actor.items.set('rapid',feat);
- assert.equal(api.rapidReload(weapon),false,'unselected feat gives no global bonus');
- feat.name='Rechargement rapide (pistolet)';
- assert.equal(api.rapidReload(weapon),true,'explicit pistol choice qualifies');
- feat.name='Rechargement rapide (mousquet)';
- assert.equal(api.rapidReload(weapon),false,'wrong weapon choice never qualifies');
- actor.items.delete('rapid');
  weapon.name=originalName;
  await weapon.unsetFlag?.('pf1-automation-engine','reloadState');
  weapon.flags={};
- weapon.actions.pop();
  
  // Auto setup deliberately ignores unconfigured actions and non-ammo loot.
  context.actor=actor;context.weapon=weapon;
@@ -106,20 +104,30 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  assert.equal(vm.runInContext('rlItems(actor).filter(x=>x.type==="ammo")',context).length,1,
    'generic loot is not native ammunition');
  actor.items.delete('loot');
+ // First use of a recognized but never reloaded pistol must be refused.
+ weapon.name='Pistolet à double canon';
+ await new ActionUse(simple,1).process();
+ assert.equal(count.rolls,0,'first-ever attack must not become a free shot');
+ assert.equal(count.nativeAmmo,0,'first-ever denied shot does not consume inventory');
+ assert.equal(api.lastDiagnostic().status,'blocked');
+ weapon.name=originalName;
  let state=await api.configure(weapon,{capacity:2,ammoType:'gunBullet',
   base:'standard',actionCosts:{double:2}});
  assert.equal(state.slots.length,0);
- assert.equal(weapon.actions.length,3,'one native Reload action added');
+ assert.equal(weapon.actions.length,2,'configure does not add a Reload action');
  await api.configure(weapon,{capacity:2,ammoType:'gunBullet',
   base:'standard',actionCosts:{double:2}});
- assert.equal(weapon.actions.length,3,'no duplicate native action');
+ assert.equal(weapon.actions.length,2,'still no automatic Reload action');
  const fire=async(action,n=1)=>new ActionUse(action,n).process();
  await fire(simple);
  assert.equal(count.rolls,0,'empty weapon refuses BEFORE roll');
  assert.equal(count.nativeAmmo,0);assert.equal(count.charges,0);
- const reloadAction=weapon.actions[2];
+ const reloadAction={id:'manual-reload',name:'Recharger',actionType:'other',
+  hasAttack:false,ammo:{type:null,cost:0}};
+ weapon.actions.push(reloadAction);
  await fire(reloadAction);
- assert.equal(api.getState(weapon).slots.length,1,'native Reload action loads one');
+ await new Promise(r=>setImmediate(r));
+ assert.equal(api.getState(weapon).slots.length,1,'manually created native Reload action loads one');
  assert.equal(ammo.system.quantity,8,'no inventory consumption at reload');
  await fire(double,2);
  assert.equal(count.rolls,0,'double shot denied with one loaded');
@@ -147,9 +155,6 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  assert.equal(count.rolls,3,'module disabled => native PF1 allowed');
  settings.set('reloadEnabled',true);
  assert.equal(api.getState(weapon).slots.length,0,'world flag remains persisted');
- assert.equal(api.timing(weapon,ammo,{rapidReload:true}).action,'move');
- ammo.getFlag=()=>true;
- assert.equal(api.timing(weapon,ammo,{rapidReload:true}).action,'free');
- assert.equal(api.timing(weapon,ammo,{rapidReload:true}).provokes,true);
- console.log('PASS reload core: native action, no duplicate, empty/double veto pre-roll, partial reload, PF1 single deduction, unload, reductions and opt-out');
+ assert.equal(typeof api.timing,'undefined','action economy belongs to native Reload');
+ console.log('PASS reload core: manual Reload, empty/double pre-roll denial, native ammo once, load/unload and opt-out');
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.24.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.24.1 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -215,3 +215,15 @@ Shot cost derives from the number of actual native attack instances multiplied b
 The feat `Rapid Reload / Rechargement rapide` has no universal standardized chosen-weapon field in the inspected PF1 FeatModel. To prevent unjustified benefits, only a **weapon explicitly identified** in the feat's name (e.g. `Rechargement rapide (pistolet)`) or a GM-set `rapidReloadWeaponUuid` flag can qualify. An unqualified feat name is insufficient and never reduces all reloading times. This rule is advisory: action-economy expenditure is not mechanically enforced yet. Paper cartridges and misfire interactions remain future work. The engine stays **disabled by default** pending verification on real Foundry v13.351 / PF1 v11.11.
 
 The API now includes `api.reload.infer(weapon)`, `api.reload.initialize(weapon)` and `api.reload.rapidReload(weapon)` for diagnostics.
+
+## v1.24.1 — Reliable pre-roll unloaded-weapon guard
+
+The v1.24.0 implementation attempted to patch an internal `pf1.components.ActionUse` prototype. When that optional global export was absent, the whole reload interception silently failed: **weapons could fire indefinitely without loading**. PF1AE now binds the official native `pf1CreateActionUse` hook without requiring any private constructor. For a tracked weapon it wraps **that ActionUse instance's** `generateChatAttacks()` and checks loaded chambers after PF1 has built/filtered native attack instances, but **before dice roll generation**. If insufficiently loaded, the module skips creating attack rolls and returns `false` at `pf1PreActionUse` to prevent ammo/charge deduction and chat. The first shot on a recognized but uninitialized weapon is also denied rather than free. Unsupported weapons are unchanged.
+
+**Manual Reload Action (no automated cost):** create an ordinary native PF1 action on the weapon named **Recharger** or **Reload**, set its activation cost yourself and make sure it is not an attack. When that native action succeeds, PF1AE initializes the weapon if needed and loads one round. The module **does not create** any Reload action or determine action economy. The feat Rapid Reload and AoOs are reflected only in the native action configuration / GM ruling, not recalculated by PF1AE. An old generated Reload action with a stored action ID is still recognized.
+
+The compact indicator displays chambers loaded and offers a GM-only capacity correction, plus unload when applicable. The extra Reload button was removed so users cannot bypass their native action.
+
+**Requirements:** turn on the opt-in reload tracking setting; use a native PF1 ammo Item with matching `action.ammo.type` and a recognized weapon capacity. An unconfigured but recognizable pistol with a native ranged Action is denied with a warning until configuration is repaired. Use `game.modules.get('pf1-automation-engine').api.reload.lastDiagnostic()` after a shot to see whether it was blocked, authorized or unmanaged and why.
+
+**Validation:** the 25-suite automated release gate simulates a native ActionUse that calls `pf1CreateActionUse` / `pf1PreActionUse` / `pf1PostActionUse`. This still requires a real Foundry 13.351 + PF1 11.11 test. Existing non-atomic cross-client operations remain experimental.
