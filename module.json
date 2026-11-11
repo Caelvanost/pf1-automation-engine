@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "Generic PF1 automation with opt-in Trusted Table Mode: auto-discovered native Item Script Call bootstrap, configurable GM fallback, native verified damage and persistent effects.",
-  "version": "1.20.0",
+  "description": "Generic PF1 automation including opt-in pre-roll ranged increment assistance, Trusted Table Mode, native damage events and persistent effects.",
+  "version": "1.21.0",
   "authors": [
     {
       "name": "Caelvanost"
@@ -40,11 +40,12 @@
     "scripts/script-approvals.js",
     "scripts/damage-events.js",
     "scripts/attack-events.js",
-    "scripts/bootstrap.js"
+    "scripts/bootstrap.js",
+    "scripts/range-automation.js"
   ],
   "url": "https://github.com/Caelvanost/pf1-automation-engine",
   "manifest": "https://raw.githubusercontent.com/Caelvanost/pf1-automation-engine/main/module.json",
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.20.0/pf1-automation-engine-v1.20.0.zip",
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.21.0/pf1-automation-engine-v1.21.0.zip",
   "readme": "https://github.com/Caelvanost/pf1-automation-engine/blob/main/README.md",
   "changelog": "https://github.com/Caelvanost/pf1-automation-engine/blob/main/CHANGELOG.md",
   "bugs": "https://github.com/Caelvanost/pf1-automation-engine/issues"
