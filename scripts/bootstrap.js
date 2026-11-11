@@ -154,6 +154,20 @@ async function bsRestoreOne(record){
     let call;try{call=bsScript(item,record.scriptId)}catch(e){
       bsCleanup(record.id);bsDebug('Missing Actor/Item',{id:record.id,error:e.message});return {skipped:'missing Script Call'};
     }
+    // GM may take over a player-owned Actor only if the exact saved source
+    // of this native ItemScriptCall was explicitly approved by the GM.
+    const playerOwners=[...game.users].filter(u=>!u.isGM&&bsOwned(actor,u));
+    if(game.user.isGM&&playerOwners.length){
+      const approval=game.modules.get(BS_NS)?.api?.scriptApprovals?.check?.(actor,item,call)
+        ??{approved:false,reason:'Script approval service unavailable'};
+      if(!approval.approved){
+        bsCleanup(record.id);
+        console.warn('[PF1AE][Bootstrap] GM fallback blocked', {
+          id:record.id,actorUuid:actor.uuid,itemUuid:item.uuid,
+          scriptId:call.id??call._id,reason:approval.reason});
+        return {skipped:'unapproved GM fallback',reason:approval.reason};
+      }
+    }
     const runtime={hooks:[],cleanup:[]};
     // Use explicit cleanup and tracked subscriptions to prevent permanent
     // listeners after unregister. A Script that calls raw Hooks.on itself
