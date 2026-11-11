@@ -30,8 +30,8 @@ const actionType={create:async(data,{parent})=>{
  parent.actions.push(a);return [a];
 }};
 class ActionUse{
- constructor(action,attacks=1){
-  this.action=action;this.item=weapon;this.actor=actor;
+ constructor(action,attacks=1,item=weapon){
+  this.action=action;this.item=item;this.actor=actor;
   this.shared={attacks:Array.from({length:attacks},()=>({
    hasAmmo:true,ammo:{id:'am'}
   }))};
@@ -138,6 +138,25 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  assert.equal(count.nativeAmmo,1,'PF1 consumes one native ammo once');
  assert.equal(ammo.system.quantity,7);
  assert.equal(api.getState(weapon).slots.length,0,'loaded state decremented after native shot');
+ // User's "capacité Recharger" can also be a standalone nonattack feat.
+ // Only one eligible weapon exists, so there is no ambiguous selection.
+ const ability={id:'reloadFeat',type:'feat',name:'Recharger',actor,
+  system:{disabled:false}};
+ const abilityAction={id:'activate',name:'Utiliser',actionType:'other',
+  hasAttack:false,ammo:{type:null,cost:0}};
+ actor.items.set('reloadFeat',ability);
+ settings.set('genericEnabled',false);
+ const featUse=new ActionUse(abilityAction,0,ability);
+ await featUse.process();
+ await new Promise(r=>setImmediate(r));
+ assert.equal(api.getState(weapon).slots.length,1,
+  'actor Reload ability loads one round without enabling generic automations');
+ assert.equal(api.lastDiagnostic().status,'reloaded');
+ assert.equal(ammo.system.quantity,7,'feat reload does not subtract ammo');
+ await api.unload(weapon,{count:1});
+ actor.items.delete('reloadFeat');
+ settings.set('genericEnabled',true);
+
  await api.reload(weapon,{count:2});
  assert.equal(api.getState(weapon).slots.length,2);
  await fire(double,2);await new Promise(r=>setImmediate(r));
