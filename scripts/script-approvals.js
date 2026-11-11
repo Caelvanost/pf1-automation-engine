@@ -93,8 +93,8 @@ function saCheck(actor,item,call){
 Hooks.once('init',()=>{
  game.settings.register(SA_NS,SA_SETTING,{scope:'world',config:false,type:Array,default:[]});
  game.settings.register(SA_NS,SA_TRUSTED,{
-  name:'Table de confiance — exécution automatique des scripts PF1AE',
-  hint:'ATTENTION : à activer uniquement dans un monde privé avec des joueurs de confiance. Les Script Calls JavaScript éditables par les joueurs peuvent être exécutés avec les privilèges du MJ lorsque le joueur est absent. Désactivé par défaut ; les approbations individuelles restent conservées.',
+  name:game.i18n?.localize?.('PF1AE.Settings.TrustedTable.Name')??'Trusted Table Mode — automatic PF1AE scripts',
+  hint:game.i18n?.localize?.('PF1AE.Settings.TrustedTable.Hint')??'WARNING: Player-editable JavaScript can execute with GM privileges in this mode.',
   scope:'world',config:true,restricted:true,type:Boolean,default:false,
   onChange:()=>{
    // Reconcile without mutating the persistent secure-mode registry.

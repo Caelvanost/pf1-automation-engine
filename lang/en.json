@@ -1,0 +1,75 @@
+{
+  "PF1AE": {
+    "Settings": {
+      "GenericEnabled": {
+        "Name": "Enable generic automations",
+        "Hint": "Enable persistent events, synchronization and timers."
+      },
+      "GenericDebug": {
+        "Name": "Automation diagnostic logs",
+        "Hint": "Log automation diagnostics to the browser console."
+      },
+      "AutoDiscovery": {
+        "Name": "Automatically discover item automations",
+        "Hint": "Item declarations require explicit GM approval before execution."
+      },
+      "TrustedTable": {
+        "Name": "Trusted Table Mode — automatic PF1AE scripts",
+        "Hint": "WARNING: Enable only in a private world with trusted players. Player-editable JavaScript Item Script Calls may execute with GM privileges when a player is absent. Disabled by default; individual approvals are preserved."
+      },
+      "AutoRange": {
+        "Name": "Automatic ranged increment penalties",
+        "Hint": "Apply range increment penalties to native PF1 ranged weapon attack rolls against one unambiguous target. Existing explicit range modifiers take priority. Scene grids must use meters or feet."
+      },
+      "MigrationBackups": {
+        "Name": "Macro backups before migration",
+        "Hint": "Backup copies of macro commands rewritten during module migration."
+      },
+      "MigrationVersion": {
+        "Name": "Module namespace migration",
+        "Hint": "Technical status of migrating settings and flags from the previous module."
+      }
+    },
+    "Range": {
+      "Penalty": "Range penalty",
+      "OutOfRange": "PF1AE: Target is out of range. The attack was not modified; check the target and weapon range."
+    },
+    "Effects": {
+      "Prefix": "PF1 Automation",
+      "InvalidActorOrKey": "Invalid actor or key.",
+      "NotOwner": "You do not control this character.",
+      "GMRequired": "A connected GM is required to manage effects.",
+      "OldModule": "Disable the old module before using the new one.",
+      "InvalidRequest": "Invalid request or key.",
+      "SourceDenied": "Access to the source actor was denied.",
+      "NoCombat": "Source is not in the active combat.",
+      "TemplateMissing": "Effect template not found on the source actor.",
+      "TemporaryTemplate": "A temporary copy cannot be used as a template.",
+      "InvalidDuration": "Invalid duration (1 to 100 turns of the source).",
+      "InvalidTargets": "Invalid target list.",
+      "InvalidTargetUuid": "Invalid target UUID.",
+      "TargetMissing": "Target not found: {uuid}"
+    },
+    "Migration": {
+      "OldModule": "Disable the previous module {module} to avoid running two automation engines simultaneously.",
+      "Incomplete": "{count} documents could not be migrated; another attempt will be made the next time the world loads.",
+      "Complete": "PF1 Automation Engine: settings and flags migrated. Historical data has been retained."
+    },
+    "Saves": {
+      "SummaryTitle": "Saving Throw Override",
+      "SummaryLine": "{type} saving throw: {total}",
+      "ResultUsed": "Result used: {total}",
+      "Replaced": "replaced",
+      "Retained": "normal roll retained"
+    },
+    "Discovery": {
+      "TooMany": "The automations declaration may contain at most 50 rules.",
+      "SourceUnavailable": "Script item unavailable: {uuid}",
+      "Duplicate": "Duplicate rule IDs.",
+      "GMOnly": "Only the elected active GM can perform this operation.",
+      "ItemMissing": "Item not found: {uuid}",
+      "NoDeclaration": "This item has no automations declaration.",
+      "EngineUnavailable": "The generic automation engine has not initialized."
+    }
+  }
+}

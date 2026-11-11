@@ -543,14 +543,21 @@ function soEscape(text) {
 }
 async function soSummary(message,decision,target) {
   if(!decision.candidates.length)return null;
+  const loc=(key,fallback)=>game.i18n?.localize?.('PF1AE.Saves.'+key)??fallback;
+  const fmt=(key,data,fallback)=>game.i18n?.format?.('PF1AE.Saves.'+key,data)??fallback;
+  const summaryLine=fmt('SummaryLine',{
+    type:decision.saveType.toUpperCase(),total:decision.normalTotal
+  },`${decision.saveType.toUpperCase()} saving throw: ${decision.normalTotal}`);
+  const used=fmt('ResultUsed',{total:decision.effectiveTotal},
+    `Result used: ${decision.effectiveTotal}`);
+  const resultKind=loc(decision.changed?'Replaced':'Retained',
+    decision.changed?'replaced':'normal roll retained');
   const lines=[
-    '<strong>Saving Throw Override</strong>',
-    '<div>'+soEscape(target.name)+': '+soEscape(decision.saveType.toUpperCase())+
-      ' saving throw '+decision.normalTotal+'</div>',
+    '<strong>'+soEscape(loc('SummaryTitle','Saving Throw Override'))+'</strong>',
+    '<div>'+soEscape(target.name)+': '+soEscape(summaryLine)+'</div>',
     ...decision.candidates.map(c=>
       '<div>'+soEscape(c.label)+' ('+soEscape(c.sourceName)+'): '+c.value+'</div>'),
-    '<div><strong>Result used: '+decision.effectiveTotal+'</strong>'+
-      (decision.changed ? ' (replaced)' : ' (normal roll retained)')+'</div>'
+    '<div><strong>'+soEscape(used)+'</strong> ('+soEscape(resultKind)+')</div>'
   ];
   return ChatMessage.implementation.create({
     content:lines.join(''),

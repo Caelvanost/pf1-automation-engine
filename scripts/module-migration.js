@@ -92,7 +92,7 @@ function mergedFlags(doc) {
 async function migrateNamespace() {
   if (!isMigrationLeader()) return {skipped: 'non-primary-GM'};
   if (game.modules.get(MIG_OLD)?.active) {
-    const message = `Désactiver d'abord l'ancien module ${MIG_OLD} pour éviter deux moteurs concurrents.`;
+    const message = game.i18n?.format?.('PF1AE.Migration.OldModule',{module:MIG_OLD})??`Disable the previous module ${MIG_OLD} to avoid concurrent engines.`;
     ui.notifications.error(message);
     throw new Error(message);
   }
@@ -121,11 +121,11 @@ async function migrateNamespace() {
     }
     await migrateMacros(report);
     // Do not mark the migration done if even one document could not be copied.
-    if (report.errors.length) throw new Error(`${report.errors.length} documents non migrés ; nouvelle tentative au prochain chargement.`);
+    if (report.errors.length) throw new Error(game.i18n?.format?.('PF1AE.Migration.Incomplete',{count:report.errors.length})??`${report.errors.length} documents could not be migrated.`);
     await game.settings.set(MIG_NEW, MIG_VERSION, 1);
     if (report.settings || report.documents || report.macros) {
       console.info(`${MIG_NEW} | Migration réussie :`, report);
-      ui.notifications.info('PF1 Automation Engine : paramètres et flags transférés. Les données historiques sont conservées.');
+      ui.notifications.info(game.i18n?.localize?.('PF1AE.Migration.Complete')??'PF1 Automation Engine: settings and flags migrated; historical data retained.');
     }
     return report;
   } finally {
@@ -143,13 +143,13 @@ function whenMigrationReady() {
 
 Hooks.once('init', () => {
   game.settings.register(MIG_NEW, MIG_BACKUPS, {
-    name:'Sauvegarde des macros avant migration',
-    hint:'Copies des commandes des macros réécrites par la migration du module.',
+    name:game.i18n?.localize?.('PF1AE.Settings.MigrationBackups.Name')??'Macro backups before migration',
+    hint:game.i18n?.localize?.('PF1AE.Settings.MigrationBackups.Hint')??'Macro command backups created during migration.',
     scope:'world', config:false, type:Object, default:{}
   });
   game.settings.register(MIG_NEW, MIG_VERSION, {
-    name:'Migration de l’identifiant de module',
-    hint:'État technique de reprise des paramètres et flags du module précédent.',
+    name:game.i18n?.localize?.('PF1AE.Settings.MigrationVersion.Name')??'Module namespace migration',
+    hint:game.i18n?.localize?.('PF1AE.Settings.MigrationVersion.Hint')??'Technical status of module migration.',
     scope:'world', config:false, type:Number, default:0
   });
   const module = game.modules.get(MIG_NEW);

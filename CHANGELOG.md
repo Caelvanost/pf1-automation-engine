@@ -1,3 +1,12 @@
+## v1.22.0 — Traductions françaises et anglaises dans Foundry
+
+- Ajoute les ressources natives `lang/en.json` et `lang/fr.json` déclarées dans `module.json`, selon la langue de session de chaque client.
+- Remplace la clé brute `PF1.Range.Penalty` dans le jet par un libellé traduit **Pénalité de portée / Range penalty**, conservant le calcul réel du malus pré-jet.
+- Traduit les paramètres visibles (automatisations génériques, journaux, découverte, Table de confiance, portée, migration), les notifications de portée et de migration, et les messages de validation des effets/découvertes.
+- Traduit le résumé du jet de sauvegarde produit dans le chat dans la langue du client créateur de ce résumé.
+- Ajoute un test de parité et de format des traductions (clés, variables) et des simulations de jets dans les deux langues ; vérifie que les langues sont présentes dans le ZIP.
+- Aucun changement de mécanique PF1, des noms techniques de Script Calls ou des valeurs de paramètres du monde.
+
 ## v1.21.2 — Correction du malus réel et de la conversion pieds/mètres
 
 - Utilise le véritable chemin pré-jet : `pf1CreateActionUse` → `shared.attackBonus` → `ChatAttack.addAttack(extraParts)`, sans se reposer sur des données de dialogue susceptibles d'être écrasées.

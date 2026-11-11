@@ -2,6 +2,8 @@
  * PF1 Automation Engine — approval-gated, generic item declaration discovery.
  * Class-neutral; never evaluates code stored in flags. Only approved PF1 scripts run.
  */
+const discText=(key,fallback)=>game.i18n?.localize?.('PF1AE.Discovery.'+key)??fallback;
+const discFormat=(key,params,fallback)=>game.i18n?.format?.('PF1AE.Discovery.'+key,params)??fallback;
 const DISC_NS = 'pf1-automation-engine'; // Persistent namespace after v1.5.0 migration.
 const DISC_FLAG = 'automations';
 const DISC_APPROVALS = 'autoApprovals';
@@ -41,12 +43,12 @@ function scriptSnapshot(item) {
 }
 async function signature(item) {
   const decl = declarations(item);
-  if (!Array.isArray(decl) || decl.length > 50) throw Error('La déclaration automations doit contenir au maximum 50 règles.');
+  if (!Array.isArray(decl) || decl.length > 50) throw Error(discText('TooMany','The automations declaration may contain at most 50 rules.'));
   const targets = [...new Set(decl.map(d => d?.itemUuid ?? item.uuid))].sort();
   const sources = [];
   for (const uuid of targets) {
     const target = uuid === item.uuid ? item : await fromUuid(uuid);
-    if (!isItem(target)) throw Error(`Objet de script indisponible : ${uuid}`);
+    if (!isItem(target)) throw Error(discFormat('SourceUnavailable',{uuid},`Script item unavailable: ${uuid}`));
     sources.push({uuid, scripts:scriptSnapshot(target)});
   }
   // Exact string comparison (not weak/attackable non-cryptographic hash).
@@ -72,7 +74,7 @@ async function refresh(item) {
       }),
       autoSourceUuid: item.uuid
     }));
-    if (new Set(entries.map(e=>e.id)).size !== entries.length) throw Error('Identifiants de règles en double');
+    if (new Set(entries.map(e=>e.id)).size !== entries.length) throw Error(discText('Duplicate','Duplicate rule IDs.'));
     discovered.set(item.uuid, entries);
     discLog('Déclarations chargées',item.uuid,entries.length);
   } catch (err) {console.warn('PF1 Auto Discovery | Déclaration ignorée',item.uuid,err);}
@@ -108,16 +110,16 @@ async function stillApproved(entry) {
   catch(err) {discLog('Script indisponible :',err.message); return false;}
 }
 function assertGM() {
-  if (!game.user.isGM || !discLeader()) throw Error('Opération réservée au MJ principal actif.');
+  if (!game.user.isGM || !discLeader()) throw Error(discText('GMOnly','Only the elected active GM can perform this operation.'));
 }
 async function approveItem(itemUuid) {
   assertGM();
   const item = await fromUuid(itemUuid);
-  if (!isItem(item)) throw Error(`Objet introuvable : ${itemUuid}`);
+  if (!isItem(item)) throw Error(discFormat('ItemMissing',{uuid:itemUuid},`Item not found: ${itemUuid}`));
   const decl = declarations(item);
-  if (!Array.isArray(decl) || !decl.length) throw Error('Aucune déclaration automations sur cet objet.');
+  if (!Array.isArray(decl) || !decl.length) throw Error(discText('NoDeclaration','This item has no automations declaration.'));
   const api = game.modules.get(DISC_NS)?.api?.generic;
-  if (!api?.validateRule || !api?.validateTarget) throw Error('Le moteur générique n’est pas initialisé.');
+  if (!api?.validateRule || !api?.validateTarget) throw Error(discText('EngineUnavailable','The generic automation engine has not initialized.'));
   for (let i=0;i<decl.length;i++) {
     const r = api.validateRule({...decl[i],id:`auto:${item.uuid}:${decl[i].id ?? i}`,itemUuid:decl[i].itemUuid??item.uuid});
     await api.validateTarget(r);
@@ -141,7 +143,7 @@ async function changedItem(item, op='update') {
   // Recheck before executing in stillApproved(), even if cached entries remain.
 }
 Hooks.once('init',()=>{
-  game.settings.register(DISC_NS,DISC_ENABLED,{name:'Découverte automatique des automatisations des objets',hint:'Les déclarations nécessitent une approbation explicite du MJ avant exécution.',scope:'world',config:true,type:Boolean,default:true,onChange:()=>{scanOwner=null;discovered.clear();}});
+  game.settings.register(DISC_NS,DISC_ENABLED,{name:game.i18n?.localize?.('PF1AE.Settings.AutoDiscovery.Name')??'Automatically discover item automations',hint:game.i18n?.localize?.('PF1AE.Settings.AutoDiscovery.Hint')??'Item declarations require explicit GM approval before execution.',scope:'world',config:true,type:Boolean,default:true,onChange:()=>{scanOwner=null;discovered.clear();}});
   game.settings.register(DISC_NS,DISC_APPROVALS,{scope:'world',config:false,type:Object,default:{},onChange:()=>{scanOwner=null;discovered.clear();}});
   const mod=game.modules.get(DISC_NS);
   mod.api ??= {};
