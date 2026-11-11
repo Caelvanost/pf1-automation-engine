@@ -77,6 +77,17 @@ const rlCompatible=(item,capacity)=>{
 };
 const rlType=(weapon,state,action)=>state?.ammoType??action?.ammo?.type??weapon?.system?.ammo?.type??null;
 const rlAmmo=(actor,id)=>actor?.items?.get(id)??null;
+const rlIsNativeAmmo=(item,ammoType)=>item?.type==='ammo'&&
+ (!ammoType||!item.system?.subType||item.system.subType===ammoType);
+// PF1 legacy compendiums can store linked bullets as loot/subType ammo.
+// Accept ONLY a loot Item explicitly linked by the weapon's native
+// "Default Ammunition" field, never arbitrary loot.
+const rlIsLinkedLegacyAmmo=(weapon,item,ammoType)=>!!item&&
+ item.type==='loot'&&item.system?.subType==='ammo'&&
+ item.id===weapon?.system?.ammo?.default&&
+ !!ammoType&&rlActions(weapon).some(a=>a?.ammo?.type===ammoType&&a?.hasAttack);
+const rlIsWeaponAmmo=(weapon,item,ammoType)=>rlIsNativeAmmo(item,ammoType)||
+ rlIsLinkedLegacyAmmo(weapon,item,ammoType);
 const rlQuantity=item=>Number(item?.system?.quantity??0);
 const rlReservations=(actor,ammoId,except)=>{
  let reserved=0;
@@ -89,9 +100,7 @@ const rlReservations=(actor,ammoId,except)=>{
 };
 function rlAvailable(weapon,ammoId,state){
  const actor=rlActor(weapon),ammo=rlAmmo(actor,ammoId);
- if(ammo?.type!=='ammo'||ammo?.inContainer)return 0;
- const chosenType=state.ammoType;
- if(chosenType&&ammo.system?.subType&&ammo.system.subType!==chosenType)return 0;
+ if(ammo?.inContainer||!rlIsWeaponAmmo(weapon,ammo,state.ammoType))return 0;
  if(ammo.system?.abundant===true)return Infinity;
  const own=state.slots.filter(x=>x.ammoId===ammoId).length;
  return Math.max(0,rlQuantity(ammo)-rlReservations(actor,ammoId,weapon)-own);
@@ -174,7 +183,7 @@ async function rlConfigure(weapon,{capacity,ammoType,base='standard',actionCosts
   if(slots.length>capacity)throw Error('Unload before decreasing capacity.');
   if(initialLoaded>0&&!prev){
    const id=weapon.system.ammo?.default,ammo=rlAmmo(actor,id);
-   if(!ammo||rlQuantity(ammo)<initialLoaded||ammo.system?.subType!==ammoType)
+   if(!rlIsWeaponAmmo(weapon,ammo,ammoType)||rlQuantity(ammo)<initialLoaded)
     throw Error('Choose enough native default ammunition before initializing loaded rounds.');
    slots.push(...Array.from({length:initialLoaded},()=>({ammoId:id})));
   }
@@ -188,13 +197,16 @@ function rlAmmoDiagnostic(weapon){
  const ammoType=state?.ammoType??inferred?.ammoType??
   rlAttackActions(weapon)[0]?.ammo?.type??null;
  const selectedId=weapon?.system?.ammo?.default??null;
- const inventory=rlItems(actor).filter(x=>x?.type==='ammo').map(item=>({
+ const inventory=rlItems(actor).filter(x=>x?.type==='ammo'||
+  rlIsLinkedLegacyAmmo(weapon,x,ammoType)).map(item=>({
+  itemType:item.type,
   id:item.id,name:item.name??null,subType:item.system?.subType??null,
   quantity:rlQuantity(item),inContainer:!!item.inContainer,
   abundant:item.system?.abundant===true,
   reserved:rlReservations(actor,item.id,weapon)+
    (state?.slots??[]).filter(slot=>slot.ammoId===item.id).length,
-  matches:!!ammoType&&item.system?.subType===ammoType
+  matches:rlIsWeaponAmmo(weapon,item,ammoType),
+  linkedLegacy:rlIsLinkedLegacyAmmo(weapon,item,ammoType)
  }));
  return {weapon:weapon?.name??null,weaponUuid:weapon?.uuid??null,
   capacity:state?.capacity??inferred.capacity??null,
@@ -207,18 +219,18 @@ function rlChooseAmmo(weapon,state,ammoId){
  const actor=rlActor(weapon);
  if(ammoId){
   const ammo=rlAmmo(actor,ammoId);
-  if(ammo?.type==='ammo'&&ammo?.system?.subType===state.ammoType)
+  if(rlIsWeaponAmmo(weapon,ammo,state.ammoType))
    return ammoId;
   throw Error('The chosen ammunition is missing or incompatible.');
  }
  const def=weapon.system?.ammo?.default;
  const defaultAmmo=rlAmmo(actor,def);
- if(defaultAmmo?.type==='ammo'&&defaultAmmo.system?.subType===state.ammoType&&
+ if(rlIsWeaponAmmo(weapon,defaultAmmo,state.ammoType)&&
    rlAvailable(weapon,def,state)>0)return def;
  // Never change ammo identity while another cartridge is loaded.
  if(state.slots.length>0)return def;
  const other=rlItems(actor).find(x=>x?.type==='ammo'&&!x.inContainer&&
-  x.system?.subType===state.ammoType&&rlAvailable(weapon,x.id,state)>0);
+  rlIsWeaponAmmo(weapon,x,state.ammoType)&&rlAvailable(weapon,x.id,state)>0);
  return other?.id??def??null;
 }
 async function rlReload(weapon,{ammoId,count=1}={}){
@@ -341,8 +353,8 @@ function rlInfer(weapon){
  if(!Number.isSafeInteger(capacity)||capacity<1||capacity>100)
   return {ok:false,reason:'capacity not structurally available; requires explicit GM override'};
  const actor=rlActor(weapon);
- const candidates=rlItems(actor).filter(item=>item?.type==='ammo'&&!item.inContainer&&
-   item.system?.subType===ammoType);
+ const candidates=rlItems(actor).filter(item=>!item.inContainer&&
+   rlIsWeaponAmmo(weapon,item,ammoType));
  const defaultId=weapon.system?.ammo?.default;
  const ammo=candidates.find(x=>x.id===defaultId)??candidates[0];
  if(!ammo)return {ok:false,capacity,ammoType,reason:'no matching native PF1 ammunition Item'};
@@ -450,6 +462,25 @@ function rlInstall(){
   if(!rlAllowed()||use?.item?.type!=='weapon'||
      rlNativeAction(use)||typeof use.generateChatAttacks!=='function')return;
   if(use.generateChatAttacks.pf1aeReloadWrapped)return;
+  // PF1 ActionUse.getAmmo() normally only includes actor.itemTypes.ammo.
+  // Add the already-linked loot/ammo to THIS instance's native choices.
+  const ammoType=use.action?.ammo?.type;
+  const defaultId=use.item?.system?.ammo?.default;
+  const linked=rlAmmo(use.actor,defaultId);
+  if(rlIsLinkedLegacyAmmo(use.item,linked,ammoType)&&
+     !linked.inContainer&&typeof use.getAmmo==='function'){
+   const originalGetAmmo=use.getAmmo;
+   use.getAmmo=function(...args){
+    const choices=originalGetAmmo.apply(this,args);
+    if(!Array.isArray(choices)||choices.some(x=>x.id===linked.id))return choices;
+    const cost=Math.max(1,Number(this.action?.ammo?.cost)||1);
+    if(!linked.system?.abundant&&rlQuantity(linked)<cost)return choices;
+    return [...choices,{id:linked.id,quantity:rlQuantity(linked),
+     abundant:linked.system?.abundant===true,
+     data:linked.toObject?.()??foundry.utils.deepClone(linked),
+     document:linked,isDefault:true}];
+   };
+  }
   const original=use.generateChatAttacks;
   const guarded=async function(...args){
    const check=rlCheck(this);

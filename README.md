@@ -260,3 +260,16 @@ You may need to replace the actor and weapon names; the diagnostic displays the 
 Le compteur des projectiles chargés n'est plus superposé à l'en-tête de la fiche. Il est intégré à la colonne latérale native du système PF1 **immédiatement sous Solidité (system.hardness)**, dans une section « Chargement » qui suit le défilement natif de la colonne. Les contrôles « Décharger » (si au moins un projectile est chargé) et le réglage facultatif de la capacité (MJ) y sont regroupés. L'implantation utilise la structure `.sidebar` du template PF1 de la fiche d'arme, sans modifier le quadrillage ni les onglets.
 
 Un point d'insertion de secours reste dans la barre latérale lorsque le champ Solidité n'existe pas dans une variante de fiche. Aucune modification du comportement des tirs, munitions ou rechargements de v1.24.3. Tests automatisés uniquement ; à confirmer en session Foundry 13 + PF1 11.11.
+
+
+## v1.24.5 — Linked native ammunition, including legacy loot/ammo
+
+PF1 items imported from some older French compendiums can be **type `loot`, subtype `ammo`**, even though the native weapon Details tab already links them using **Munition par Défaut**. In PF1 11.11 the normal `ActionUse.getAmmo()` filters only type `ammo`, so the old stack was not available to fire, despite the valid link and quantity.
+
+PF1AE now accepts either a native `ammo` Item of the matching ammunition subtype, or **exactly the linked legacy `loot / ammo` Item** from the weapon's native `system.ammo.default` field. The latter is permitted only if the weapon has a ranged attack Action with a native ammo type; it never authorizes arbitrary loot or mismatched weapons.
+
+When firing with that linked legacy Item, PF1AE extends only the current `ActionUse.getAmmo()` choices so native PF1 `generateAttacks()` selects the **actual linked document ID**, preserving its native ammunition depletion by `subtractAmmo()`. No duplicate ammo Item is created; inventory quantity remains unchanged during reloading and is deducted once when firing.
+
+The diagnostic `api.reload.ammoDiagnostic(weapon)` includes linked legacy ammunition with `itemType: 'loot'`, `linkedLegacy: true`, and `matches: true` when appropriate. UI stays under Solidité. **Recharger** Action should still use **Aucune munition**, while the weapon's attack Action uses its normal gunBullet type. The world Reload setting is still experimental and opt-in.
+
+Note: if the native PF1 action itself is disabled because `Action.canUse` insists on the standard ammo item type, the native system may still require a matching standard `ammo` Item. This patch aims at the native action-use pipeline; full compatibility must be checked live.

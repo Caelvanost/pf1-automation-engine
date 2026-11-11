@@ -36,16 +36,22 @@ class ActionUse{
    hasAmmo:true,ammo:{id:'am'}
   }))};
  }
+ getAmmo(){return [...actor.items.values()].filter(i=>i.type==='ammo'&&i.system?.subType===this.action.ammo?.type).map(i=>({id:i.id,quantity:i.system.quantity,abundant:!!i.system.abundant,document:i,isDefault:i.id===this.item.system.ammo.default}))}
  async generateChatAttacks(){if(this.action.hasAttack)count.rolls++}
  async process(){
   events.callAll('pf1CreateActionUse',this);
+  if(this.action.hasAttack){
+   const selected=this.getAmmo().find(a=>a.id===this.item.system.ammo.default);
+   for(const attack of this.shared.attacks){attack.ammo=selected?{id:selected.id}:null;attack.hasAmmo=!!selected;}
+  }
   await this.generateChatAttacks();
   // Native hook occurs after generation, before any ammo/charge cost.
   if(events.call('pf1PreActionUse',this)===false)return;
   if(this.action.hasAttack){
    const cost=this.shared.attacks.length*this.action.ammo.cost;
    count.nativeAmmo+=cost;
-   ammo.system.quantity-=cost;
+   const item=actor.items.get(this.shared.attacks[0]?.ammo?.id);
+   if(item)item.system.quantity-=cost;
    count.charges++;
   }
   events.callAll('pf1PostActionUse',this,null);
@@ -193,9 +199,36 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  assert.equal(api.getState(weapon).slots.length,1);
  await api.unload(weapon,{count:1});
  assert.equal(api.getState(weapon).slots.length,0);
- settings.set('reloadEnabled',false);
+ // PF1 legacy compendium ammunition can be loot with subType ammo.
+ // Its native weapon default ID remains the authoritative link.
+ const legacy={id:'legacy',type:'loot',name:'Balle d\'arme à feu',
+  system:{subType:'ammo',quantity:54,abundant:false},inContainer:false,
+  toObject(){return {name:this.name,type:this.type,system:{...this.system}}}};
+ actor.items.set(legacy.id,legacy);
+ weapon.system.ammo.default=legacy.id;
+ assert.equal(api.ammoDiagnostic(weapon).inventory.some(i=>i.id===legacy.id&&
+  i.linkedLegacy&&i.matches&&i.quantity===54),true,
+  'linked legacy loot ammunition is a real eligible ammo stack');
+ const previous=api.getState(weapon);
+ assert.equal(previous.slots.length,0);
+ await api.reload(weapon,{count:1});
+ assert.equal(api.getState(weapon).slots[0].ammoId,legacy.id,
+  'native linked legacy loot Item is loaded without duplication');
+ assert.equal(legacy.system.quantity,54,'reload reserves ammo; does not subtract');
+ const legacyUse=new ActionUse(simple,1);
+ events.callAll('pf1CreateActionUse',legacyUse);
+ assert.equal(legacyUse.getAmmo().some(a=>a.id===legacy.id&&a.quantity===54),true,
+  'PF1 ActionUse obtains the same linked legacy ammo document');
  await fire(simple);
- assert.equal(count.rolls,3,'module disabled => native PF1 allowed');
+ await new Promise(r=>setImmediate(r));
+ assert.equal(legacy.system.quantity,53,'PF1 native deduction uses linked legacy Item ID');
+ assert.equal(api.getState(weapon).slots.length,0,'legacy fired chamber cleared');
+ assert.equal(ammo.system.quantity,5,'other native ammo stack unchanged');
+ actor.items.delete(legacy.id);
+ weapon.system.ammo.default='am';
+  settings.set('reloadEnabled',false);
+ await fire(simple);
+ assert.equal(count.rolls,4,'module disabled => native PF1 allowed after legacy test shot');
  settings.set('reloadEnabled',true);
  assert.equal(api.getState(weapon).slots.length,0,'world flag remains persisted');
  assert.equal(typeof api.timing,'undefined','action economy belongs to native Reload');
