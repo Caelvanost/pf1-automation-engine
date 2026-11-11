@@ -11,6 +11,10 @@ const RL_BUSY=new Set(),RL_SHOTS=new WeakMap(),RL_ABORT=new WeakSet();
 const RL_FIRING=new Set();
 const rlL=(key,data={})=>{
  const fallback={
+  Action:'Reload',
+  Loaded:'Loaded: {loaded}/{capacity}',Unload:'Unload',
+  Configure:'Configure reload',Capacity:'Capacity',Ammo:'Ammunition',
+  Shots:'Shots for Action',Save:'Save',
   Empty:'Weapon is not sufficiently loaded.',
   Insufficient:'Not enough ammunition available to reload.',
   OutOfCapacity:'Weapon capacity exceeded.',
@@ -118,7 +122,7 @@ async function rlCreateAction(weapon){
   throw Error('Native PF1 Action.create unavailable; no reload action was created.');
  const name=rlL('Action');
  const created=await systemAction.create({
-  name:name==='Action'?'Reload / Recharger':name,
+  name,
   actionType:'other',activation:{type:'standard',cost:1},
   ammo:{type:'none',cost:0}
  },{parent:weapon});
