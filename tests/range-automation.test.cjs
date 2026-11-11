@@ -90,6 +90,6 @@ hook(cancelled);assert.equal(cancelled.shared.config.rangeIncrement,1);
 settings.set('autoRangePenalties',true);
 const repeat=makeUse(12);hook(repeat);hook(repeat);
 assert.equal(repeat.shared.config.rangeIncrement,2,'one native modifier only');
-assert.equal(repeat.shared.formData.rangePenalty,undefined);
+assert.equal(repeat.shared.formData.rangePenalty,2,'native formData also receives penalty for skipDialog');
 assert.equal(repeat.shared.attackBonus,undefined,'no custom attack bonus');
 console.log('PASS native range: boundaries, metric, feet, thrown, targets, out-of-range, skip, manual, no duplication');
