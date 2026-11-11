@@ -1,0 +1,75 @@
+{
+  "PF1AE": {
+    "Settings": {
+      "GenericEnabled": {
+        "Name": "Activer les automatisations génériques",
+        "Hint": "Active les événements persistants, les synchronisations et les minuteurs."
+      },
+      "GenericDebug": {
+        "Name": "Journaux de diagnostic des automatisations",
+        "Hint": "Affiche les diagnostics des automatisations dans la console du navigateur."
+      },
+      "AutoDiscovery": {
+        "Name": "Découverte automatique des automatisations des objets",
+        "Hint": "Les déclarations des objets nécessitent une approbation explicite du MJ avant leur exécution."
+      },
+      "TrustedTable": {
+        "Name": "Table de confiance — scripts PF1AE automatiques",
+        "Hint": "ATTENTION : à activer uniquement dans un monde privé avec des joueurs de confiance. Les scripts JavaScript éditables par les joueurs peuvent s'exécuter avec les privilèges du MJ lorsqu'un joueur est absent. Désactivé par défaut ; les approbations individuelles sont conservées."
+      },
+      "AutoRange": {
+        "Name": "Calcul automatique des pénalités de portée",
+        "Hint": "Applique les pénalités de facteurs de portée aux jets d'attaque à distance natifs de PF1 lorsqu'une seule cible est clairement identifiée. Les modificateurs explicites restent prioritaires. La grille doit être en mètres ou en pieds."
+      },
+      "MigrationBackups": {
+        "Name": "Sauvegardes des macros avant migration",
+        "Hint": "Copies des commandes de macros réécrites pendant la migration du module."
+      },
+      "MigrationVersion": {
+        "Name": "Migration de l'identifiant du module",
+        "Hint": "État technique de la migration des paramètres et indicateurs de l'ancien module."
+      }
+    },
+    "Range": {
+      "Penalty": "Pénalité de portée",
+      "OutOfRange": "PF1AE : la cible est hors de portée. L'attaque n'a pas été modifiée ; vérifiez la cible et la portée de l'arme."
+    },
+    "Effects": {
+      "Prefix": "Automatisation PF1",
+      "InvalidActorOrKey": "Acteur ou clé invalide.",
+      "NotOwner": "Vous ne contrôlez pas ce personnage.",
+      "GMRequired": "Un MJ connecté est nécessaire pour gérer les effets.",
+      "OldModule": "Désactivez l'ancien module avant d'utiliser le nouveau.",
+      "InvalidRequest": "Requête ou clé invalide.",
+      "SourceDenied": "Accès refusé à l'acteur source.",
+      "NoCombat": "La source ne participe pas au combat actif.",
+      "TemplateMissing": "Effet modèle introuvable sur l'acteur source.",
+      "TemporaryTemplate": "Une copie temporaire ne peut pas servir de modèle.",
+      "InvalidDuration": "Durée invalide (de 1 à 100 tours de la source).",
+      "InvalidTargets": "Liste des cibles invalide.",
+      "InvalidTargetUuid": "UUID de cible invalide.",
+      "TargetMissing": "Cible introuvable : {uuid}"
+    },
+    "Migration": {
+      "OldModule": "Désactivez l'ancien module {module} pour éviter deux moteurs d'automatisation concurrents.",
+      "Incomplete": "{count} documents non migrés ; une nouvelle tentative sera effectuée au prochain chargement.",
+      "Complete": "PF1 Automation Engine : paramètres et indicateurs migrés. Les données historiques ont été conservées."
+    },
+    "Saves": {
+      "SummaryTitle": "Remplacement de jet de sauvegarde",
+      "SummaryLine": "Jet de sauvegarde {type} : {total}",
+      "ResultUsed": "Résultat retenu : {total}",
+      "Replaced": "remplacé",
+      "Retained": "jet normal conservé"
+    },
+    "Discovery": {
+      "TooMany": "La déclaration automations doit contenir au maximum 50 règles.",
+      "SourceUnavailable": "Objet de script indisponible : {uuid}",
+      "Duplicate": "Identifiants de règles en double.",
+      "GMOnly": "Opération réservée au MJ principal actif.",
+      "ItemMissing": "Objet introuvable : {uuid}",
+      "NoDeclaration": "Aucune déclaration automations sur cet objet.",
+      "EngineUnavailable": "Le moteur générique n'est pas initialisé."
+    }
+  }
+}
