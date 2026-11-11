@@ -100,7 +100,7 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
    actionType:'rwak',hasAttack:true,ammo:{type:null,cost:0}};
  weapon.actions.push(incomplete);
  const visible=vm.runInContext('rlAttackActions(weapon)',context);
- assert.equal(visible.length,3,'an unconfigured ranged attack remains selectable');
+ assert.equal(visible.length,2,'an action without native ammo is not auto-managed');
  weapon.actions.pop();
  const ammoOptions=vm.runInContext('rlAmmoChoices(actor)',context);
  assert.equal(ammoOptions.length,1,'native PF1 Item type ammo is listed');
