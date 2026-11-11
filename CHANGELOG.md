@@ -1,3 +1,11 @@
+## v1.24.2 — Capacité Recharger fonctionnelle
+
+- Retire la dépendance incorrecte aux automatisations génériques : le suivi du chargement dépend uniquement de son propre paramètre de monde.
+- Reconnaît les actions natives non offensives `Recharger` / `Reload` directement sur les armes, ainsi qu'une capacité autonome `Recharger` sur un personnage possédant une seule arme rechargeable compatible.
+- Évite de choisir une arme arbitraire quand plusieurs sont éligibles : avertissement clair et utilisation conseillée de l'action sur l'arme.
+- Ajoute un diagnostic de rechargement et des notifications traduites en cas d'échec.
+- Test de régression : capacité autonome, paramètre d'automatisations génériques désactivé et absence de consommation de munitions au rechargement.
+
 ## v1.24.1 — Correction du blocage des tirs sans chargement
 
 - Corrige la cause d'une absence totale de blocage : l'ancien patch exigeait un constructeur interne ActionUse non exporté ; les hooks PF1 n'étaient alors jamais installés.
