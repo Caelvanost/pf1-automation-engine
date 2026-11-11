@@ -128,7 +128,7 @@ function raApply(use){
     distance:rawDistance,sceneUnit,distanceInIncrementUnits:distance,
     increment,incrementUnit,rangeSource,max,...result};
   if(result.outOfRange){
-    ui.notifications?.warn?.('PF1AE: cible hors de portée — attaque non modifiée. Vérifiez la cible et la portée.');
+    ui.notifications?.warn?.(game.i18n?.localize?.('PF1AE.Range.OutOfRange')??'PF1AE: Target out of range; attack unchanged.');
     raLog('Out of range; native workflow unchanged',debug);
     return {...result,skipped:'out of range'};
   }
@@ -144,7 +144,7 @@ function raApply(use){
     // range penalty can override only the native form; this module applies
     // its own checked distance once. Users should not enter another manual
     // range penalty for the same target.
-    const label=game.i18n?.localize?.('PF1.Range.Penalty')||'Range Penalty';
+    const label=game.i18n?.localize?.('PF1AE.Range.Penalty')??'Range penalty';
     shared.attackBonus.push(`-${-result.penalty}[${label}]`);
     RA_APPLIED.add(use);
   }
@@ -153,8 +153,8 @@ function raApply(use){
 }
 Hooks.once('init',()=>{
   game.settings.register(RA_NS,RA_SETTING,{
-    name:'Calcul automatique des pénalités de portée',
-    hint:'Applique le facteur de portée au jet natif PF1 des attaques à distance avec une seule cible. Ignoré si le jet possède déjà un modificateur natif explicite. Requiert une grille en mètres ou pieds.',
+    name:game.i18n?.localize?.('PF1AE.Settings.AutoRange.Name')??'Automatic ranged increment penalties',
+    hint:game.i18n?.localize?.('PF1AE.Settings.AutoRange.Hint')??'Apply ranged increments to native PF1 attacks against one target.',
     scope:'world',config:true,restricted:true,type:Boolean,default:false
   });
   Hooks.on('pf1CreateActionUse',use=>{
