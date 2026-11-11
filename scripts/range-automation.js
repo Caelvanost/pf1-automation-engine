@@ -107,10 +107,18 @@ function raApply(use){
   // A single explicit native increment is supplied before the dialog and
   // before roll evaluation. PF1's applyConfig owns the attack bonus.
   if(result.factor>1){
+    const magnitude=-result.penalty;
     config.rangeIncrement=result.factor;
     config.rangeIncrementPenalty=2;
-    // PF1's native dialog may provide a manual rangePenalty; leave its
-    // semantics intact. No attackBonus string is injected here.
+    config.rangePenalty=magnitude;
+    // The native ActionUse constructor initializes formData BEFORE this
+    // hook. Update it too so skipDialog and ordinary dialogs both pass
+    // the penalty to native applyConfig() prior to rolling.
+    formData.rangeIncrement=result.factor;
+    formData.rangeIncrementPenalty=2;
+    formData.rangePenalty=magnitude;
+    // Native PF1 applies a single labelled range penalty to the attack.
+    // No ad-hoc attackBonus or card correction is introduced here.
   }
   raLog('Native range increment configured',debug);
   return {...result,applied:result.factor>1};
