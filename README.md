@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.18.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.19.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -108,3 +108,6 @@ Les objets PF1 peuvent réagir sans utilisation manuelle : ajouter un **Script C
 ## Bootstrap persistant des Script Calls (v1.18.0)
 
 Les Items peuvent demander la réinstallation de leur automatisation JavaScript après F5 via `api.bootstrap.register({actor,item,key,scriptId?})`. Les seules inscriptions persistantes sont restaurées sur le client propriétaire, en utilisant `ItemScriptCall.execute()` dans un contexte `bootstrap:restore` sans provoquer un véritable toggle. Pour un nettoyage sûr, le script appelle `bootstrap.listen(hook,callback)` au lieu de `Hooks.on()` brut. Voir [Bootstrap persistant](docs/BOOTSTRAP.md).
+## Événements de dégâts natifs et critiques (v1.19.0)
+
+Un objet peut réagir aux **dégâts effectivement appliqués par une attaque native**, sans être utilisé manuellement. Ajouter un Script Call « Après utilisation » nommé `PF1AE:damage:applied`, `PF1AE:damage:critical` ou `PF1AE:damage:zeroHP`. La détection utilise exclusivement le pont de dégâts `attackOutcomes` déjà présent ; un jet critique sans perte de PV ne suffit pas. Le MJ élu confirme l'application puis le propriétaire du personnage exécute son Script Call, sans transfert de code exécutable au MJ. Voir [l'API et le protocole de validation](docs/DAMAGE-EVENTS.md).
