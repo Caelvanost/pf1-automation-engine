@@ -8,6 +8,7 @@ const RA_NS='pf1-automation-engine';
 const RA_SETTING='autoRangePenalties';
 const RA_TAG='[PF1AE][Range]';
 let raLastDiagnostic=null;
+const RA_APPLIED=new WeakSet();
 const raReport=(status,details={})=>{
   raLastDiagnostic={status,...details};
   raLog(status,details);
@@ -96,15 +97,25 @@ function raApply(use){
      (tokenScene(target)&&tokenScene(target)!==scene.id))
     return {skipped:'tokens not in current scene'};
   const sceneUnit=raNormUnit(scene.grid?.units);
-  // The action's getRange returns PF1 system-distance units, not raw input
-  // units. For older actions without getRange, require a numeric raw value
-  // and use the declared action unit instead.
-  let increment,incrementUnit;
-  if(typeof action.getRange==='function'){
+  // Numeric action ranges already carry their own units. Read the source
+  // units directly: action.getRange() may return an unexpected transformed
+  // value under mixed metric/imperial PF1 settings. In particular, 20 ft
+  // must always mean 6 m with this table's 5 ft = 1.5 m convention.
+  // Only formula-valued ranges need PF1's getRange() evaluation.
+  let increment,incrementUnit,rangeSource;
+  const explicitUnit=raNormUnit(range.units);
+  const numeric=typeof range.value==='number'||
+    (typeof range.value==='string'&&/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(range.value.trim()));
+  if(numeric&&explicitUnit){
+    increment=Number(range.value);incrementUnit=explicitUnit;
+    rangeSource='action.range.value';
+  }else if(typeof action.getRange==='function'&&explicitUnit){
     increment=Number(action.getRange({type:'single',rollData:shared.rollData}));
+    // PF1's getter returns values in system units for formula ranges.
     incrementUnit=globalThis.pf1?.settings?.distance?.metric===true?'m':'ft';
+    rangeSource='action.getRange';
   }else{
-    increment=Number(range.value);incrementUnit=raNormUnit(range.units);
+    return {skipped:'unsupported action range units'};
   }
   if(!sceneUnit||!incrementUnit||!Number.isFinite(increment)||increment<=0)
     return {skipped:'unknown units or range'};
@@ -114,30 +125,31 @@ function raApply(use){
   const result=raCalculate(distance,increment,max);
   if(!result)return {skipped:'invalid range calculation'};
   const debug={actor:use.actor?.name,item:use.item?.name,target:target.name,
-    distance:rawDistance,sceneUnit,increment,incrementUnit,max,...result};
+    distance:rawDistance,sceneUnit,distanceInIncrementUnits:distance,
+    increment,incrementUnit,rangeSource,max,...result};
   if(result.outOfRange){
     ui.notifications?.warn?.('PF1AE: cible hors de portée — attaque non modifiée. Vérifiez la cible et la portée.');
     raLog('Out of range; native workflow unchanged',debug);
     return {...result,skipped:'out of range'};
   }
-  // A single explicit native increment is supplied before the dialog and
-  // before roll evaluation. PF1's applyConfig owns the attack bonus.
+  // PF1 ActionDialog may overwrite formData/config after this hook; the
+  // stable pre-roll extension point is shared.attackBonus. ActionUse.addAttacks()
+  // forwards it into ChatAttack.addAttack(extraParts), BEFORE dice evaluation.
+  // Never also change rangeIncrement/rangePenalty: that would double-charge.
+  if(RA_APPLIED.has(use))return {...result,skipped:'already injected',applied:false};
   if(result.factor>1){
-    const magnitude=-result.penalty;
-    config.rangeIncrement=result.factor;
-    config.rangeIncrementPenalty=2;
-    config.rangePenalty=magnitude;
-    // The native ActionUse constructor initializes formData BEFORE this
-    // hook. Update it too so skipDialog and ordinary dialogs both pass
-    // the penalty to native applyConfig() prior to rolling.
-    formData.rangeIncrement=result.factor;
-    formData.rangeIncrementPenalty=2;
-    formData.rangePenalty=magnitude;
-    // Native PF1 applies a single labelled range penalty to the attack.
-    // No ad-hoc attackBonus or card correction is introduced here.
+    if(!Array.isArray(shared.attackBonus))
+      return {skipped:'native attackBonus array unavailable'};
+    // The native form's default increment stays 1. A GM-entered manual
+    // range penalty can override only the native form; this module applies
+    // its own checked distance once. Users should not enter another manual
+    // range penalty for the same target.
+    const label=game.i18n?.localize?.('PF1.Range.Penalty')||'Range Penalty';
+    shared.attackBonus.push(`-${-result.penalty}[${label}]`);
+    RA_APPLIED.add(use);
   }
-  raLog('Native range increment configured',debug);
-  return {...result,applied:result.factor>1};
+  raLog('Pre-roll range attack bonus injected',debug);
+  return {...result,sceneDistance:rawDistance,sceneUnit,increment,incrementUnit,rangeSource,applied:result.factor>1};
 }
 Hooks.once('init',()=>{
   game.settings.register(RA_NS,RA_SETTING,{
@@ -152,6 +164,7 @@ Hooks.once('init',()=>{
         reason:result?.skipped??null,
         factor:result?.factor??null,
         penalty:result?.penalty??null,
+        sceneDistance:result?.sceneDistance??null,
         action:use?.action?.name??null,
         actor:use?.actor?.name??null,
         targets:game.user?.targets?.size??null

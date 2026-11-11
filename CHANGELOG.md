@@ -1,3 +1,10 @@
+## v1.21.2 — Correction du malus réel et de la conversion pieds/mètres
+
+- Utilise le véritable chemin pré-jet : `pf1CreateActionUse` → `shared.attackBonus` → `ChatAttack.addAttack(extraParts)`, sans se reposer sur des données de dialogue susceptibles d'être écrasées.
+- Lit les portées numériques directement dans leurs unités déclarées : 20 pieds = 6 mètres selon la grille Pathfinder de la table, au lieu d'une conversion système intermédiaire donnant un facteur excessif.
+- Déduplication par instance d'action, préservation des bonus conditionnels, des scripts Deadeye, et des modificateurs de portée manuels préexistants.
+- Étend les tests pour un facteur 2 à 9 m, les unités françaises, les portées numériques et les attaques répétées. Aucun changement des paramètres utilisateurs existants.
+
 ## v1.21.1 — Correctif d'application de portée native
 
 - Corrige l'exclusion accidentelle des jets lorsque PF1 initialise la pénalité de portée à zéro.
