@@ -1,3 +1,13 @@
+## v1.24.5 — Munitions PF1 liées, y compris objets de butin anciens
+
+- Utilise en priorité la munition réelle associée à l'arme dans le champ natif « Munition par défaut ».
+- Reconnaît les anciennes balles de type `loot`, sous-type `ammo`, **uniquement si l'objet est celui lié au pistolet** et que l'attaque définit un type de munition.
+- Au tir, fournit le même objet à la sélection de munitions native de PF1, sans créer d'objet en double : la consommation par PF1 s'effectue une fois sur son identifiant réel.
+- Maintient le nombre chargé indépendamment de la quantité d'inventaire, sans déduire de munition lors de Recharger.
+- Le diagnostic liste désormais les munitions liées héritées et indique `linkedLegacy: true`.
+- Test de régression : 54 balles `loot/ammo` associées, rechargement, consommation native 54 → 53, chargeur 1 → 0.
+- Aucun changement d'interface : « Chargement » reste sous « Solidité ».
+
 ## v1.24.4 — Interface : Chargement sous Solidité
 
 - Déplace la section de chargement du coin supérieur droit de l'en-tête vers le volet gauche de la fiche d'arme, immédiatement sous la ligne native « Solidité ».
