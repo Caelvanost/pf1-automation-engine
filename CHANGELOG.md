@@ -1,3 +1,13 @@
+## v1.19.0 — Événements génériques de dégâts confirmés (critiques et PV à zéro)
+
+- Pont de dégâts natif unique : `attackOutcomes` émet un événement interne après corrélation carte/Action/attaque/cible, appel de dégâts PF1 et perte réelle de PV.
+- Nouveau `api.damageEvents`, abonnements déclaratifs `PF1AE:damage:applied`, `PF1AE:damage:critical` et `PF1AE:damage:zeroHP` dans les Script Calls natifs « Après utilisation ».
+- Conservation de `options.critMult`, des PV effectifs avant/après et prise en charge des tokens synthétiques et de `hp.offset` ; `criticalHitConfirmed` reste inconnu.
+- Journal de déduplication persistant sur le MJ élu et livraison aux propriétaires joueurs sans faire exécuter leurs scripts avec les droits MJ.
+- Rejet conservateur des applications annulées, ambiguës, sans perte de PV normaux ou absorbées uniquement par les PV temporaires.
+- Nouvelle suite de tests et documentation `docs/DAMAGE-EVENTS.md`.
+- `module.json` versionné en v1.19.0 avec l'URL de release GitHub correspondante ; APIs antérieures préservées.
+
 ## v1.18.0 — Bootstrap persistant des Script Calls
 
 - Nouvelle API opt-in `api.bootstrap.register/unregister/list/restoreAll` et registre de monde géré par le MJ élu.
