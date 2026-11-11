@@ -15,6 +15,7 @@ const rlL=(key,data={})=>{
   Action:'Reload',
   AutoUnavailable:'Unable to infer weapon capacity or native ammunition automatically',
   ReloadFailed:'Reload failed',
+  Loading:'Loading',
   AmmoGuidance:'Check that the actor has native PF1 ammo Items of the matching subtype, with positive quantity.',
   InitialStatus:'Reloading will initialize this weapon automatically',
   Loaded:'Loaded: {loaded}/{capacity}',Unload:'Unload',
@@ -362,62 +363,85 @@ async function rlAutoConfigure(weapon){
   await weapon.update({'system.ammo.default':inferred.ammoId});
  return configured;
 }
-// The only sheet integration is an absolutely positioned compact control.
-// It is not inserted into the sheet's columns, flex sizing or tab structure.
+// PF1 11.11 weapon sheets expose a persistent .sidebar. Insert the reload
+// status immediately AFTER the native Hardness (Solidité) descriptor, not
+// into the header or into the grid containing the sheet's tabs.
 function rlSheetWidget(sheet,html){
  if(!rlAllowed())return;
  const weapon=sheet?.document??sheet?.item??sheet?.object;
  if(weapon?.type!=='weapon'||!rlActor(weapon)||!rlOwner(rlActor(weapon)))return;
- const native=rlAttackActions(weapon);
- if(!native.length&&!rlState(weapon))return;
+ if(!rlAttackActions(weapon).length&&!rlState(weapon))return;
  const root=html?.[0]??html??sheet?.element?.[0]??sheet?.element;
- if(!root?.querySelector||root.querySelector('[data-pf1ae-reload-widget]'))return;
- const header=root.querySelector('.sheet-header')??root.querySelector('header.sheet-header');
- if(!header)return;
- const container=document.createElement('div');
- container.dataset.pf1aeReloadWidget='true';
- container.style.cssText='position:absolute;top:5px;right:7px;z-index:8;display:flex;align-items:center;gap:4px;padding:3px 5px;border-radius:5px;background:var(--color-bg-option,#e7dfcc);box-shadow:0 1px 3px #0005;max-width:55%;';
- if(!header.style.position)header.style.position='relative';
+ if(!root?.querySelector)return;
+ const sidebar=root.matches?.('.sidebar')?root:root.querySelector('.sidebar');
+ if(!sidebar||sidebar.querySelector('[data-pf1ae-reload-widget]'))return;
  const state=rlState(weapon),inferred=rlInfer(weapon);
+ const container=document.createElement('section');
+ container.dataset.pf1aeReloadWidget='true';
+ container.className='pf1ae-reload-sidebar';
+ container.style.cssText='display:flex;flex-direction:column;flex:0 0 auto;gap:3px;'+
+  'padding:4px 3px 5px;margin:4px 0 6px;min-height:0;max-width:100%;'+
+  'border-top:1px solid var(--color-border,#888);'+
+  'border-bottom:1px solid var(--color-border,#888);';
+ const heading=document.createElement('h5');
+ heading.textContent=rlL('Loading');
+ heading.style.cssText='margin:0 0 2px;line-height:1.3;';
+ container.append(heading);
+ const content=document.createElement('div');
+ content.style.cssText='display:flex;align-items:center;justify-content:space-between;'+
+  'gap:5px;min-width:0;flex-wrap:wrap;';
  const status=document.createElement('span');
- status.style.cssText='white-space:nowrap;font-size:11px;line-height:1.2;';
  status.textContent=state?state.slots.length+' / '+state.capacity:
-   inferred.ok?'0 / '+inferred.capacity:'— / ?';
+  inferred.ok?'0 / '+inferred.capacity:'— / ?';
  status.title=state?rlL('Loaded',{loaded:state.slots.length,capacity:state.capacity}):
-   (inferred.ok?rlL('InitialStatus'):rlL('AutoUnavailable'));
- container.append(status);
- const button=(label,fn)=>{
-  const b=document.createElement('button');b.type='button';b.textContent=label;
-  b.style.cssText='width:auto;min-width:0;max-width:none;flex:0 0 auto;margin:0;padding:2px 5px;font-size:11px;line-height:1.15;';
-  b.addEventListener('click',event=>{
-   event.stopPropagation();event.preventDefault();
+  inferred.ok?rlL('InitialStatus'):rlL('AutoUnavailable');
+ status.style.cssText='font-weight:600;white-space:nowrap;flex:1 1 auto;';
+ content.append(status);
+ const actions=document.createElement('div');
+ actions.style.cssText='display:flex;gap:3px;flex:0 0 auto;align-items:center;';
+ const button=(label,tooltip,fn)=>{
+  const element=document.createElement('button');
+  element.type='button';element.textContent=label;element.title=tooltip;
+  element.style.cssText='font:inherit;font-size:12px;line-height:1;min-width:24px;'+
+   'width:auto;min-height:22px;height:22px;margin:0;padding:2px 5px;flex:0 0 auto;';
+  element.addEventListener('click',event=>{
+   event.preventDefault();event.stopPropagation();
    void Promise.resolve().then(fn).then(()=>sheet.render?.(true))
-    .catch(err=>ui.notifications?.warn?.(err.message));
+    .catch(error=>ui.notifications?.warn?.(error.message));
   });
-  container.append(b);
+  actions.append(element);
  };
- // The user-defined native Reload action triggers loading through post-use.
- if(state?.slots.length)button(rlL('Unload'),()=>rlUnload(weapon,{count:1}));
- if(game.user?.isGM){
-  // Optional correction exists only if automated capacity could not be read
-  // or the GM deliberately needs to override it; never a mandatory form.
-  button('⚙',async()=>{
-   const current=rlState(weapon),guess=rlInfer(weapon);
-   const input=await Dialog.prompt({
-    title:rlL('Capacity'),
-    content:'<label>'+rlL('Capacity')+' <input name="capacity" type="number" min="1" max="100" value="'+
-      (current?.capacity??guess.capacity??1)+'"></label>',
-    callback:html=>Number(html.find?.('[name="capacity"]')?.val?.()??
-      html.querySelector?.('[name="capacity"]')?.value)
-   });
-   if(input==null)return;
-   const inferredAmmo=current?.ammoType??guess.ammoType;
-   if(!inferredAmmo)throw Error(rlL('AutoUnavailable'));
-   await rlConfigure(weapon,{capacity:input,ammoType:inferredAmmo,
-    base:current?.base??guess.base??'standard',actionCosts:current?.actionCosts??{}});
+ if(state?.slots.length)button('−',rlL('Unload'),()=>rlUnload(weapon,{count:1}));
+ if(game.user?.isGM)button('⚙',rlL('Capacity'),async()=>{
+  const current=rlState(weapon),guess=rlInfer(weapon);
+  const chosen=await Dialog.prompt({
+   title:rlL('Capacity'),
+   content:'<label>'+rlL('Capacity')+
+    ' <input name="capacity" type="number" min="1" max="100" value="'+
+    (current?.capacity??guess.capacity??1)+'"></label>',
+   callback:html=>Number(html.find?.('[name="capacity"]')?.val?.()??
+    html.querySelector?.('[name="capacity"]')?.value)
   });
+  if(chosen==null)return;
+  const ammoType=current?.ammoType??guess.ammoType;
+  if(!ammoType)throw Error(rlL('AutoUnavailable'));
+  await rlConfigure(weapon,{capacity:chosen,ammoType,
+   base:current?.base??guess.base??'standard',actionCosts:current?.actionCosts??{}});
+ });
+ content.append(actions);container.append(content);
+ // PF1 physical item sidebar adds its hardness row with a protected input
+ // named system.hardness. Using that stable field is language-independent.
+ const hardness=sidebar.querySelector('input[name="system.hardness"]');
+ const hp=sidebar.querySelector('input[name="system.hp.value"]');
+ const anchor=hardness?.closest('.descriptor')??hardness?.closest('label')??
+  hp?.closest('.descriptor')??hp?.closest('.range-value');
+ if(anchor?.parentElement===sidebar)anchor.insertAdjacentElement('afterend',container);
+ else{
+  // Future sheet variations: remain in the sidebar, never spill into the tabs.
+  const firstCheckbox=sidebar.querySelector('.descriptor.checkbox');
+  if(firstCheckbox?.parentElement===sidebar)sidebar.insertBefore(container,firstCheckbox);
+  else sidebar.append(container);
  }
- header.append(container);
 }
 function rlInstall(){
  // Works with private as well as public PF1 ActionUse classes. No prototype

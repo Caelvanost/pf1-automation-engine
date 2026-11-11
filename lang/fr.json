@@ -110,7 +110,8 @@
       "AutoUnavailable": "Capacité ou type de munition introuvable automatiquement",
       "InitialStatus": "Cliquer sur Recharger pour initialiser le chargement à partir des données de l'arme",
       "ReloadFailed": "Échec du rechargement",
-      "AmmoGuidance": "Vérifiez les objets Munition PF1 de l'inventaire, leur type et leur quantité. L'action Recharger doit utiliser « Aucune munition »."
+      "AmmoGuidance": "Vérifiez les objets Munition PF1 de l'inventaire, leur type et leur quantité. L'action Recharger doit utiliser « Aucune munition ».",
+      "Loading": "Chargement"
     }
   }
 }

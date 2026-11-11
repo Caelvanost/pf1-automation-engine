@@ -71,6 +71,12 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  for(const fn of once.get('init')??[])fn();
  for(const fn of once.get('ready')??[])fn();
  const api=context.game.modules.get('pf1-automation-engine').api.reload;
+ // Regression: widget anchors to a native language-independent hardness
+ // input, within the sidebar; it must never prepend the item header.
+ assert.match(code,/sidebar\.querySelector\('input\[name="system\.hardness"\]'\)/);
+ assert.match(code,/anchor\.insertAdjacentElement\('afterend',container\)/);
+ assert.doesNotMatch(code,/header\.append\(container\)/);
+ 
  // Automatic weapon setup uses native action ammo and a conservative
  // capacity parse; it never requires a full custom configuration form.
  const originalName=weapon.name;

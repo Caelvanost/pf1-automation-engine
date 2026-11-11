@@ -254,3 +254,9 @@ console.log(game.modules.get("pf1-automation-engine")?.api.reload.ammoDiagnostic
 You may need to replace the actor and weapon names; the diagnostic displays the ammo subtype expected by PF1, the native default ID, each native ammunition stack's type and quantity, and reservations. \`api.reload.lastDiagnostic()\` now embeds this inventory report on reload failures. Empty inventory or incompatible ammunition types are legitimate errors requiring a compatible native PF1 ammunition Item on the actor.
 
 **Still experimental:** the action must reach native \`pf1PostActionUse\`; no ammo is deducted during reloading, only when firing. Verify operation in the actual Foundry v13 / PF1 v11.11 world.
+
+## v1.24.4 — Chargement dans la colonne latérale de l'arme
+
+Le compteur des projectiles chargés n'est plus superposé à l'en-tête de la fiche. Il est intégré à la colonne latérale native du système PF1 **immédiatement sous Solidité (system.hardness)**, dans une section « Chargement » qui suit le défilement natif de la colonne. Les contrôles « Décharger » (si au moins un projectile est chargé) et le réglage facultatif de la capacité (MJ) y sont regroupés. L'implantation utilise la structure `.sidebar` du template PF1 de la fiche d'arme, sans modifier le quadrillage ni les onglets.
+
+Un point d'insertion de secours reste dans la barre latérale lorsque le champ Solidité n'existe pas dans une variante de fiche. Aucune modification du comportement des tirs, munitions ou rechargements de v1.24.3. Tests automatisés uniquement ; à confirmer en session Foundry 13 + PF1 11.11.
