@@ -1,3 +1,9 @@
+## v1.19.2 — Attribution du module
+
+- Corrige le nom de l'auteur affiché par Foundry VTT dans `module.json` : **Caelvanost** remplace **Module personnalisé**.
+- Met à jour le numéro de version et l'URL du ZIP GitHub pour la release v1.19.2.
+- Aucun changement du comportement ou des API du moteur.
+
 ## v1.19.1 — Exécution de secours MJ des Script Calls, sous approbation exacte
 
 - `damageEvents` élit désormais le joueur propriétaire connecté le plus prioritaire, ou le MJ élu lorsque tous les joueurs propriétaires sont déconnectés ; les PNJ sans propriétaire joueur restent exécutés par le MJ élu.
