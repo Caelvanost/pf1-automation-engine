@@ -51,7 +51,7 @@ function raCalculate(distance,increment,max){
      distance<0||increment<=0||!Number.isInteger(max)||max<1)return null;
   // Avoid floating-point spill-over at exact increment boundaries.
   const factor=Math.max(1,Math.ceil(distance/increment-1e-9));
-  return {factor,penalty:-2*(factor-1),outOfRange:factor>max};
+  return {factor,penalty:factor===1?0:-2*(factor-1),outOfRange:factor>max};
 }
 function raApply(use){
   if(!raEnabled())return {skipped:'disabled'};
