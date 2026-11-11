@@ -525,7 +525,7 @@ async function aoResolveDamage(data){
   }
  // Corroborated native damage also feeds class-neutral Item subscriptions.
  // No additional low-level PF1 damage hooks are installed.
- Hooks.callAll('pf1aeVerifiedDamage',{requestId:data.requestId,
+ Hooks.callAll?.('pf1aeVerifiedDamage',{requestId:data.requestId,
    sourceUserId:data.userId,context:{...c,sourceMessageId:card.id},
    targetUuid:data.targetUuid});
  return aoQueue(async()=>{
