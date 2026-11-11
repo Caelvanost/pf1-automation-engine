@@ -1,3 +1,11 @@
+## v1.24.4 — Interface : Chargement sous Solidité
+
+- Déplace la section de chargement du coin supérieur droit de l'en-tête vers le volet gauche de la fiche d'arme, immédiatement sous la ligne native « Solidité ».
+- Présente le titre « Chargement », le compteur de munitions et les boutons compacts de déchargement et correction de capacité dans la même section.
+- Conserve la mise en page et le défilement natifs de la fiche PF1 ; prévoit un ancrage de secours dans la barre latérale si le champ de solidité est absent.
+- Ajoute la traduction du titre de section en français et anglais ; test de régression sur l'ancrage dans la sidebar.
+- Aucun changement de la logique de consommation ou de rechargement.
+
 ## v1.24.3 — Rechargement : correction de la détection des munitions et diagnostic
 
 - Supprime le refus injustifié des munitions natives PF1 non identifiées.
