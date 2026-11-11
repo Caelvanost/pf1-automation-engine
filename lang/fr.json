@@ -108,7 +108,8 @@
       "TimeStandard": "Action simple",
       "TimeFull": "Action complexe",
       "AutoUnavailable": "Capacité ou type de munition introuvable automatiquement",
-      "InitialStatus": "Cliquer sur Recharger pour initialiser le chargement à partir des données de l'arme"
+      "InitialStatus": "Cliquer sur Recharger pour initialiser le chargement à partir des données de l'arme",
+      "ReloadFailed": "Échec du rechargement"
     }
   }
 }
