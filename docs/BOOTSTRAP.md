@@ -78,3 +78,6 @@ Les résultats d'enregistrement contiennent `registered`, `id`, `actorUuid`, `it
 8. Vérifier que les Script Calls Utilisation, Après utilisation et Basculer classiques continuent de fonctionner sans modification.
 
 Les tests Node simulent Foundry ; ils ne certifient pas les variables réelles de Basculer ni le comportement multi-client complet sur votre installation PF1 v11.11.
+## v1.19.1 — Exécution de secours approuvée
+
+Sur un acteur possédé par un joueur mais dont tous les propriétaires joueurs sont déconnectés, le MJ élu ne restaure un Script Call `toggle` que si sa version enregistrée a été approuvée explicitement dans `api.scriptApprovals`. Modifier l'Item invalide immédiatement l'empreinte ; les listeners suivis sont retirés par la restauration déclenchée sur `updateItem`. Au retour du joueur, le MJ désinstalle ses listeners et le client joueur reprend la restauration. Voir [Approbations de secours](SCRIPT-FALLBACK-APPROVALS.md).
