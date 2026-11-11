@@ -77,7 +77,7 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  assert.equal(auto.capacity,2);
  assert.equal(weapon.actions.length,3,'auto init creates Reload once');
  assert.equal(api.infer(weapon).capacity,2);
- assert.equal(await api.initialize(weapon).capacity,2,'idempotent automatic init');
+ assert.equal((await api.initialize(weapon)).capacity,2,'idempotent automatic init');
  const feat={id:'rapid',type:'feat',name:'Rechargement rapide',system:{disabled:false}};
  actor.items.set('rapid',feat);
  assert.equal(api.rapidReload(weapon),false,'unselected feat gives no global bonus');
