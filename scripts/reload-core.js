@@ -42,7 +42,7 @@ const rlState=weapon=>{
  if(s.slots.some(x=>typeof x?.ammoId!=='string'||!x.ammoId))return null;
  return rlClone(s);
 };
-const rlActions=weapon=>[...(weapon?.actions?.contents??weapon?.actions??[])];
+const rlActions=weapon=>[...(weapon?.actions?.contents??weapon?.actions?.values?.()??weapon?.actions??[])];
 const rlNativeAction=use=>{
  const item=use?.item??use?.action?.item;
  const state=rlState(item);
@@ -57,7 +57,7 @@ const rlAmmo=(actor,id)=>actor?.items?.get(id)??null;
 const rlQuantity=item=>Number(item?.system?.quantity??0);
 const rlReservations=(actor,ammoId,except)=>{
  let reserved=0;
- for(const item of actor?.items??[]){
+ for(const item of rlItems(actor)){
   if(item.id===except?.id)continue;
   const s=rlState(item);
   if(s)reserved+=s.slots.filter(x=>x.ammoId===ammoId).length;
@@ -249,89 +249,143 @@ async function rlCommitShot(use){
  }catch(error){console.error('[PF1AE][Reload] Shot state update failed',error);}
  finally{RL_FIRING.delete(weapon.uuid);}
 }
-// Compact widget added without replacing PF1's native item sheet.
+// Compact controls on the existing PF1 item sheet; preserve its own layout.
+const rlItems=actor=>[...(actor?.items?.contents??actor?.items?.values?.()??actor?.items??[])];
+const rlAmmoChoices=actor=>rlItems(actor).filter(item=>item?.type==='ammo' &&
+  !item.inContainer && item.system?.identified!==false);
+const rlAttackActions=weapon=>rlActions(weapon).filter(action=>
+  action?.hasAttack===true || ['rwak','twak','mwak','rsak','msak'].includes(action?.actionType));
+const rlNativeAmmoType=weapon=>rlAttackActions(weapon)
+  .find(action=>action?.actionType==='rwak'&&action?.ammo?.type)?.ammo?.type ??
+  weapon?.system?.ammo?.type ?? null;
 function rlSheetWidget(sheet,html){
  if(!rlAllowed())return;
  const weapon=sheet?.document??sheet?.item??sheet?.object;
  if(weapon?.type!=='weapon'||!rlActor(weapon)||!rlOwner(rlActor(weapon)))return;
  const root=html?.[0]??html??sheet?.element?.[0]??sheet?.element;
  if(!root?.querySelector||root.querySelector('[data-pf1ae-reload-widget]'))return;
- const host=root.querySelector('.window-content')??root;
  const actor=rlActor(weapon),state=rlState(weapon);
- const actions=rlActions(weapon).filter(a=>a?.hasAttack&&a.ammo?.type&&a.actionType==='rwak');
+ const actions=rlAttackActions(weapon);
+ const ammoItems=rlAmmoChoices(actor);
  if(!state&&!actions.length)return;
  const panel=document.createElement('section');
  panel.dataset.pf1aeReloadWidget='true';
- panel.style.cssText='padding:6px 10px;margin:5px 0;border:1px solid var(--color-border-light-primary,#888);border-radius:5px;font-size:0.9em;';
- const heading=document.createElement('div');
- heading.style.cssText='display:flex;align-items:center;gap:6px;flex-wrap:wrap;';
- const name=document.createElement('strong');
- name.textContent=state?rlL('Loaded',{loaded:state.slots.length,capacity:state.capacity}):rlL('Configure');
- heading.append(name);panel.append(heading);
- const button=(text,handler)=>{
-  const b=document.createElement('button');b.type='button';b.textContent=text;
-  b.style.cssText='width:auto;min-width:70px;padding:2px 7px;';
-  b.addEventListener('click',()=>{void Promise.resolve().then(handler)
-   .then(()=>sheet.render?.(true)).catch(error=>ui.notifications?.warn?.(error.message));});
-  heading.append(b);
+ // The native sheet's .window-content is often a flex container. A panel
+ // inserted as a naked flex child otherwise grows into a large blank header.
+ panel.style.cssText='box-sizing:border-box;flex:0 0 auto;align-self:stretch;min-height:0;max-height:none;padding:6px 9px;margin:4px 0;border:1px solid var(--color-border-light-primary,#888);border-radius:5px;font-size:0.9em;';
+ const header=document.createElement('div');
+ header.style.cssText='display:flex;align-items:center;gap:7px;flex-wrap:wrap;';
+ const title=document.createElement('strong');
+ title.textContent=state?rlL('Loaded',{loaded:state.slots.length,capacity:state.capacity}):rlL('Configure');
+ header.append(title);panel.append(header);
+ const button=(text,parent,handler)=>{
+  const element=document.createElement('button');element.type='button';element.textContent=text;
+  element.style.cssText='width:auto;min-width:70px;padding:2px 7px;flex:none;';
+  element.addEventListener('click',event=>{
+   event.preventDefault();event.stopPropagation();
+   void Promise.resolve().then(handler).then(()=>sheet.render?.(true))
+    .catch(error=>ui.notifications?.warn?.(error.message));
+  });
+  parent.append(element);return element;
  };
  if(state){
   const dots=document.createElement('span');
   dots.textContent=Array.from({length:state.capacity},(_,i)=>i<state.slots.length?'●':'○').join(' ');
-  dots.setAttribute('aria-label',String(state.slots.length)+' / '+String(state.capacity));
-  heading.append(dots);
-  const count=document.createElement('input');count.type='number';
-  count.min='1';count.max=String(state.capacity);count.value='1';
-  count.style.cssText='width:48px;flex:none;';
-  heading.append(count);
-  button(rlL('Action'),()=>rlReload(weapon,{count:Number(count.value)}));
-  button(rlL('Unload'),()=>rlUnload(weapon,{count:Number(count.value)}));
+  dots.setAttribute('aria-label',state.slots.length+' / '+state.capacity);
+  header.append(dots);
+  const count=document.createElement('input');count.type='number';count.min='1';
+  count.max=String(state.capacity);count.value='1';count.style.cssText='width:55px;min-width:55px;flex:none;';
+  header.append(count);
+  button(rlL('Action'),header,()=>rlReload(weapon,{count:Number(count.value)}));
+  button(rlL('Unload'),header,()=>rlUnload(weapon,{count:Number(count.value)}));
  }
  const details=document.createElement('details');
- const summary=document.createElement('summary');summary.textContent=rlL('Configure');details.append(summary);
+ details.style.cssText='width:100%;margin-top:4px;';
+ const summary=document.createElement('summary');summary.textContent=rlL('Configure');
+ details.append(summary);
  const fields=document.createElement('div');
- fields.style.cssText='display:flex;gap:5px;flex-wrap:wrap;align-items:center;';
- const field=(label,value,min=0,max=100)=>{
-  const wrapper=document.createElement('label');wrapper.textContent=label+' ';
-  const input=document.createElement('input');input.type='number';input.min=String(min);
-  input.max=String(max);input.value=String(value);input.style.width='55px';
-  wrapper.append(input);fields.append(wrapper);return input;
+ fields.style.cssText='display:flex;align-items:end;gap:8px;flex-wrap:wrap;padding:7px 0;';
+ const withLabel=(text,control)=>{
+  const label=document.createElement('label');
+  label.style.cssText='display:flex;flex-direction:column;gap:3px;min-width:100px;flex:1 1 125px;';
+  const caption=document.createElement('span');caption.textContent=text;
+  label.append(caption,control);fields.append(label);return control;
  };
- const capacity=field(rlL('Capacity'),state?.capacity??1,1,100);
- const ammo=document.createElement('select');
- for(const item of actor.items??[]){
-  if(item.type!=='ammo'||item.inContainer)continue;
-  const type=state?.ammoType??actions[0]?.ammo?.type;
-  if(type&&item.system?.subType&&item.system.subType!==type)continue;
-  const option=document.createElement('option');option.value=item.id;
-  option.textContent=item.name??item.id;ammo.append(option);
+ const number=(value,min,max)=>{
+  const input=document.createElement('input');input.type='number';
+  input.min=String(min);input.max=String(max);input.value=String(value);
+  input.style.cssText='box-sizing:border-box;width:100%;min-width:70px;min-height:26px;';
+  return input;
+ };
+ const select=()=>{
+  const input=document.createElement('select');
+  input.style.cssText='box-sizing:border-box;width:100%;min-width:125px;min-height:26px;';
+  return input;
+ };
+ const option=(input,value,label)=>{
+  const node=document.createElement('option');node.value=value;node.textContent=label;
+  input.append(node);
+ };
+ const capacity=withLabel(rlL('Capacity'),number(state?.capacity??1,1,100));
+ const ammo=select();
+ option(ammo,'',rlL('SelectAmmo'));
+ // Show inventory ammo even if the weapon's action has no native ammo type.
+ // Filter only at validation: an empty action.ammo.type is the common reason
+ // both drop-downs were blank in v1.23.0.
+ for(const item of ammoItems){
+  const type=item.system?.subType??'?';
+  option(ammo,item.id,(item.name??item.id)+' ('+type+', '+(item.system?.quantity??0)+')');
  }
- ammo.value=weapon.system?.ammo?.default??ammo.options[0]?.value??'';
- const ammoWrap=document.createElement('label');
- ammoWrap.textContent=rlL('Ammo')+' ';ammoWrap.append(ammo);fields.append(ammoWrap);
- const actionChoice=document.createElement('select');
- const none=document.createElement('option');none.value='';none.textContent='—';actionChoice.append(none);
- for(const a of actions){const option=document.createElement('option');
-  option.value=a.id;option.textContent=a.name??a.id;actionChoice.append(option);}
- fields.append(actionChoice);
- const cost=field(rlL('Shots'),2,1,100);
- const base=document.createElement('select');
- for(const key of ['free','move','standard','full']){
-  const option=document.createElement('option');option.value=key;option.textContent=key;base.append(option);}
- base.value=state?.base??'standard';fields.append(base);
- details.append(fields);panel.append(details);
- const save=document.createElement('button');save.type='button';save.textContent=rlL('Save');
- save.addEventListener('click',()=>{void (async()=>{
-   const selected=actor.items?.get(ammo.value);
-   if(!selected)throw Error(rlL('Missing'));
-   const costs={...(state?.actionCosts??{})};
-   if(actionChoice.value)costs[actionChoice.value]=Number(cost.value);
-   await rlConfigure(weapon,{capacity:Number(capacity.value),
-    ammoType:selected.system?.subType??actions[0]?.ammo?.type,
-    base:base.value,actionCosts:costs});
-   await sheet.render?.(true);
-  })().catch(error=>ui.notifications?.warn?.(error.message));});
- details.append(save);host.prepend(panel);
+ const preferred=weapon.system?.ammo?.default??state?.slots?.[0]?.ammoId;
+ if(ammoItems.some(item=>item.id===preferred))ammo.value=preferred;
+ withLabel(rlL('Ammo'),ammo);
+ const actionChoice=select();
+ option(actionChoice,'',rlL('SelectAction'));
+ for(const action of actions)option(actionChoice,action.id,action.name??action.id);
+ withLabel(rlL('Shots'),actionChoice);
+ const cost=withLabel(rlL('Count'),number(2,1,100));
+ const base=select();
+ for(const kind of ['free','move','standard','full'])option(base,kind,rlL('Time'+kind[0].toUpperCase()+kind.slice(1)));
+ base.value=state?.base??'standard';
+ withLabel(rlL('Base'),base);
+ const note=document.createElement('p');
+ note.style.cssText='margin:4px 0;font-size:0.9em;opacity:0.85;';
+ const native=rlNativeAmmoType(weapon);
+ if(!ammoItems.length)note.textContent=rlL('NoAmmo');
+ else if(!actions.length)note.textContent=rlL('NoActions');
+ else if(!native)note.textContent=rlL('NoNativeAmmo');
+ else note.textContent=rlL('Help');
+ details.append(fields,note);
+ button(rlL('Save'),details,async()=>{
+  if(!ammo.value)throw Error(rlL('NoAmmo'));
+  if(!Number.isSafeInteger(Number(capacity.value))||Number(capacity.value)<1||
+     Number(capacity.value)>100)throw Error(rlL('OutOfCapacity'));
+  const selected=actor.items?.get(ammo.value);
+  if(!selected||selected.type!=='ammo')throw Error(rlL('Missing'));
+  const ammoType=selected.system?.subType;
+  if(!ammoType)throw Error(rlL('NoAmmo'));
+  // PF1 subtractAmmo() requires an explicit native ammo type. Prevent a
+  // misleading successful setup on a weapon whose attacks cannot consume it.
+  const attacks=actions.filter(action=>action.actionType==='rwak');
+  if(!attacks.length||!attacks.some(action=>action.ammo?.type===ammoType))
+   throw Error(rlL('NativeMismatch'));
+  const actionId=actionChoice.value;
+  const costs={...(state?.actionCosts??{})};
+  if(actionId){
+   const selectedAction=actions.find(a=>a.id===actionId);
+   if(selectedAction?.actionType!=='rwak'||selectedAction.ammo?.type!==ammoType)
+    throw Error(rlL('NativeMismatch'));
+   costs[actionId]=Number(cost.value);
+  }
+  await rlConfigure(weapon,{capacity:Number(capacity.value),ammoType,
+   base:base.value,actionCosts:costs});
+ });
+ panel.append(details);
+ // Attach below the native sheet header rather than ahead of the whole sheet.
+ const sheetHeader=root.querySelector('.sheet-header')??
+   root.querySelector('header.sheet-header');
+ if(sheetHeader?.parentElement)sheetHeader.insertAdjacentElement('afterend',panel);
+ else (root.querySelector('.sheet-body')??root.querySelector('.window-content')??root).prepend(panel);
 }
 function rlInstall(){
  const proto=(globalThis.pf1?.components?.ActionUse??

@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.23.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.23.1 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -193,3 +193,13 @@ This first version implements an **opt-in core for configured firearms and cross
 **Double barrel:** Set capacity 2 and native Double barrel Action shot cost 2. One loaded barrel permits a single shot but blocks a double shot. The existing PF1 Full Attack button may still be required to produce two attack rolls for that Action.
 
 Note that PF1 Action names are saved world data; an Action created as Reload or Recharger will not automatically change its stored name based on another connected user's locale. Notifications and settings do localize per client.
+
+### v1.23.1 — Configuration du chargement des armes
+
+Le panneau de rechargement se place désormais **sous l'en-tête natif de l'arme**, dans un encadré de taille limitée, sans grand espace vide. Les sélecteurs sont libellés, lisibles et adaptables aux petits écrans.
+
+La liste **Action d'attaque** montre les actions présentes dans l'arme, y compris celles dont le type de munition n'est pas encore renseigné. La liste **Munition** montre les objets PF1 de type `ammo` accessibles dans l'inventaire de l'acteur, sans filtrage trompeur par le type de l'action. Les autres objets de butin ne sont pas des munitions PF1 natives.
+
+**Prérequis pour enregistrer :** créer un objet de type *Munition* (PF1 `ammo`) dans l'inventaire de Zéphir et vérifier que l'action *Attaque* du pistolet utilise le même **type de munition** que cet objet. Le chargement PF1AE ne peut pas remplacer la configuration native nécessaire à la déduction PF1. Si ces valeurs manquent ou diffèrent, le bouton affiche désormais un message clair en français ou en anglais au lieu de créer un chargement trompeur.
+
+Configurer **Capacité : 2**, choisir la munition, sélectionner facultativement **Double canon** et saisir **Projectiles nécessaires : 2**, choisir le temps de rechargement de base, puis enregistrer. Les attaques et les munitions compatibles restent à vérifier dans la vraie session PF1 11.11 ; l'option reste expérimentale et désactivée par défaut.

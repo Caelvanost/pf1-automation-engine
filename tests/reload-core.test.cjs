@@ -64,6 +64,25 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  for(const fn of once.get('init')??[])fn();
  for(const fn of once.get('ready')??[])fn();
  const api=context.game.modules.get('pf1-automation-engine').api.reload;
+ // PF1 weapon Action can have a ranged actionType without a prepared
+ // ammo.type yet. Keep it visible in the widget for actionable diagnosis.
+ context.actor=actor;context.weapon=weapon;
+ const rawChoice=vm.runInContext('rlAttackActions(weapon)',context);
+ assert.equal(rawChoice.length,2);
+ const incomplete={id:'incomplete',name:'Double barrel (unconfigured)',
+   actionType:'rwak',hasAttack:true,ammo:{type:null,cost:0}};
+ weapon.actions.push(incomplete);
+ const visible=vm.runInContext('rlAttackActions(weapon)',context);
+ assert.equal(visible.length,3,'an unconfigured ranged attack remains selectable');
+ weapon.actions.pop();
+ const ammoOptions=vm.runInContext('rlAmmoChoices(actor)',context);
+ assert.equal(ammoOptions.length,1,'native PF1 Item type ammo is listed');
+ assert.equal(ammoOptions[0].id,'am');
+ actor.items.set('loot',{id:'loot',type:'loot',system:{quantity:99}});
+ assert.equal(vm.runInContext('rlAmmoChoices(actor)',context).length,1,
+   'ordinary loot is not falsely listed as native ammunition');
+ actor.items.delete('loot');
+ 
  let state=await api.configure(weapon,{capacity:2,ammoType:'gunBullet',
   base:'standard',actionCosts:{double:2}});
  assert.equal(state.slots.length,0);
