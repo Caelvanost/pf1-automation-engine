@@ -64,6 +64,33 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  for(const fn of once.get('init')??[])fn();
  for(const fn of once.get('ready')??[])fn();
  const api=context.game.modules.get('pf1-automation-engine').api.reload;
+ // Automatic weapon setup uses native action ammo and a conservative
+ // capacity parse; it never requires a full custom configuration form.
+ const originalName=weapon.name;
+ weapon.name='Pistolet à double canon';
+ weapon.system.description={value:'<p>Misfire 1–2 (5 ft.); Capacity 2</p>'};
+ assert.equal(api.infer(weapon).ok,true);
+ assert.equal(api.infer(weapon).capacity,2);
+ assert.equal(api.infer(weapon).ammoId,'am');
+ assert.equal(api.infer(weapon).source,'description');
+ const auto=await api.initialize(weapon);
+ assert.equal(auto.capacity,2);
+ assert.equal(weapon.actions.length,3,'auto init creates Reload once');
+ assert.equal(api.infer(weapon).capacity,2);
+ assert.equal(await api.initialize(weapon).capacity,2,'idempotent automatic init');
+ const feat={id:'rapid',type:'feat',name:'Rechargement rapide',system:{disabled:false}};
+ actor.items.set('rapid',feat);
+ assert.equal(api.rapidReload(weapon),false,'unselected feat gives no global bonus');
+ feat.name='Rechargement rapide (pistolet)';
+ assert.equal(api.rapidReload(weapon),true,'explicit pistol choice qualifies');
+ feat.name='Rechargement rapide (mousquet)';
+ assert.equal(api.rapidReload(weapon),false,'wrong weapon choice never qualifies');
+ actor.items.delete('rapid');
+ weapon.name=originalName;
+ await weapon.unsetFlag?.('pf1-automation-engine','reloadState');
+ weapon.flags={};
+ weapon.actions.pop();
+ 
  // PF1 weapon Action can have a ranged actionType without a prepared
  // ammo.type yet. Keep it visible in the widget for actionable diagnosis.
  context.actor=actor;context.weapon=weapon;
