@@ -8,6 +8,7 @@ const RL_NS='pf1-automation-engine',RL_KEY='reloadState',RL_ENABLED='reloadEnabl
 const RL_ACTION='pf1ae-reload';
 const RL_BUSY=new Set(),RL_SHOTS=new WeakMap(),RL_DENIED=new WeakSet();
 const RL_FIRING=new Set();
+let RL_LAST=null;
 const rlL=(key,data={})=>{
  const fallback={
   Action:'Reload',
@@ -99,7 +100,16 @@ function rlCheck(use){
  const weapon=use?.item;
  if(!rlAllowed()||weapon?.type!=='weapon'||rlNativeAction(use))return {managed:false};
  const stored=rlState(weapon),inferred=stored?null:rlInfer(weapon);
- if(!stored&&!inferred?.ok)return {managed:false,reason:inferred?.reason??'unsupported'};
+ if(!stored&&!inferred?.ok){
+  // A known firearm/crossbow with an attack must not silently fire because
+  // its native ammo configuration is incomplete. Explicitly deny it.
+  const label=String(weapon?.name??'');
+  const recognizable=/(?:pistol|pistolet|musket|mousquet|crossbow|arbal[eè]te)/i.test(label);
+  const ranged=rlActions(weapon).some(a=>a?.actionType==='rwak');
+  if(recognizable&&ranged)return {managed:true,ok:false,needed:1,loaded:0,
+    reason:inferred?.reason??'missing PF1 native ammo data'};
+  return {managed:false,reason:inferred?.reason??'unsupported'};
+ }
  // Recognized but never reloaded means EMPTY, not unmanaged.
  const state=stored??{schema:1,capacity:inferred.capacity,ammoType:inferred.ammoType,
    slots:[],actionCosts:{}};
@@ -241,6 +251,8 @@ function rlDeny(use,result){
  RL_DENIED.add(use);
  ui.notifications?.warn?.(rlL('Blocked',{
   loaded:result.loaded??0,needed:result.needed??'?'}));
+ RL_LAST={status:'blocked',actor:use.actor?.name??null,weapon:use.item?.name??null,
+  action:use.action?.name??null,...result};
  console.warn('[PF1AE][Reload] Attack blocked before dice',result);
  Hooks.callAll('pf1aeReloadFireDenied',{
   actorUuid:use.actor?.uuid,weaponUuid:use.item?.uuid,
@@ -388,6 +400,9 @@ function rlInstall(){
   const original=use.generateChatAttacks;
   const guarded=async function(...args){
    const check=rlCheck(this);
+   RL_LAST={status:check.managed?(check.ok?'authorized':'blocked'):'unmanaged',
+    actor:this.actor?.name??null,weapon:this.item?.name??null,
+    action:this.action?.name??null,...check};
    if(check.managed){
     if(!check.ok){rlDeny(this,check);return;}
     RL_SHOTS.set(this,check);
@@ -441,7 +456,8 @@ Hooks.once('ready',()=>{
   },
   configure:rlConfigure,reload:rlReload,unload:rlUnload,
   timing:(weapon,ammo,options)=>rlTiming(rlState(weapon),ammo,options),
-  infer:rlInfer,rapidReload:rlRapidReload,initialize:rlAutoConfigure
+  infer:rlInfer,rapidReload:rlRapidReload,initialize:rlAutoConfigure,
+  lastDiagnostic:()=>RL_LAST?{...RL_LAST}:null
  });
  rlInstall();
  Hooks.on('renderItemSheet',rlSheetWidget);
