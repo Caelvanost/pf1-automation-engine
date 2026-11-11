@@ -79,3 +79,15 @@ Les appels `Utilisation`, `Après utilisation` et `Basculer` ordinaires ne sont 
 9. Vérifier aussi les abonnements d'attaque et les anciens scripts de sauvegarde/effets.
 
 **Limite connue :** les sockets Foundry natifs ne fournissent pas de preuve cryptographique d'origine. Les événements de dégâts exécutés sur le MJ proviennent uniquement du chemin de confirmation natif local ; les propriétaires reçoivent des notifications destinées à leur propre client. Une garantie exactement-une-fois après une panne réseau au milieu d'un Script Call demanderait un protocole d'accusé de réception transactionnel supplémentaire. Ce changement ne promet pas cette garantie en cas de coupure en plein traitement.
+
+## Exception explicite : Table de confiance (v1.20.0)
+
+Le MJ peut activer le réglage de monde `trustedTableMode` dans les paramètres de PF1 Automation Engine. **Désactivé par défaut**, il conserve toutes les approbations déjà enregistrées sans les modifier ni les supprimer.
+
+Lorsque le mode est activé, `scriptApprovals.check(actor,item,call)` continue de contrôler le document Actor, l'Item qui lui appartient, l'identité exacte du Script Call natif et sa catégorie. Pour ces **seuls noms exacts**, il autorise la reprise MJ sans empreinte individuelle :
+- `toggle` : `PF1AE:bootstrap`
+- `postUse` : `PF1AE:attack:resolved`, `PF1AE:damage:applied`, `PF1AE:damage:critical`, `PF1AE:damage:zeroHP`
+
+Les Script Calls ordinaires, les noms ressemblants et les catégories non reconnues demeurent soumis à la validation individuelle. Une modification d'un script PF1AE reconnu n'impose pas de nouvelle approbation en mode de confiance ; le retour au mode sécurisé remet immédiatement en vigueur les approbations exactes antérieures.
+
+**Risque assumé :** un joueur autorisé à éditer une capacité peut fournir du JavaScript qui sera ensuite exécuté avec les privilèges du MJ élu. Ne jamais activer ce mode dans un monde public ou avec des joueurs non fiables. Les vérifications de provenance native des dégâts, de permissions des documents, d'élection du client, de déduplication et d'absence de récursion ne sont pas désactivées. L'interprétation des sockets Foundry ne constitue pas une authentification cryptographique.

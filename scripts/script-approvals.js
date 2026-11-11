@@ -4,6 +4,13 @@
  * It never accepts arbitrary executable code from a socket or external payload.
  */
 const SA_NS='pf1-automation-engine', SA_SETTING='scriptFallbackApprovals';
+const SA_TRUSTED='trustedTableMode';
+const saTrusted=()=>game.settings.get(SA_NS,SA_TRUSTED)===true;
+const SA_AUTO_NAMES=new Map([
+ ['toggle',new Set(['PF1AE:bootstrap'])],
+ ['postUse',new Set(['PF1AE:attack:resolved','PF1AE:damage:applied',
+  'PF1AE:damage:critical','PF1AE:damage:zeroHP'])]
+]);
 const saLeader=()=>[...game.users].filter(u=>u.active&&u.isGM)
  .sort((a,b)=>a.id.localeCompare(b.id))[0]??null;
 const saIsLeader=()=>game.user?.isGM&&saLeader()?.id===game.user.id;
@@ -70,6 +77,11 @@ function saCheck(actor,item,call){
   if(!saSafe(id))return {approved:false,reason:'Missing native Script Call id'};
   const resolved=saFind(actor,item,id),key=saKey(actor.uuid,item.uuid,id);
   if(resolved!==call)return {approved:false,reason:'Script Call identity changed'};
+  // Trusted Table Mode is an explicit world-wide GM decision. Only native
+  // Script Calls with an exact PF1AE category and subscription name bypass
+  // individual approval; the Actor/Item/Call identity was validated above.
+  if(saTrusted() && SA_AUTO_NAMES.get(call.category)?.has(call.name))
+   return {approved:true,trustedTableMode:true};
   const record=saRows().find(x=>x.key===key);
   if(!record)return {approved:false,reason:'No GM approval for offline-player fallback'};
   if(record.category!==call.category||record.name!==call.name||
@@ -80,6 +92,15 @@ function saCheck(actor,item,call){
 }
 Hooks.once('init',()=>{
  game.settings.register(SA_NS,SA_SETTING,{scope:'world',config:false,type:Array,default:[]});
+ game.settings.register(SA_NS,SA_TRUSTED,{
+  name:'Table de confiance — exécution automatique des scripts PF1AE',
+  hint:'ATTENTION : à activer uniquement dans un monde privé avec des joueurs de confiance. Les Script Calls JavaScript éditables par les joueurs peuvent être exécutés avec les privilèges du MJ lorsque le joueur est absent. Désactivé par défaut ; les approbations individuelles restent conservées.',
+  scope:'world',config:true,restricted:true,type:Boolean,default:false,
+  onChange:()=>{
+   // Reconcile without mutating the persistent secure-mode registry.
+   void game.modules.get(SA_NS)?.api?.bootstrap?.restoreAll?.();
+  }
+ });
 });
 Hooks.once('ready',()=>{
  const mod=game.modules.get(SA_NS);if(!mod)return;

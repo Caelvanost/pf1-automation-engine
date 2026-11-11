@@ -9,6 +9,9 @@ const BS_CHANNEL = 'pf1ae-bootstrap-v1';
 const BS_KEYS = /^[A-Za-z0-9_-]{1,80}$/;
 const BS_PENDING = new Map();
 const BS_ACTIVE = new Map();
+const BS_AUTO = new Map(); // Local, ephemeral discovery; never writes secure registrations.
+const BS_AUTO_PREFIX = '__trusted__';
+const bsTrusted = () => game.settings.get(BS_NS,'trustedTableMode')===true;
 const BS_INFLIGHT = new Map();
 const BS_REQUESTS = new Map();
 let bsWrite = Promise.resolve();
@@ -36,6 +39,91 @@ const bsCalls = item => item?.scriptCalls?.contents ??
   (typeof item?.scriptCalls?.values==='function' ? [...item.scriptCalls.values()] :
     Array.isArray(item?.scriptCalls) ? item.scriptCalls : item?.system?.scriptCalls ?? []);
 const bsClone = x => foundry.utils.deepClone(x);
+const bsCallId = call => call?.id ?? call?._id ?? null;
+// Source-aware hook replacement; a changed trusted bootstrap must not leave
+// old callbacks installed. No eval or socket-provided JavaScript is accepted.
+function bsFingerprint(call){
+  const native=call?._source??(typeof call?.toObject==='function'?call.toObject():null);
+  return native && typeof native==='object' ? JSON.stringify(native) : null;
+}
+function bsAutoRecord(actor,item,call){
+  const scriptId=bsCallId(call);
+  if(!bsValidText(actor?.uuid)||!bsValidText(item?.uuid)||
+    !bsValidText(scriptId,120)||typeof call.execute!=='function')return null;
+  // One native Script Call must never run twice merely because it was also
+  // registered manually before Trusted Table Mode was enabled.
+  if(bsList().some(r=>r.enabled&&r.actorUuid===actor.uuid&&
+     r.itemUuid===item.uuid&&r.scriptId===scriptId))return null;
+  const key=BS_AUTO_PREFIX+scriptId;
+  return {id:bsId(actor.uuid,item.uuid,key),actorUuid:actor.uuid,
+    itemUuid:item.uuid,key,scriptId,enabled:true,automatic:true};
+}
+function bsAutoCleanup(){
+  for(const id of BS_AUTO.keys())bsCleanup(id);
+  BS_AUTO.clear();
+}
+function bsItemActor(item){
+  const actor=item?.actor??item?.parent;
+  return actor?.documentName==='Actor'?actor:null;
+}
+function bsAutoDiscoverItem(item){
+  if(item?.documentName!=='Item')return [];
+  const actor=bsItemActor(item);
+  if(!actor)return [];
+  const matches=[...bsCalls(item)].filter(c=>c?.category==='toggle'&&
+    c?.name==='PF1AE:bootstrap'&&typeof c.execute==='function');
+  const seen=new Set(),records=[];
+  for(const call of matches){
+    const record=bsAutoRecord(actor,item,call);
+    if(record&&!seen.has(record.id)){seen.add(record.id);records.push(record);}
+  }
+  return records;
+}
+function bsAutoActors(){
+  const actors=new Map();
+  const add=actor=>{if(actor?.documentName==='Actor'&&bsValidText(actor.uuid))
+    actors.set(actor.uuid,actor);};
+  for(const actor of game.actors?.contents??game.actors?.values?.()??[])add(actor);
+  // Only synthetic Token Actors whose documents are available may be scanned.
+  // Linked actors dedupe against world Actors by their full UUID.
+  const scenes=[...(game.scenes?.contents??game.scenes?.values?.()??[])];
+  if(globalThis.canvas?.scene&&!scenes.includes(globalThis.canvas.scene))scenes.push(globalThis.canvas.scene);
+  for(const scene of scenes)for(const token of scene?.tokens?.contents??scene?.tokens?.values?.()??[])
+    add(token.actor??token.object?.actor);
+  return [...actors.values()];
+}
+function bsAutoScan(){
+  if(!bsTrusted()){bsAutoCleanup();return;}
+  const next=new Map();
+  for(const actor of bsAutoActors()){
+    for(const item of actor.items?.contents??actor.items?.values?.()??[])
+      for(const record of bsAutoDiscoverItem(item))next.set(record.id,record);
+  }
+  for(const id of BS_AUTO.keys())if(!next.has(id))bsCleanup(id);
+  BS_AUTO.clear();
+  for(const [id,record] of next)BS_AUTO.set(id,record);
+  bsDebug('Trusted discovery complete',{count:BS_AUTO.size});
+}
+async function bsAutoRefreshItem(item){
+  if(!bsTrusted()){bsAutoCleanup();return;}
+  const itemUuid=item?.uuid;if(!bsValidText(itemUuid))return;
+  for(const [id,record] of [...BS_AUTO]){
+    if(record.itemUuid===itemUuid){bsCleanup(id);BS_AUTO.delete(id);}
+  }
+  for(const record of bsAutoDiscoverItem(item))BS_AUTO.set(record.id,record);
+  for(const record of BS_AUTO.values())if(record.itemUuid===itemUuid)
+    await bsRestoreOne(record);
+}
+async function bsAutoRefreshActor(actor){
+  if(!bsTrusted()||actor?.documentName!=='Actor')return;
+  for(const [id,record] of [...BS_AUTO])if(record.actorUuid===actor.uuid){
+    bsCleanup(id);BS_AUTO.delete(id);
+  }
+  for(const item of actor.items?.contents??actor.items?.values?.()??[])
+    for(const record of bsAutoDiscoverItem(item))BS_AUTO.set(record.id,record);
+  for(const record of BS_AUTO.values())if(record.actorUuid===actor.uuid)
+    await bsRestoreOne(record);
+}
 function bsScript(item,scriptId) {
   const calls=[...bsCalls(item)].filter(c=>c?.category==='toggle' && typeof c.execute==='function');
   const matches=scriptId
@@ -167,12 +255,18 @@ async function bsRestoreOne(record){
         return {skipped:'unapproved GM fallback',reason:approval.reason};
       }
     }
-    // Keep idempotence, but only after checking the current fingerprint.
-    // Otherwise editing an already-active Script Call leaves stale GM hooks.
-    if(BS_ACTIVE.has(record.id)){
-      bsDebug('Skipped duplicate',{id:record.id});return {skipped:'already active'};
+    // Mode transitions and source edits retire callbacks before reinstallation.
+    // Secure-mode persisted records still require approval on EVERY restore.
+    const fingerprint=bsFingerprint(call);
+    const active=BS_ACTIVE.get(record.id);
+    if(active){
+      if(active.fingerprint===fingerprint && active.script===call &&
+         active.trusted===bsTrusted()){
+        bsDebug('Skipped duplicate',{id:record.id});return {skipped:'already active'};
+      }
+      bsCleanup(record.id);
     }
-    const runtime={hooks:[],cleanup:[]};
+    const runtime={hooks:[],cleanup:[],fingerprint,script:call,trusted:bsTrusted()};
     // Use explicit cleanup and tracked subscriptions to prevent permanent
     // listeners after unregister. A Script that calls raw Hooks.on itself
     // is responsible for unregistering its raw hook.
@@ -190,6 +284,13 @@ async function bsRestoreOne(record){
       await call.execute({action:null},{bootstrap:scope,restoring:true,
         state:null,event:Object.freeze({type:'bootstrap:restore',actorUuid:actor.uuid,itemUuid:item.uuid,key:record.key}),
         api:game.modules.get(BS_NS)?.api?.bootstrap});
+      // Refuse to keep an obsolete handler if the Item changed mid-execute.
+      if(bsFingerprint(call)!==fingerprint || bsExecutor(actor)!==game.user.id ||
+         !bsEnabled() || (record.automatic&&!bsTrusted())){
+        for(const {hook,fn} of runtime.hooks)Hooks.off(hook,fn);
+        for(const fn of runtime.cleanup)try{fn()}catch(_){}
+        return {skipped:'bootstrap changed during restoration'};
+      }
       BS_ACTIVE.set(record.id,runtime);
       bsDebug('Restored',{id:record.id,actorUuid:actor.uuid,itemUuid:item.uuid});
       return {restored:true,id:record.id};
@@ -204,8 +305,14 @@ async function bsRestoreOne(record){
   try{return await job}finally{BS_INFLIGHT.delete(record.id)}
 }
 async function bsRestoreAll(){
-  if(!bsEnabled())return {restored:0,skipped:0,disabled:true};
-  const records=bsList();bsDebug('Restoring persistent scripts',{count:records.length});
+  if(!bsEnabled()){
+    for(const id of [...BS_ACTIVE.keys()])bsCleanup(id);
+    bsAutoCleanup();
+    return {restored:0,skipped:0,disabled:true};
+  }
+  bsAutoScan();
+  const records=[...bsList(),...BS_AUTO.values()];
+  bsDebug('Restoring scripts',{count:records.length,automatic:BS_AUTO.size});
   const known=new Set(records.map(r=>r.id));
   for(const id of [...BS_ACTIVE.keys()])if(!known.has(id))bsCleanup(id);
   let restored=0,skipped=0;
@@ -217,19 +324,40 @@ Hooks.once('init',()=>{
     onChange:()=>{void bsRestoreAll()}});
   Hooks.on('canvasReady',()=>{void bsRestoreAll()});
   Hooks.on('updateUser',(_user,changes)=>{if(Object.hasOwn(changes??{},'active'))void bsRestoreAll()});
+  Hooks.on('updateActor',actor=>{if(bsTrusted()&&actor?.items)void bsAutoRefreshActor(actor)});
   // Editing an approved Script Call must immediately retire any active
   // fallback listeners whose saved source no longer matches GM approval.
   Hooks.on('updateItem',item=>{
+    // A targeted refresh avoids rescanning every Actor on normal Item edits.
+    if(bsTrusted())void bsAutoRefreshItem(item);
     if(bsList().some(x=>x.itemUuid===item?.uuid))void bsRestoreAll();
   });
+  Hooks.on('createItem',item=>{if(bsTrusted())void bsAutoRefreshItem(item)});
   Hooks.on('deleteItem',item=>{
     for(const record of bsList().filter(x=>x.itemUuid===item?.uuid))bsCleanup(record.id);
+    for(const [id,record] of [...BS_AUTO])if(record.itemUuid===item?.uuid){
+      bsCleanup(id);BS_AUTO.delete(id);
+    }
+  });
+  Hooks.on('createActor',actor=>{if(bsTrusted())void bsAutoRefreshActor(actor)});
+  Hooks.on('deleteActor',actor=>{
+    for(const [id,record] of [...BS_AUTO])if(record.actorUuid===actor?.uuid){
+      bsCleanup(id);BS_AUTO.delete(id);
+    }
+  });
+  Hooks.on('createToken',token=>{if(bsTrusted())void bsAutoRefreshActor(token?.actor)});
+  Hooks.on('updateToken',token=>{if(bsTrusted())void bsAutoRefreshActor(token?.actor)});
+  Hooks.on('deleteToken',token=>{
+    for(const [id,record] of [...BS_AUTO])if(record.actorUuid===token?.actor?.uuid){
+      bsCleanup(id);BS_AUTO.delete(id);
+    }
   });
 });
 Hooks.once('ready',()=>{
   const mod=game.modules.get(BS_NS);mod.api??={};
   mod.api.bootstrap=Object.freeze({register:data=>bsSend('register',data),
-    unregister:data=>bsSend('unregister',data),list:()=>bsClone(bsList()),restoreAll:bsRestoreAll});
+    unregister:data=>bsSend('unregister',data),list:()=>bsClone(bsList()),
+    listAutomatic:()=>bsClone([...BS_AUTO.values()]),restoreAll:bsRestoreAll});
   game.socket.on(BS_SOCKET,data=>{if(data?.channel===BS_CHANNEL)void bsReceive(data)});
   void bsRestoreAll();
 });
