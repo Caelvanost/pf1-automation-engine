@@ -228,7 +228,7 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  weapon.system.ammo.default='am';
   settings.set('reloadEnabled',false);
  await fire(simple);
- assert.equal(count.rolls,3,'module disabled => native PF1 allowed');
+ assert.equal(count.rolls,4,'module disabled => native PF1 allowed after legacy test shot');
  settings.set('reloadEnabled',true);
  assert.equal(api.getState(weapon).slots.length,0,'world flag remains persisted');
  assert.equal(typeof api.timing,'undefined','action economy belongs to native Reload');
