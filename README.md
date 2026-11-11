@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.24.1 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.24.2 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -227,3 +227,14 @@ The compact indicator displays chambers loaded and offers a GM-only capacity cor
 **Requirements:** turn on the opt-in reload tracking setting; use a native PF1 ammo Item with matching `action.ammo.type` and a recognized weapon capacity. An unconfigured but recognizable pistol with a native ranged Action is denied with a warning until configuration is repaired. Use `game.modules.get('pf1-automation-engine').api.reload.lastDiagnostic()` after a shot to see whether it was blocked, authorized or unmanaged and why.
 
 **Validation:** the 25-suite automated release gate simulates a native ActionUse that calls `pf1CreateActionUse` / `pf1PreActionUse` / `pf1PostActionUse`. This still requires a real Foundry 13.351 + PF1 11.11 test. Existing non-atomic cross-client operations remain experimental.
+
+
+## v1.24.2 — Reload actions and standalone capabilities
+
+**Fix:** Native Reload activation no longer depends on the unrelated \`genericEnabled\` world setting. It requires only the enabled PF1AE module and its explicit \`reloadEnabled\` world setting.
+
+A user-defined, nonattack PF1 Action named \`Recharger\` or \`Reload\` on the **weapon** reloads that weapon by one round after successful use. Its activation cost is whatever the player sets in the native PF1 action. No native Reload Action is generated automatically. A **standalone actor feature / feat** named \`Recharger\` is also accepted (including its default nonattack \`Utiliser\` Action), provided the actor has **exactly one** eligible reloadable weapon. With multiple eligible weapons the module refuses the ambiguous operation and instructs the user to attach the Action to the weapon.
+
+If the auto-inferred capacity or native ammo type cannot be determined, the reload is rejected with an explicit localized warning. \`api.reload.lastDiagnostic()\` now records \`reload-started\`, \`reloaded\`, \`reload-failed\` and \`reload-unresolved\` outcomes, in addition to attack guards.
+
+One successful reload adds **one loaded slot** but **does not subtract** ammunition from inventory. Native PF1 still consumes the ammo only when fired. Concurrent clients can still cause non-atomic weapon/ammo updates, so this experimental feature remains opt-in and needs live verification.
