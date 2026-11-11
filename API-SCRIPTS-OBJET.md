@@ -51,3 +51,6 @@ Un Item peut contenir un appel de script **Après utilisation** (`postUse`) nomm
 ## Restauration persistante des listeners (v1.18.0)
 
 Voir [docs/BOOTSTRAP.md](docs/BOOTSTRAP.md) pour l’API `api.bootstrap`, le contexte natif `ItemScriptCall.execute(...,{bootstrap,restoring,event,state:null})`, la restauration opt-in après F5 et `bootstrap.listen()` pour nettoyer les hooks lors de la désactivation de l’Item.
+## Événements de dégâts natifs (v1.19.0)
+
+Sans activer l'objet, déclarer un Script Call de catégorie **Après utilisation** avec un nom exact parmi `PF1AE:damage:applied`, `PF1AE:damage:critical` et `PF1AE:damage:zeroHP`. Le Script Call reçoit une variable `event` (UUID de source, arme, action, cible, frappe, PV avant/après, `critical`, `critMult`, `reducedToZero` et `eventId`). Toute logique de capacité demeure dans l'objet. Voir [Documentation Damage Events](docs/DAMAGE-EVENTS.md).
