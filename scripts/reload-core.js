@@ -6,8 +6,7 @@
  */
 const RL_NS='pf1-automation-engine',RL_KEY='reloadState',RL_ENABLED='reloadEnabled';
 const RL_ACTION='pf1ae-reload';
-const RL_REJECT=Symbol('PF1AE_RELOAD_REJECT');
-const RL_BUSY=new Set(),RL_SHOTS=new WeakMap(),RL_ABORT=new WeakSet();
+const RL_BUSY=new Set(),RL_SHOTS=new WeakMap(),RL_DENIED=new WeakSet();
 const RL_FIRING=new Set();
 const rlL=(key,data={})=>{
  const fallback={
@@ -48,7 +47,9 @@ const rlActions=weapon=>[...(weapon?.actions?.contents??weapon?.actions?.values?
 const rlNativeAction=use=>{
  const item=use?.item??use?.action?.item;
  const state=rlState(item);
- return state?.actionId && use?.action?.id===state.actionId;
+ if(item?.type!=='weapon'||use?.action?.hasAttack)return false;
+ if(state?.actionId&&use.action?.id===state.actionId)return true;
+ return /^(?:recharger|reload)(?:\s|$)/i.test(String(use?.action?.name??'').trim());
 };
 const rlCompatible=(item,capacity)=>{
  if(item?.type!=='weapon'||!rlActor(item)||!Number.isSafeInteger(capacity)||capacity<1||capacity>100)
@@ -95,8 +96,13 @@ function rlNeeded(use,state){
  return attacks.length*Math.max(1,Number(action.ammo.cost)||1);
 }
 function rlCheck(use){
- const weapon=use?.item,state=rlState(weapon);
- if(!rlAllowed()||!state||rlNativeAction(use))return {managed:false};
+ const weapon=use?.item;
+ if(!rlAllowed()||weapon?.type!=='weapon'||rlNativeAction(use))return {managed:false};
+ const stored=rlState(weapon),inferred=stored?null:rlInfer(weapon);
+ if(!stored&&!inferred?.ok)return {managed:false,reason:inferred?.reason??'unsupported'};
+ // Recognized but never reloaded means EMPTY, not unmanaged.
+ const state=stored??{schema:1,capacity:inferred.capacity,ammoType:inferred.ammoType,
+   slots:[],actionCosts:{}};
  const needed=rlNeeded(use,state);
  if(needed===0)return {managed:false};
  if(needed===null)return {managed:true,ok:false,reason:'unknown attack count'};
@@ -118,20 +124,6 @@ function rlCheck(use){
  return {managed:true,ok,needed,loaded,selected,
    reason:ok?null:'insufficient loaded ammo or native ammunition inventory'};
 }
-async function rlCreateAction(weapon){
- const systemAction=globalThis.pf1?.models?.components?.Action;
- if(typeof systemAction?.create!=='function')
-  throw Error('Native PF1 Action.create unavailable; no reload action was created.');
- const name=rlL('Action');
- const created=await systemAction.create({
-  name,
-  actionType:'other',activation:{type:'standard',cost:1},
-  ammo:{type:'none',cost:0}
- },{parent:weapon});
- const action=created?.[0];
- if(!action?.id)throw Error('Native reload action creation failed.');
- return action.id;
-}
 async function rlConfigure(weapon,{capacity,ammoType,base='standard',actionCosts={},initialLoaded=0}={}){
  rlCompatible(weapon,capacity);
  const actor=rlActor(weapon);
@@ -146,9 +138,8 @@ async function rlConfigure(weapon,{capacity,ammoType,base='standard',actionCosts
  }
  return rlLock(weapon,async()=>{
   const prev=rlState(weapon);
-  let actionId=prev?.actionId;
-  if(!actionId||!rlActions(weapon).some(x=>x.id===actionId))
-   actionId=await rlCreateAction(weapon);
+  // Preserve legacy ID; user manages native Reload action and its cost.
+  const actionId=prev?.actionId??null;
   // Preserve loaded slot identity on changes. Never silently empty a weapon.
   const slots=prev?.slots??[];
   if(slots.length>capacity)throw Error('Unload before decreasing capacity.');
@@ -219,8 +210,8 @@ async function rlReload(weapon,{ammoId,count=1,rapidReload=false}={}){
    }
    throw error;
   }
-  const timing=rlTiming(next,ammo,{rapidReload});
-  if(timing.provokes)ui.notifications?.info?.(rlL('AoO'));
+  // Action economy and AoOs are managed by the user-defined native Action.
+  const timing=null;
   if(globalThis.ChatMessage?.create){
    const msg=rlL('Reloaded',{loaded:slots.length,capacity:current.capacity});
    void ChatMessage.create({speaker:ChatMessage.getSpeaker({actor}),
@@ -246,14 +237,15 @@ async function rlUnload(weapon,{count=1}={}){
   return rlClone(next);
  });
 }
-function rlAbort(use,result){
- RL_ABORT.add(use);
- ui.notifications?.warn?.(rlL('Blocked',{loaded:result.loaded??0,
-  needed:result.needed??'?'}));
+function rlDeny(use,result){
+ RL_DENIED.add(use);
+ ui.notifications?.warn?.(rlL('Blocked',{
+  loaded:result.loaded??0,needed:result.needed??'?'}));
+ console.warn('[PF1AE][Reload] Attack blocked before dice',result);
  Hooks.callAll('pf1aeReloadFireDenied',{
   actorUuid:use.actor?.uuid,weaponUuid:use.item?.uuid,
-  actionId:use.action?.id,loaded:result.loaded??0,needed:result.needed??null});
- throw RL_REJECT;
+  actionId:use.action?.id,loaded:result.loaded??0,
+  needed:result.needed??null,reason:result.reason??null});
 }
 async function rlCommitShot(use){
  const actor=use.actor,weapon=use.item;
@@ -387,49 +379,46 @@ function rlSheetWidget(sheet,html){
  header.append(container);
 }
 function rlInstall(){
- const proto=(globalThis.pf1?.components?.ActionUse??
-  globalThis.pf1?.actionUse?.ActionUse)?.prototype;
- if(!proto?.process||!proto?.generateChatAttacks){
-  console.warn('[PF1AE][Reload] Native PF1 ActionUse integration unavailable; automation disabled.');
-  return;
- }
- if(proto.process.pf1aeReloadWrapped)return;
- const previousProcess=proto.process;
- proto.process=async function(...args){
-  if(rlAllowed()&&rlNativeAction(this)){
-   // This is an actual PF1 Action entry. PF1AE executes reloading instead
-   // of native 'other' use to avoid a misleading chat card or resource cost.
-   try{return await rlReload(this.item,{count:1});}
-   catch(error){ui.notifications?.warn?.(error.message);return undefined;}
-  }
-  try{return await previousProcess.apply(this,args)}
-  catch(error){if(error===RL_REJECT&&RL_ABORT.has(this))return undefined;throw error}
-  finally{
-   if(!this._pf1aeReloadPostUse)RL_FIRING.delete(this.item?.uuid);
-  }
- };
- proto.process.pf1aeReloadWrapped=true;
+ // Works with private as well as public PF1 ActionUse classes. No prototype
+ // monkey-patching or dependency on undocumented global exports.
  Hooks.on('pf1CreateActionUse',use=>{
-  if(!rlAllowed()||!rlState(use?.item)||rlNativeAction(use))return;
-  // Install per-use guard, after dialog selection and filtering but before
-  // generateChatAttacks() rolls; abort with a private sentinel swallowed by
-  // the process wrapper. No chat, ammo, Grit, item charges are spent.
-  if(use.generateChatAttacks?.pf1aeReloadWrapped)return;
-  const previous=use.generateChatAttacks;
-  use.generateChatAttacks=async function(...args){
+  if(!rlAllowed()||use?.item?.type!=='weapon'||
+     rlNativeAction(use)||typeof use.generateChatAttacks!=='function')return;
+  if(use.generateChatAttacks.pf1aeReloadWrapped)return;
+  const original=use.generateChatAttacks;
+  const guarded=async function(...args){
    const check=rlCheck(this);
    if(check.managed){
-    if(!check.ok)rlAbort(this,check);
+    if(!check.ok){rlDeny(this,check);return;}
     RL_SHOTS.set(this,check);
     RL_FIRING.add(this.item.uuid);
    }
-   return previous.apply(this,args);
+   try{return await original.apply(this,args)}
+   catch(error){
+    RL_SHOTS.delete(this);
+    RL_FIRING.delete(this.item?.uuid);
+    throw error;
+   }
   };
-  use.generateChatAttacks.pf1aeReloadWrapped=true;
+  guarded.pf1aeReloadWrapped=true;
+  use.generateChatAttacks=guarded;
+ });
+ // Called after attack generation but before native inventory/charge
+ // deductions. Return false to stop normal PF1 processing.
+ Hooks.on('pf1PreActionUse',use=>{
+  if(RL_DENIED.has(use)){
+   RL_DENIED.delete(use);
+   RL_FIRING.delete(use?.item?.uuid);
+   return false;
+  }
  });
  Hooks.on('pf1PostActionUse',use=>{
-  if(RL_SHOTS.has(use))use._pf1aeReloadPostUse=true;
-  void rlCommitShot(use);
+  if(!rlAllowed()||use?.item?.type!=='weapon')return;
+  if(rlNativeAction(use)){
+   // One round loaded after the user's manually configured native action.
+   void rlAutoConfigure(use.item).then(()=>rlReload(use.item,{count:1}))
+    .catch(error=>ui.notifications?.warn?.(error.message));
+  }else if(RL_SHOTS.has(use))void rlCommitShot(use);
  });
 }
 Hooks.once('init',()=>{
