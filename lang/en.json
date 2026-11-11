@@ -108,7 +108,8 @@
       "TimeStandard": "Standard action",
       "TimeFull": "Full-round action",
       "AutoUnavailable": "Unable to determine capacity or ammunition automatically",
-      "InitialStatus": "Click Reload to initialize loaded ammunition from the weapon's own data"
+      "InitialStatus": "Click Reload to initialize loaded ammunition from the weapon's own data",
+      "ReloadFailed": "Reload failed"
     }
   }
 }
