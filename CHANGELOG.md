@@ -1,3 +1,11 @@
+## v1.21.0 — Assistance de portée avant jet (optionnelle, expérimentale)
+
+- Nouveau réglage de monde indépendant du mode Table de confiance pour les attaques d'armes à distance `rwak` et `twak`, désactivé par défaut.
+- Intégration native pré-évaluation via `pf1CreateActionUse` ; sans modification des armes, des cartes déjà générées, des CA ni des scripts Deadeye.
+- Mesures des cellules occupées et conversion pieds/mètres selon 5 ft = 1,5 m ; garde stricte pour les cibles ambiguës, les modificateurs manuels et les actions sans incréments.
+- Test de régression dédié ; inclusion dans le workflow de publication et de construction de ZIP.
+- Source native exacte du tag PF1 11.11 et comportement de la case Skip à confirmer en test Foundry réel avant activation généralisée.
+
 ## v1.20.0 — Mode « Table de confiance » et bootstrap natif automatique
 
 - Ajoute un paramètre de monde désactivé par défaut, visible et modifiable par le MJ, avec un avertissement explicite sur l'exécution du JavaScript des joueurs sous privilèges MJ.

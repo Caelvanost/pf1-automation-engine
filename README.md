@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.20.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.21.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -127,3 +127,18 @@ Les Script Calls exactement nommés `PF1AE:bootstrap`, `PF1AE:attack:resolved`, 
 **AVERTISSEMENT :** les JavaScript de capacités éditables par les joueurs peuvent être exécutés avec les privilèges du MJ pendant une reprise. N'activer ce mode que pour une table privée de confiance. Une scène, une reconnexion, la création/suppression/modification d'une capacité ou un changement de paramètre provoquent une synchronisation et un nettoyage des listeners suivis. Les hooks créés manuellement via `Hooks.on()` ne sont pas nettoyables par le moteur : utiliser `bootstrap.listen()`.
 
 Voir [Bootstrap](docs/BOOTSTRAP.md) et [approbations MJ](docs/SCRIPT-FALLBACK-APPROVALS.md). La suite `tests/trusted-table.test.cjs` vérifie les transitions et les doublons simulés ; une validation en vraie session multijoueur Foundry reste requise.
+
+## v1.21.0 — Assistante de portée native (expérimentale)
+
+Le paramètre de monde MJ **Calcul automatique des pénalités de portée** est désactivé par défaut et indépendant de **Table de confiance**.
+
+Pour une action d'attaque à distance de type `rwak` ou `twak` avec facteurs de portée (`range.maxIncrements > 1`), PF1AE intercepte **`pf1CreateActionUse`**, avant l'évaluation des jets. Lorsque **exactement une cible** et un token attaquant sur la même scène sont disponibles, il mesure la distance par `canvas.grid.measurePath()` entre les cellules occupées des tokens, lit la portée de l'action par `action.getRange({type:'single',rollData})`, et fournit à la configuration native le facteur calculé. Le moteur PF1 reste seul responsable de l'ajout du malus au jet via son pipeline `ActionDialog → ActionUse.applyConfig`. Aucun bonus n'est ajouté manuellement à la fiche ou après le jet.
+
+Calcul : facteur 1 jusqu'à la première limite incluse ; facteur 2 : −2 ; facteur 3 : −4 ; etc. Le facteur maximal configuré sur l'action est conservé. Le réglage ne touche ni à la CA de contact ni aux coûts de Deadeye/Grit.
+
+**Convention métrique de cette table** : 5 pieds = 1,5 m. Sont reconnues les unités de scène `m`, `mètre(s)`, `meter(s)`, `ft`, `foot`, `feet`, `pied(s)`. L'API `action.getRange()` retourne normalement la portée dans les unités **système PF1**, qui peuvent différer des unités de scène ; la conversion suit cette convention. Les unités inconnues, les cibles multiples, les actions sans facteur, les sorts et les données manquantes restent au comportement natif.
+
+**Protection des modificateurs :** un réglage natif explicite du facteur ou du malus, ou l'option de contournement connue, empêche toute modification par PF1AE. L'outil n'intervient pas sur les jets déjà évalués. Une attaque hors portée affiche un avertissement et reste non modifiée : la configuration native détermine toujours si l'action est possible.
+
+**Limite importante :** le point de jonction a été recoupé avec les signatures publiques PF1 et une copie GitHub de code PF1 plus récente ; le source *exact* du tag 11.11 n'a pas été directement récupérable ici. Le pipeline natif doit donc être vérifié sur une installation réelle PF1 11.11 avant de considérer la correction comme définitivement validée. Le comportement de la case **Skip Ranged Increment Checks**, notamment, doit être vérifié sur des jets réels. L'option reste désactivée par défaut afin de ne pas changer les parties existantes.
+

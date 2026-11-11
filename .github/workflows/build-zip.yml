@@ -18,7 +18,7 @@ jobs:
         shell: powershell
         run: .\build_release.ps1
 
-      - name: Run maintained regression suites (including trusted-table)
+      - name: Run maintained regression suites including ranged increments
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -29,7 +29,7 @@ jobs:
             'native-save-context','native-save-outcome-dispatch',
             'native-save-post-chatmessage','neutrality','rest-hooks',
             'save-outcomes','template-save-outcomes','timed-save-outcomes',
-            'turn-phases','trusted-table'
+            'turn-phases','trusted-table','range-automation'
           )
           foreach ($name in $tests) {
             $file = Join-Path tests "$name.test.cjs"
@@ -52,6 +52,7 @@ jobs:
             if ($null -eq $archive.GetEntry('scripts/rest-automation.js')) { throw 'Missing native PF1 rest bridge.' }
             if ($null -eq $archive.GetEntry('scripts/save-overrides.js')) { throw 'Missing saving throw override service.' }
             if ($null -eq $archive.GetEntry('scripts/save-context.js')) { throw 'Missing native PF1 save context bridge.' }
+            if ($null -eq $archive.GetEntry('scripts/range-automation.js')) { throw 'Missing native PF1 range increment bridge.' }
             if ($null -eq $archive.GetEntry('API-EXPIRATIONS.md')) { throw 'Missing turn expiry documentation.' }
             if ($null -ne $archive.GetEntry('scripts/combat-hooks.js')) { throw 'Removed class-specific combat hook still packaged.' }
             if ($null -ne $archive.GetEntry('macros/enregistrer-cold-adaptation.js')) { throw 'Removed class-specific example macro still packaged.' }
