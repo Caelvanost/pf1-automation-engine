@@ -42,7 +42,7 @@ const rlState=weapon=>{
  if(s.slots.some(x=>typeof x?.ammoId!=='string'||!x.ammoId))return null;
  return rlClone(s);
 };
-const rlActions=weapon=>[...(weapon?.actions?.contents??weapon?.actions??[])];
+const rlActions=weapon=>[...(weapon?.actions?.contents??weapon?.actions?.values?.()??weapon?.actions??[])];
 const rlNativeAction=use=>{
  const item=use?.item??use?.action?.item;
  const state=rlState(item);
@@ -57,7 +57,7 @@ const rlAmmo=(actor,id)=>actor?.items?.get(id)??null;
 const rlQuantity=item=>Number(item?.system?.quantity??0);
 const rlReservations=(actor,ammoId,except)=>{
  let reserved=0;
- for(const item of actor?.items??[]){
+ for(const item of rlItems(actor)){
   if(item.id===except?.id)continue;
   const s=rlState(item);
   if(s)reserved+=s.slots.filter(x=>x.ammoId===ammoId).length;
@@ -250,7 +250,7 @@ async function rlCommitShot(use){
  finally{RL_FIRING.delete(weapon.uuid);}
 }
 // Compact controls on the existing PF1 item sheet; preserve its own layout.
-const rlItems=actor=>[...(actor?.items?.contents??actor?.items??[])];
+const rlItems=actor=>[...(actor?.items?.contents??actor?.items?.values?.()??actor?.items??[])];
 const rlAmmoChoices=actor=>rlItems(actor).filter(item=>item?.type==='ammo' &&
   !item.inContainer && item.system?.identified!==false);
 const rlAttackActions=weapon=>rlActions(weapon).filter(action=>
