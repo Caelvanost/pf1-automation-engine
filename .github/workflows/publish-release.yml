@@ -41,7 +41,7 @@ jobs:
           # Do not silently treat excluded suites as passing.
           $tests = @(
             'attack-events','attack-outcomes','attack-save-outcomes-integration',
-            'bootstrap','combat-cleanup','discovery','distraction',
+            'bootstrap','combat-cleanup','damage-events','discovery','distraction',
             'duration','effect-groups-silent','migration','native-save-bridge',
             'native-save-context','native-save-outcome-dispatch',
             'native-save-post-chatmessage','neutrality','rest-hooks',
