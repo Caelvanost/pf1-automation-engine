@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.21.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.21.1 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -142,3 +142,15 @@ Calcul : facteur 1 jusqu'à la première limite incluse ; facteur 2 : −2 ; fac
 
 **Limite importante :** le point de jonction a été recoupé avec les signatures publiques PF1 et une copie GitHub de code PF1 plus récente ; le source *exact* du tag 11.11 n'a pas été directement récupérable ici. Le pipeline natif doit donc être vérifié sur une installation réelle PF1 11.11 avant de considérer la correction comme définitivement validée. Le comportement de la case **Skip Ranged Increment Checks**, notamment, doit être vérifié sur des jets réels. L'option reste désactivée par défaut afin de ne pas changer les parties existantes.
 
+
+### v1.21.1 — Correction des pénalités de portée
+
+PF1 11.11 peut initialiser `formData.rangePenalty` ou `config.rangePenalty` à **zéro** avant que le module ne calcule la portée. PF1AE interprétait à tort ce zéro comme un modificateur manuel et ignorait le jet. La valeur zéro est désormais traitée comme une absence de pénalité préexistante. Un **modificateur manuel non nul** reste prioritaire.
+
+La détection de l'attaquant accepte un `TokenDocument` ou un `Token`, et `api.range.lastDiagnostic()` expose la dernière décision du calcul (facteur, pénalité ou raison du refus). Pour diagnostiquer après une attaque :
+
+```js
+console.log(game.modules.get('pf1-automation-engine')?.api?.range?.lastDiagnostic());
+```
+
+Les tests automatisés vérifient les valeurs zéro natives et les TokenDocuments. La compatibilité sur une véritable installation PF1 11.11 doit encore être confirmée en jeu.
