@@ -213,6 +213,11 @@ Hooks.once('init',()=>{
     onChange:()=>{void bsRestoreAll()}});
   Hooks.on('canvasReady',()=>{void bsRestoreAll()});
   Hooks.on('updateUser',(_user,changes)=>{if(Object.hasOwn(changes??{},'active'))void bsRestoreAll()});
+  // Editing an approved Script Call must immediately retire any active
+  // fallback listeners whose saved source no longer matches GM approval.
+  Hooks.on('updateItem',item=>{
+    if(bsList().some(x=>x.itemUuid===item?.uuid))void bsRestoreAll();
+  });
   Hooks.on('deleteItem',item=>{
     for(const record of bsList().filter(x=>x.itemUuid===item?.uuid))bsCleanup(record.id);
   });
