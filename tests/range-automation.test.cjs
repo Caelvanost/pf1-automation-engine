@@ -11,7 +11,7 @@ const token=(id,points)=>({name:id,document:{parent:scene},getOccupiedCells:()=>
 const attacker=token('Hero',[{x:0,y:0}]);
 let target=token('Enemy',[{x:4,y:0}]);
 const targets=new Set([target]);
-const grid={measurePath([a,b]){return {distance:Math.hypot(b.x-a.x,b.y-a.y)*1.5}}};
+const grid={measurePath([a,b]){return {distance:Math.hypot(b.x-a.x,b.y-a.y)*(scene.grid.units==='ft'?5:1.5)}}};
 const warnings=[];
 const context={console,Math,Number,Set,globalThis:null,
  game:{user:{targets},modules:new Map([['pf1-automation-engine',{active:true,api:{}}]]),
@@ -26,15 +26,15 @@ context.globalThis=context;
 vm.createContext(context);vm.runInContext(source,context);
 for(const cb of hooks.get('init')??[])cb();
 for(const cb of hooks.get('ready')??[])cb();
-const makeUse=(dist=6,{units='ft',value=20,actionType='rwak',max=10,metric=false,withRange=true}={})=>{
+const makeUse=(dist=6,{units='ft',sceneUnits='m',value=20,actionType='rwak',max=10,metric=false,withRange=true}={})=>{
   context.pf1.settings.distance.metric=metric;
-  scene.grid.units=units==='ft'?'ft':'m';
+  scene.grid.units=sceneUnits;
   target=token('Enemy',[{x:dist/(scene.grid.units==='m'?1.5:5),y:0}]);
   targets.clear();targets.add(target);
   const config={rangeIncrement:1,rangeIncrementPenalty:2};
   const action={name:'Ranged attack',actionType,isRanged:true,hasAttack:true,
     range:{value:String(value),units,maxIncrements:max},
-    ...(withRange?{getRange(){return metric?Number(value)*0.3:Number(value)}}:{})};
+    ...(withRange?{getRange(){return metric?Number(value)*(units==='ft'?0.3:1):Number(value)*(units==='m'?1/0.3:1)}}:{})};
   return {actor:{name:'Hero'},item:{name:'Weapon'},token:attacker,
    action,shared:{config,formData:{},useOptions:{},rollData:{}}};
 };
@@ -58,9 +58,9 @@ assert.equal(api.calculate(201,20,10).outOfRange,true);
 assert.equal(api.calculate(6+1e-11,6,10).factor,1);
 assert.equal(api.convert(20,'ft','m'),6);
 assert.equal(api.convert(6,'m','ft'),20);
-const metric=makeUse(12,{value:20,units:'m',metric:true});
+const metric=makeUse(30,{value:20,units:'m',metric:true});
 hook(metric);assert.equal(metric.shared.config.rangeIncrement,2);
-const feet=makeUse(40,{units:'ft',value:20,metric:false});
+const feet=makeUse(40,{units:'ft',sceneUnits:'ft',value:20,metric:false});
 hook(feet);assert.equal(feet.shared.config.rangeIncrement,2);
 const thrown=makeUse(12,{actionType:'twak',max:5});
 hook(thrown);assert.equal(thrown.shared.config.rangeIncrement,2);
