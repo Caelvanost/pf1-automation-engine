@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine: opt-in automatic PF1 weapon reload initialization, compact controls, bilingual labels, native ammunition use and verified damage hooks.",
-  "version": "1.24.0",
+  "description": "PF1 Automation Engine v1.24.1: native PF1 pre-roll unloaded-weapon blocking with user-configured Reload actions, EN/FR UI and verified range penalties.",
+  "version": "1.24.1",
   "authors": [
     {
       "name": "Caelvanost"
@@ -46,7 +46,7 @@
   ],
   "url": "https://github.com/Caelvanost/pf1-automation-engine",
   "manifest": "https://raw.githubusercontent.com/Caelvanost/pf1-automation-engine/main/module.json",
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.24.0/pf1-automation-engine-v1.24.0.zip",
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.24.1/pf1-automation-engine-v1.24.1.zip",
   "readme": "https://github.com/Caelvanost/pf1-automation-engine/blob/main/README.md",
   "changelog": "https://github.com/Caelvanost/pf1-automation-engine/blob/main/CHANGELOG.md",
   "bugs": "https://github.com/Caelvanost/pf1-automation-engine/issues",
