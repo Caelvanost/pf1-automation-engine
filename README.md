@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.19.3 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.20.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -115,3 +115,15 @@ Un objet peut réagir aux **dégâts effectivement appliqués par une attaque na
 ## Reprise MJ des scripts d'objets (v1.19.1)
 
 Lorsque le propriétaire joueur d'un PJ se déconnecte, le MJ élu reprend l'exécution des Script Calls `PF1AE:damage:*` et des bootstraps persistants **uniquement si le Script Call natif a été explicitement approuvé** par le MJ. Le moteur compare l'UUID de l'acteur, de l'Item, l'ID du Script Call et **son contenu source sérialisé exact** avant toute exécution de secours. Toute édition impose une nouvelle approbation. Les scripts `PF1AE:attack:resolved` exécutés depuis une session MJ sur un PJ contrôlé par un joueur respectent la même protection. Voir [Documentation des approbations](docs/SCRIPT-FALLBACK-APPROVALS.md).
+
+## v1.20.0 — Table de confiance (opt-in)
+
+Activer **Table de confiance** dans les paramètres du monde (MJ seulement). Par défaut, ce mode est **désactivé** ; toutes les approbations explicites restent requises pour la reprise MJ des Script Calls des joueurs.
+
+En mode Table de confiance, ajouter un Script Call natif **Basculer/toggle** nommé exactement `PF1AE:bootstrap` à une capacité suffit : PF1AE le découvre sur les acteurs disponibles, y compris les acteurs synthétiques accessibles via les scènes, et l'exécute **uniquement comme initialisation** avec `restoring:true`, `state:null` et `bootstrap.listen(...)`. Aucune activation de capacité, dépense de ressource, `item.use()` ou `setActive()`. Les scripts non nommés ou de catégorie différente ne sont jamais initialisés. Les anciens `api.bootstrap.register()` restent utilisables et sont dédupliqués avec la découverte automatique.
+
+Les Script Calls exactement nommés `PF1AE:bootstrap`, `PF1AE:attack:resolved`, `PF1AE:damage:applied`, `PF1AE:damage:critical` et `PF1AE:damage:zeroHP` peuvent être repris par le MJ élu sans approbation individuelle en mode de confiance ; les autres scripts et le mode sécurisé ne changent pas. L'élection multijoueur, les contrôles de provenance des dégâts, les permissions de documents et la déduplication restent applicables.
+
+**AVERTISSEMENT :** les JavaScript de capacités éditables par les joueurs peuvent être exécutés avec les privilèges du MJ pendant une reprise. N'activer ce mode que pour une table privée de confiance. Une scène, une reconnexion, la création/suppression/modification d'une capacité ou un changement de paramètre provoquent une synchronisation et un nettoyage des listeners suivis. Les hooks créés manuellement via `Hooks.on()` ne sont pas nettoyables par le moteur : utiliser `bootstrap.listen()`.
+
+Voir [Bootstrap](docs/BOOTSTRAP.md) et [approbations MJ](docs/SCRIPT-FALLBACK-APPROVALS.md). La suite `tests/trusted-table.test.cjs` vérifie les transitions et les doublons simulés ; une validation en vraie session multijoueur Foundry reste requise.
