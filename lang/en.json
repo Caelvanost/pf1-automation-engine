@@ -109,7 +109,8 @@
       "TimeFull": "Full-round action",
       "AutoUnavailable": "Unable to determine capacity or ammunition automatically",
       "InitialStatus": "Click Reload to initialize loaded ammunition from the weapon's own data",
-      "ReloadFailed": "Reload failed"
+      "ReloadFailed": "Reload failed",
+      "AmmoGuidance": "Check native PF1 Ammunition Items, their subtype and quantity. The Reload action must have ammunition set to None."
     }
   }
 }

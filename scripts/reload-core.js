@@ -15,6 +15,7 @@ const rlL=(key,data={})=>{
   Action:'Reload',
   AutoUnavailable:'Unable to infer weapon capacity or native ammunition automatically',
   ReloadFailed:'Reload failed',
+  AmmoGuidance:'Check that the actor has native PF1 ammo Items of the matching subtype, with positive quantity.',
   InitialStatus:'Reloading will initialize this weapon automatically',
   Loaded:'Loaded: {loaded}/{capacity}',Unload:'Unload',
   Configure:'Configure reload',Capacity:'Capacity',Ammo:'Ammunition',
@@ -87,7 +88,7 @@ const rlReservations=(actor,ammoId,except)=>{
 };
 function rlAvailable(weapon,ammoId,state){
  const actor=rlActor(weapon),ammo=rlAmmo(actor,ammoId);
- if(ammo?.type!=='ammo'||ammo?.inContainer||ammo?.system?.identified===false)return 0;
+ if(ammo?.type!=='ammo'||ammo?.inContainer)return 0;
  const chosenType=state.ammoType;
  if(chosenType&&ammo.system?.subType&&ammo.system.subType!==chosenType)return 0;
  if(ammo.system?.abundant===true)return Infinity;
@@ -181,6 +182,44 @@ async function rlConfigure(weapon,{capacity,ammoType,base='standard',actionCosts
   return rlClone(state);
  });
 }
+function rlAmmoDiagnostic(weapon){
+ const actor=rlActor(weapon),state=rlState(weapon),inferred=rlInfer(weapon);
+ const ammoType=state?.ammoType??inferred?.ammoType??
+  rlAttackActions(weapon)[0]?.ammo?.type??null;
+ const selectedId=weapon?.system?.ammo?.default??null;
+ const inventory=rlItems(actor).filter(x=>x?.type==='ammo').map(item=>({
+  id:item.id,name:item.name??null,subType:item.system?.subType??null,
+  quantity:rlQuantity(item),inContainer:!!item.inContainer,
+  abundant:item.system?.abundant===true,
+  reserved:rlReservations(actor,item.id,weapon)+
+   (state?.slots??[]).filter(slot=>slot.ammoId===item.id).length,
+  matches:!!ammoType&&item.system?.subType===ammoType
+ }));
+ return {weapon:weapon?.name??null,weaponUuid:weapon?.uuid??null,
+  capacity:state?.capacity??inferred.capacity??null,
+  loaded:state?.slots?.length??0,ammoType,
+  selectedId,selectedName:inventory.find(x=>x.id===selectedId)?.name??null,
+  inferReason:inferred.ok?null:inferred.reason??null,
+  inventory};
+}
+function rlChooseAmmo(weapon,state,ammoId){
+ const actor=rlActor(weapon);
+ if(ammoId){
+  const ammo=rlAmmo(actor,ammoId);
+  if(ammo?.type==='ammo'&&ammo?.system?.subType===state.ammoType)
+   return ammoId;
+  throw Error('The chosen ammunition is missing or incompatible.');
+ }
+ const def=weapon.system?.ammo?.default;
+ const defaultAmmo=rlAmmo(actor,def);
+ if(defaultAmmo?.type==='ammo'&&defaultAmmo.system?.subType===state.ammoType&&
+   rlAvailable(weapon,def,state)>0)return def;
+ // Never change ammo identity while another cartridge is loaded.
+ if(state.slots.length>0)return def;
+ const other=rlItems(actor).find(x=>x?.type==='ammo'&&!x.inContainer&&
+  x.system?.subType===state.ammoType&&rlAvailable(weapon,x.id,state)>0);
+ return other?.id??def??null;
+}
 async function rlReload(weapon,{ammoId,count=1}={}){
  const actor=rlActor(weapon),state=rlState(weapon);
  if(!state)throw Error(rlL('Unconfigured'));
@@ -190,9 +229,14 @@ async function rlReload(weapon,{ammoId,count=1}={}){
  return rlLock(weapon,async()=>{
   const current=rlState(weapon);
   if(count>current.capacity-current.slots.length)throw Error(rlL('OutOfCapacity'));
-  const selected=ammoId??weapon.system?.ammo?.default;
+  const selected=rlChooseAmmo(weapon,current,ammoId);
   const ammo=rlAmmo(actor,selected);
-  if(!ammo||rlAvailable(weapon,selected,current)<count)throw Error(rlL('Insufficient'));
+  const available=selected?rlAvailable(weapon,selected,current):0;
+  if(!ammo||available<count){
+   const diag=rlAmmoDiagnostic(weapon);
+   console.warn('[PF1AE][Reload] Insufficient compatible ammunition',diag);
+   throw Error(rlL('Insufficient')+' — '+rlL('AmmoGuidance'));
+  }
   const slots=[...current.slots,...Array.from({length:count},()=>({ammoId:selected}))];
   // Keep native default ammo aligned with the loaded cartridge.
   // Mixed ammo remains unsupported in the initial integration.
@@ -297,7 +341,7 @@ function rlInfer(weapon){
   return {ok:false,reason:'capacity not structurally available; requires explicit GM override'};
  const actor=rlActor(weapon);
  const candidates=rlItems(actor).filter(item=>item?.type==='ammo'&&!item.inContainer&&
-   item.system?.identified!==false&&item.system?.subType===ammoType);
+   item.system?.subType===ammoType);
  const defaultId=weapon.system?.ammo?.default;
  const ammo=candidates.find(x=>x.id===defaultId)??candidates[0];
  if(!ammo)return {ok:false,capacity,ammoType,reason:'no matching native PF1 ammunition Item'};
@@ -435,7 +479,7 @@ function rlInstall(){
       loaded:next.slots.length,capacity:next.capacity};
     }catch(error){
      RL_LAST={status:'reload-failed',weapon:weapon.name??null,
-      reason:String(error?.message??error)};
+      reason:String(error?.message??error),ammo:rlAmmoDiagnostic(weapon)};
      console.warn('[PF1AE][Reload] Native Reload action failed',RL_LAST);
      ui.notifications?.warn?.(rlL('ReloadFailed')+': '+RL_LAST.reason);
     }
@@ -465,7 +509,8 @@ Hooks.once('ready',()=>{
   },
   configure:rlConfigure,reload:rlReload,unload:rlUnload,
   infer:rlInfer,initialize:rlAutoConfigure,
-  lastDiagnostic:()=>RL_LAST?{...RL_LAST}:null
+  lastDiagnostic:()=>RL_LAST?{...RL_LAST}:null,
+  ammoDiagnostic:rlAmmoDiagnostic
  });
  rlInstall();
  Hooks.on('renderItemSheet',rlSheetWidget);

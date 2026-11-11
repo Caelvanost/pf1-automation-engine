@@ -80,6 +80,16 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  assert.equal(api.infer(weapon).capacity,2);
  assert.equal(api.infer(weapon).ammoId,'am');
  assert.equal(api.infer(weapon).source,'description');
+ // An unidentified native ammo stack is still usable; identification is
+ // not a loading requirement in PF1, only ammo type and inventory count.
+ ammo.system.identified=false;
+ assert.equal(api.infer(weapon).ok,true,'unidentified ammo remains selectable');
+ const diag=api.ammoDiagnostic(weapon);
+ assert.equal(diag.ammoType,'gunBullet');
+ assert.equal(diag.inventory[0].quantity,8);
+ assert.equal(diag.inventory[0].matches,true);
+ ammo.system.identified=true;
+ 
  const auto=await api.initialize(weapon);
  assert.equal(auto.capacity,2);
  assert.equal(weapon.actions.length,2,'automatic setup never creates a native Action');
@@ -138,6 +148,14 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  assert.equal(count.nativeAmmo,1,'PF1 consumes one native ammo once');
  assert.equal(ammo.system.quantity,7);
  assert.equal(api.getState(weapon).slots.length,0,'loaded state decremented after native shot');
+ // A stale or deleted default ammunition ID must not force a false
+ // out-of-ammo result when matching native ammo exists in inventory.
+ weapon.system.ammo.default='deleted-id';
+ await api.reload(weapon,{count:1});
+ assert.equal(api.getState(weapon).slots.length,1);
+ assert.equal(weapon.system.ammo.default,'am','default relinked to matching ammo');
+ await api.unload(weapon,{count:1});
+ 
  // User's "capacité Recharger" can also be a standalone nonattack feat.
  // Only one eligible weapon exists, so there is no ambiguous selection.
  const ability={id:'reloadFeat',type:'feat',name:'Recharger',actor,
