@@ -28,6 +28,10 @@
       "MigrationVersion": {
         "Name": "Module namespace migration",
         "Hint": "Technical status of migrating settings and flags from the previous module."
+      },
+      "ReloadEnabled": {
+        "Name": "Automatic weapon reload tracking (experimental)",
+        "Hint": "Opt-in tracking for configured firearms and crossbows. Native PF1 continues to consume ammunition. Requires manual per-weapon configuration; disabled by default."
       }
     },
     "Range": {
@@ -70,6 +74,28 @@
       "ItemMissing": "Item not found: {uuid}",
       "NoDeclaration": "This item has no automations declaration.",
       "EngineUnavailable": "The generic automation engine has not initialized."
+    },
+    "Reload": {
+      "Action": "Reload",
+      "Empty": "Weapon is not sufficiently loaded.",
+      "Insufficient": "Not enough ammunition in the inventory to reload.",
+      "OutOfCapacity": "Weapon capacity exceeded.",
+      "Reloaded": "Weapon reloaded: {loaded}/{capacity}.",
+      "Blocked": "Attack blocked: {loaded} loaded, {needed} required.",
+      "AoO": "Reloading normally provokes an attack of opportunity.",
+      "Missing": "Weapon or ammunition is unavailable.",
+      "Unconfigured": "Reload tracking is not configured for this weapon.",
+      "Loaded": "Loaded ammunition: {loaded}/{capacity}",
+      "Unload": "Unload",
+      "Configure": "Configure reload",
+      "Capacity": "Capacity",
+      "Ammo": "Ammunition",
+      "Count": "Quantity",
+      "Save": "Save",
+      "Shots": "Projectiles required for selected action",
+      "Base": "Base reload action",
+      "SettingsHint": "Opt-in tracking for configured firearms and crossbows. Native PF1 continues to consume ammunition. Requires manual per-weapon configuration; disabled by default.",
+      "SettingsName": "Automatic weapon reload tracking (experimental)"
     }
   }
 }
