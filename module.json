@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine with corrected opt-in native pre-roll range penalties, Trusted Table Mode and native verified damage events.",
-  "version": "1.21.1",
+  "description": "Generic PF1 automation with corrected single-target ranged penalties injected into native pre-roll attack bonuses, Trusted Table Mode, damage and persistent effects.",
+  "version": "1.21.2",
   "authors": [
     {
       "name": "Caelvanost"
@@ -45,7 +45,7 @@
   ],
   "url": "https://github.com/Caelvanost/pf1-automation-engine",
   "manifest": "https://raw.githubusercontent.com/Caelvanost/pf1-automation-engine/main/module.json",
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.21.1/pf1-automation-engine-v1.21.1.zip",
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.21.2/pf1-automation-engine-v1.21.2.zip",
   "readme": "https://github.com/Caelvanost/pf1-automation-engine/blob/main/README.md",
   "changelog": "https://github.com/Caelvanost/pf1-automation-engine/blob/main/CHANGELOG.md",
   "bugs": "https://github.com/Caelvanost/pf1-automation-engine/issues"
