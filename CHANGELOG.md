@@ -1,3 +1,13 @@
+## v1.24.3 — Rechargement : correction de la détection des munitions et diagnostic
+
+- Supprime le refus injustifié des munitions natives PF1 non identifiées.
+- Si la référence par défaut est périmée, incompatible ou épuisée et que le chargeur est vide, recherche une pile compatible avec assez de munitions et met à jour la référence native.
+- Conserve les munitions déjà chargées ; aucun remplacement silencieux de leur identité.
+- Ajoute `api.reload.ammoDiagnostic(weapon)` pour afficher le type attendu, les piles d'inventaire, les quantités et les réservations.
+- Améliore le message d'échec : distinguer l'absence réelle de munitions natives d'une référence invalide.
+- Documente le réglage obligatoire de l'action native `Recharger` : **Aucune munition** ; ne pas hériter des munitions de l'arme sur cette action non offensive, car PF1 11.11 peut planter dans `action-use.mjs`.
+- Tests de régression sur les munitions non identifiées et les références périmées.
+
 ## v1.24.2 — Capacité Recharger fonctionnelle
 
 - Retire la dépendance incorrecte aux automatisations génériques : le suivi du chargement dépend uniquement de son propre paramètre de monde.
