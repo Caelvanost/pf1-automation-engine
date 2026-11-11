@@ -86,7 +86,7 @@ function raApply(use){
   let increment,incrementUnit;
   if(typeof action.getRange==='function'){
     increment=Number(action.getRange({type:'single',rollData:shared.rollData}));
-    incrementUnit=game.pf1?.settings?.distance?.metric===true?'m':'ft';
+    incrementUnit=globalThis.pf1?.settings?.distance?.metric===true?'m':'ft';
   }else{
     increment=Number(range.value);incrementUnit=raNormUnit(range.units);
   }
