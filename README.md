@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.21.2 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.22.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -164,3 +164,13 @@ Une portée numérique explicitement configurée `20 ft` est lue directement ave
 Le réglage **Calcul automatique des pénalités de portée** reste opt-in. Les modificateurs de portée manuels non nuls existant avant l'action restent prioritaires ; ne pas ajouter manuellement une seconde pénalité dans le dialogue du même tir. Le diagnostic après tir affiche le facteur calculé : `game.modules.get('pf1-automation-engine').api.range.lastDiagnostic()`. Attention, l'étiquette dans le jet provient de la localisation PF1.
 
 **Validation** : les tests CI simulent le hook natif et vérifient l'ajout dans `shared.attackBonus` ainsi que les conversions. Le résultat sur un vrai jet dans Foundry v13.351 / PF1 v11.11 doit être confirmé en jeu.
+
+## v1.22.0 — Bilingual Foundry interface (English / Français)
+
+PF1 Automation Engine ships `lang/en.json` and `lang/fr.json`. Foundry uses each connected client's configured language: there is no additional world-wide language option. Localized text includes module settings, warnings and notifications, effect-management errors, item-discovery messages, the saving-throw override chat summary, and the **actual range penalty label inside the attack roll**.
+
+**Range bonus display:** for a 20-foot pistol attacking a single target at 9 meters, the pre-roll bonus is labelled `-2[Pénalité de portée]` in French and `-2[Range penalty]` in English. The technical subscription names `PF1AE:bootstrap`, `PF1AE:attack:resolved`, `PF1AE:damage:applied`, `PF1AE:damage:critical`, and `PF1AE:damage:zeroHP` do not change. Persisted API identifiers and keys remain language-neutral.
+
+**Note:** Existing chat message contents are stored as HTML at the time of creation; they are not retroactively translated if a reader changes language later. Technical diagnostic logs and errors returned by third-party APIs can also remain in the language emitted by their source.
+
+Translations are maintained as matching JSON keys with identical variable placeholders. The `i18n.test.cjs` regression validates both packs and reproduces a labeled pre-roll attack in both languages.
