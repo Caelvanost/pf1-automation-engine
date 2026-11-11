@@ -164,35 +164,7 @@ async function rlConfigure(weapon,{capacity,ammoType,base='standard',actionCosts
   return rlClone(state);
  });
 }
-// A generic Rapid Reload feat alone is NOT sufficient: PF1 chooses one weapon
-// type. Accept only an explicit weapon choice in a feat name or a trusted flag.
-function rlRapidReload(weapon){
- const actor=rlActor(weapon),name=String(weapon?.name??'').toLowerCase();
- const group=/pistolet|pistol/.test(name)?/(?:pistolet|pistol)/:
-  /mousquet|musket/.test(name)?/(?:mousquet|musket)/:
-  /arbal[eè]te l[eé]g[eè]re|light crossbow/.test(name)?/(?:arbal[eè]te l[eé]g[eè]re|light crossbow)/:
-  /arbal[eè]te lourde|heavy crossbow/.test(name)?/(?:arbal[eè]te lourde|heavy crossbow)/:null;
- if(!group)return false;
- return rlItems(actor).some(feat=>{
-  if(feat?.type!=='feat'||feat.system?.disabled===true)return false;
-  const label=String(feat.name??'').toLowerCase();
-  if(!/(?:rechargement rapide|rapid reload)/i.test(label))return false;
-  if(feat.getFlag?.(RL_NS,'rapidReloadWeaponUuid')===weapon.uuid)return true;
-  const explicit=label.match(/(?:rechargement rapide|rapid reload)\s*[\(\[—:\-]\s*([^)\\\]]+)/i);
-  return explicit&&group.test(explicit[1]);
- });
-}
-function rlTiming(state,ammo,options){
- // Reductions must be explicitly verified/configured per weapon and ammo.
- // No unverified character feat name inference.
- const ladder=['full','standard','move','free'];
- let position=ladder.indexOf(state.base);
- const reduction=(options?.rapidReload===true?1:0)+
-   (ammo?.getFlag?.(RL_NS,'alchemicalPaper')===true?1:0);
- position=Math.min(3,position+reduction);
- return {action:ladder[position],provokes:true,reductions:reduction};
-}
-async function rlReload(weapon,{ammoId,count=1,rapidReload=false}={}){
+async function rlReload(weapon,{ammoId,count=1}={}){
  const actor=rlActor(weapon),state=rlState(weapon);
  if(!state)throw Error(rlL('Unconfigured'));
  if(!rlOwner(actor))throw Error('Actor OWNER permission required.');
@@ -221,15 +193,14 @@ async function rlReload(weapon,{ammoId,count=1,rapidReload=false}={}){
    throw error;
   }
   // Action economy and AoOs are managed by the user-defined native Action.
-  const timing=null;
   if(globalThis.ChatMessage?.create){
    const msg=rlL('Reloaded',{loaded:slots.length,capacity:current.capacity});
    void ChatMessage.create({speaker:ChatMessage.getSpeaker({actor}),
      content:foundry.utils.escapeHTML?.(msg)??msg}).catch(err=>console.warn('[PF1AE][Reload] Chat',err));
   }
   Hooks.callAll('pf1aeReload', {actorUuid:actor.uuid,weaponUuid:weapon.uuid,
-    ammoId:selected,count,loaded:slots.length,capacity:current.capacity,timing});
-  return {...rlClone(next),timing};
+    ammoId:selected,count,loaded:slots.length,capacity:current.capacity});
+  return rlClone(next);
  });
 }
 async function rlUnload(weapon,{count=1}={}){
@@ -364,10 +335,7 @@ function rlSheetWidget(sheet,html){
   });
   container.append(b);
  };
- button(rlL('Action'),async()=>{
-  await rlAutoConfigure(weapon);
-  await rlReload(weapon,{count:1});
- });
+ // The user-defined native Reload action triggers loading through post-use.
  if(state?.slots.length)button(rlL('Unload'),()=>rlUnload(weapon,{count:1}));
  if(game.user?.isGM){
   // Optional correction exists only if automated capacity could not be read
@@ -455,8 +423,7 @@ Hooks.once('ready',()=>{
    return {ok:!!state&&state.slots.length>=needed,needed,loaded:state?.slots.length??0};
   },
   configure:rlConfigure,reload:rlReload,unload:rlUnload,
-  timing:(weapon,ammo,options)=>rlTiming(rlState(weapon),ammo,options),
-  infer:rlInfer,rapidReload:rlRapidReload,initialize:rlAutoConfigure,
+  infer:rlInfer,initialize:rlAutoConfigure,
   lastDiagnostic:()=>RL_LAST?{...RL_LAST}:null
  });
  rlInstall();
