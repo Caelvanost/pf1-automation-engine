@@ -85,14 +85,6 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  assert.equal(weapon.actions.length,2,'automatic setup never creates a native Action');
  assert.equal(api.infer(weapon).capacity,2);
  assert.equal((await api.initialize(weapon)).capacity,2,'idempotent automatic init');
- const feat={id:'rapid',type:'feat',name:'Rechargement rapide',system:{disabled:false}};
- actor.items.set('rapid',feat);
- assert.equal(api.rapidReload(weapon),false,'unselected feat gives no global bonus');
- feat.name='Rechargement rapide (pistolet)';
- assert.equal(api.rapidReload(weapon),true,'explicit pistol choice qualifies');
- feat.name='Rechargement rapide (mousquet)';
- assert.equal(api.rapidReload(weapon),false,'wrong weapon choice never qualifies');
- actor.items.delete('rapid');
  weapon.name=originalName;
  await weapon.unsetFlag?.('pf1-automation-engine','reloadState');
  weapon.flags={};
@@ -112,6 +104,13 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  assert.equal(vm.runInContext('rlItems(actor).filter(x=>x.type==="ammo")',context).length,1,
    'generic loot is not native ammunition');
  actor.items.delete('loot');
+ // First use of a recognized but never reloaded pistol must be refused.
+ weapon.name='Pistolet à double canon';
+ await new ActionUse(simple,1).process();
+ assert.equal(count.rolls,0,'first-ever attack must not become a free shot');
+ assert.equal(count.nativeAmmo,0,'first-ever denied shot does not consume inventory');
+ assert.equal(api.lastDiagnostic().status,'blocked');
+ weapon.name=originalName;
  let state=await api.configure(weapon,{capacity:2,ammoType:'gunBullet',
   base:'standard',actionCosts:{double:2}});
  assert.equal(state.slots.length,0);
@@ -156,9 +155,6 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  assert.equal(count.rolls,3,'module disabled => native PF1 allowed');
  settings.set('reloadEnabled',true);
  assert.equal(api.getState(weapon).slots.length,0,'world flag remains persisted');
- assert.equal(api.timing(weapon,ammo,{rapidReload:true}).action,'move');
- ammo.getFlag=()=>true;
- assert.equal(api.timing(weapon,ammo,{rapidReload:true}).action,'free');
- assert.equal(api.timing(weapon,ammo,{rapidReload:true}).provokes,true);
+ assert.equal(typeof api.timing,'undefined','action economy belongs to native Reload');
  console.log('PASS reload core: manual Reload, empty/double pre-roll denial, native ammo once, load/unload and opt-out');
 })().catch(error=>{console.error(error);process.exitCode=1});
