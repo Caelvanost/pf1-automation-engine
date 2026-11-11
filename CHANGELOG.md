@@ -1,3 +1,10 @@
+## v1.19.3 — Audit des tests et fiabilisation de la publication
+
+- Le workflow de release vérifie désormais que les 28 suites de tests existantes sont explicitement réparties entre 21 suites obligatoires et 7 suites historiques exclues ; tout nouveau fichier de test exige une décision de maintenance explicite avant publication.
+- Ajoute un workflow manuel `Legacy regression audit (diagnostic)` qui exécute tous les tests et affiche le résultat de chaque suite dans le résumé GitHub Actions, en signalant correctement un échec si une suite échoue.
+- Met à jour le README, les métadonnées de version et l'URL du ZIP de release.
+- Aucun changement des API ni de la logique d'automatisation PF1 ; les sept suites historiques restent à remettre en conformité.
+
 ## v1.19.2 — Attribution du module
 
 - Corrige le nom de l'auteur affiché par Foundry VTT dans `module.json` : **Caelvanost** remplace **Module personnalisé**.
