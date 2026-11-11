@@ -1,5 +1,5 @@
 /**
- * PF1AE v1.19 — generic verified damage notifications.
+ * PF1AE v1.19.1 — generic verified damage notifications with approved GM fallback.
  * This service does NOT observe PF1 damage hooks. attack-outcomes.js alone
  * correlates the native card, per-target damage request and Actor HP update,
  * then emits pf1aeVerifiedDamage on the elected GM.
@@ -36,17 +36,22 @@ function deSubscribers(actor,type){
  }
  return found;
 }
-/** A player-owned actor executes its scripts only on its elected player.
- * An NPC with no player owner executes on the elected GM.
- * This deliberately never executes a player-owned Item's code as GM.
+/** Keep elected executor consistent with bootstrap; only the elected client runs
+ * source ItemScriptCalls. The elected GM must verify exact content approval
+ * BEFORE executing a player-owned Item's script during offline-owner fallback.
  */
+const dePlayerOwners=actor=>[...game.users].filter(u=>!u.isGM&&
+ actor?.testUserPermission?.(u,'OWNER')===true);
 function deExecutor(actor){
- const playerOwners=[...game.users].filter(u=>!u.isGM&&
-   actor.testUserPermission?.(u,'OWNER')===true);
- const online=playerOwners.filter(u=>u.active).sort((a,b)=>a.id.localeCompare(b.id));
- if(online.length)return online[0].id;
- if(playerOwners.length)return null; // Never privilege-escalate player code to GM.
- return deLeader()?.id??null;
+ const online=dePlayerOwners(actor).filter(u=>u.active)
+  .sort((a,b)=>a.id.localeCompare(b.id));
+ return online[0]?.id??deLeader()?.id??null;
+}
+function deFallbackCheck(actor,item,call){
+ if(!game.user.isGM||!dePlayerOwners(actor).length)return {approved:true};
+ const check=game.modules.get(DE_NS)?.api?.scriptApprovals?.check;
+ if(typeof check!=='function')return {approved:false,reason:'GM Script Call approval service unavailable'};
+ return check(actor,item,call);
 }
 const deReceipts=()=>game.settings.get(DE_NS,DE_REG)??[];
 const deMessage=id=>game.messages?.get(id)??null;
@@ -121,6 +126,16 @@ async function deRecipientDispatch(event,recipientId){
   for(const type of kinds){
    const scriptEvent=Object.freeze({...deCopy(event),type});
    for(const {item,call} of deSubscribers(actor,type)){
+    const approval=deFallbackCheck(actor,item,call);
+    if(!approval.approved){
+     console.warn('[PF1AE][DamageEvents] GM fallback Script Call refused', {
+      actorUuid:actor.uuid,itemUuid:item.uuid,scriptId:call.id??call._id,
+      reason:approval.reason,eventId:event.eventId});
+     continue;
+    }
+    // An owner may reconnect during a previous async Script Call. Do not
+    // execute any additional script on the former executor.
+    if(deExecutor(actor)!==game.user.id)break;
     try{
      await call.execute({action:null},{
       event:scriptEvent,api:game.modules.get(DE_NS)?.api?.damageEvents
@@ -158,14 +173,14 @@ async function deProvenDamage(payload){
    targetActorUuid:event.targetActorUuid,sourceMessageId:event.sourceMessageId});
   await game.settings.set(DE_NS,DE_REG,seen.slice(-DE_MAX_RECEIPTS));
   const actor=await fromUuid(event.actorUuid),recipientId=deExecutor(actor??{});
-  if(!recipientId){deLog('No eligible player owner online; event not executed',event);return;}
+  if(!recipientId){deLog('No elected GM or player executor; event not executed',event);return;}
   if(recipientId===game.user.id)await deRecipientDispatch(event,recipientId);
   else game.socket.emit(DE_SOCKET,{channel:DE_CHANNEL,op:'notify',
    leaderId:game.user.id,recipientId,event});
  });
 }
 function deSocket(data){
- if(!deEnabled()||data?.channel!==DE_CHANNEL||data?.op!=='notify'||
+ if(!deEnabled()||game.user.isGM||data?.channel!==DE_CHANNEL||data?.op!=='notify'||
     data.recipientId!==game.user.id||data.leaderId!==deLeader()?.id)return;
  // Local executable ItemScriptCall always runs with the actor OWNER's
  // permissions. No player-provided JS is ever passed over the socket.
