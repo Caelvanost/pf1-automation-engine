@@ -1,3 +1,13 @@
+## v1.20.0 — Mode « Table de confiance » et bootstrap natif automatique
+
+- Ajoute un paramètre de monde désactivé par défaut, visible et modifiable par le MJ, avec un avertissement explicite sur l'exécution du JavaScript des joueurs sous privilèges MJ.
+- Découvre les Script Calls **toggle** nommés exactement `PF1AE:bootstrap` dans les Items des acteurs du monde et des acteurs synthétiques disponibles ; initialise via `ItemScriptCall.execute()` sans basculer l'Item.
+- Restaure les listeners suivis sur F5, reconnexion, transition d'exécutant et changement de scène ; événements ciblés pour les créations, éditions, suppressions et acteurs/tokens disponibles.
+- Compare la source native des scripts, nettoie les anciennes fonctions lors d'une modification, évite les doublons avec les inscriptions sécurisées existantes et conserve ces dernières lors des changements de mode.
+- En mode Table de confiance seulement, contourne les approbations individuelles pour les catégories et noms natifs stricts `PF1AE:bootstrap`, `PF1AE:attack:resolved` et `PF1AE:damage:*` connus. Les autres scripts restent soumis aux contrôles historiques ; la provenance native et les gardes de déduplication ne changent pas.
+- Test dédié de multi-exécution, acteurs synthétiques, remplacement, sécurité et bascule des modes ; ajout à la barrière de release.
+- Préserve les API existantes de PF1AE, les contextes Utilisation/Après Utilisation/Basculer et le manifeste GitHub permanent.
+
 ## v1.19.3 — Audit des tests et fiabilisation de la publication
 
 - Le workflow de release vérifie désormais que les 28 suites de tests existantes sont explicitement réparties entre 21 suites obligatoires et 7 suites historiques exclues ; tout nouveau fichier de test exige une décision de maintenance explicite avant publication.
