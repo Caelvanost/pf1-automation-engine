@@ -1,3 +1,14 @@
+## v1.19.1 — Exécution de secours MJ des Script Calls, sous approbation exacte
+
+- `damageEvents` élit désormais le joueur propriétaire connecté le plus prioritaire, ou le MJ élu lorsque tous les joueurs propriétaires sont déconnectés ; les PNJ sans propriétaire joueur restent exécutés par le MJ élu.
+- Nouveau service partagé `api.scriptApprovals.approve/revoke/list/check` : l'approbation MJ d'un Script Call est liée à l'UUID de l'acteur, de l'Item et à l'ID natif du script, ainsi qu'au contenu exact sérialisé. Toute édition invalide l'autorisation.
+- Un refus explicite et journalisé bloque un Script Call non approuvé ou modifié lors d'une reprise MJ. Aucun JavaScript ne circule sur le socket d'approbation.
+- Le même contrôle est appliqué au bootstrap persistant et aux abonnements `attack:resolved` exécutés par un MJ sur un PJ possédé par un joueur.
+- `bootstrap` retire les hooks restaurés devenus non approuvés lors de la modification de l'Item.
+- Les notifications de dégâts ne sont jamais exécutées sur le MJ à partir d'un socket `notify` non authentifié : seule la confirmation locale du MJ élu peut invoquer sa reprise.
+- Tests de transition joueur/MJ, reconnexion, doublons et empreintes dans les suites `damage-events` et `bootstrap`.
+- `module.json` v1.19.1 et ZIP de release correspondant. Aucun changement aux règles de classe.
+
 ## v1.19.0 — Événements génériques de dégâts confirmés (critiques et PV à zéro)
 
 - Pont de dégâts natif unique : `attackOutcomes` émet un événement interne après corrélation carte/Action/attaque/cible, appel de dégâts PF1 et perte réelle de PV.

@@ -1,13 +1,16 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
 const source=fs.readFileSync(path.resolve(__dirname,'../scripts/bootstrap.js'),'utf8');
+const approvalSource=fs.readFileSync(path.resolve(__dirname,'../scripts/script-approvals.js'),'utf8');
 const ns='pf1-automation-engine',setting=new Map([['genericEnabled',true],['genericDebug',false]]);
 const users=[{id:'gm',isGM:true,active:true},{id:'player',isGM:false,active:true},{id:'other',isGM:false,active:true}];
 users.get=id=>users.find(u=>u.id===id);
 const actor={documentName:'Actor',uuid:'Scene.s.Token.t.Actor.a',
  testUserPermission:(user,perm)=>perm==='OWNER'&&user.id==='player'};
 let installed=0,removed=0,handled=0,lastContext=null;
-const call={id:'toggle-1',category:'toggle',name:'PF1AE:bootstrap',async execute(shared,extra){
+const call={id:'toggle-1',category:'toggle',name:'PF1AE:bootstrap',
+ _source:{id:'toggle-1',category:'toggle',name:'PF1AE:bootstrap',script:'// owner-controlled native bootstrap'},
+ async execute(shared,extra){
  installed++;lastContext=extra;assert.equal(shared.action,null);
  assert.equal(extra.bootstrap.restoring,true);assert.equal(extra.state,null);
  extra.bootstrap.listen('pf1CreateActionUse',()=>{handled++});
@@ -30,7 +33,9 @@ function client(user){
    socket:{on(_name,fn){instance.socket=fn},emit(_name,data){for(const c of instances.values())c.socket?.(data)}}
   }};
  const instance={user,ctx,events,callbacks,mod,socket:null};
- vm.createContext(ctx);vm.runInContext(source,ctx,{filename:'bootstrap.js'});
+ vm.createContext(ctx);
+ vm.runInContext(approvalSource,ctx,{filename:'script-approvals.js'});
+ vm.runInContext(source,ctx,{filename:'bootstrap.js'});
  instances.set(user.id,instance);return instance;
 }
 const gm=client(users[0]),player=client(users[1]),other=client(users[2]);
@@ -76,9 +81,19 @@ const wait=()=>new Promise(r=>setTimeout(r,35));
  await wait();const result=await api.restoreAll();
  assert.equal(result.restored,0);
  assert.equal(installed,2);
- // After player disconnects the elected GM may bootstrap the actor.
+ // Offline owner: never run player-editable script as GM without approval.
  docs.set(item.uuid,item);users[1].active=false;
+ await gm.mod.api.bootstrap.restoreAll();assert.equal(installed,2);
+ assert.equal(gm.events.get('pf1CreateActionUse')?.length??0,0);
+ await gm.mod.api.scriptApprovals.approve({actor,item,scriptId:call.id});
  await gm.mod.api.bootstrap.restoreAll();assert.equal(installed,3);
+ assert.equal(gm.events.get('pf1CreateActionUse')?.length,1);
+ // Exact content modification invalidates approval and removes active hooks.
+ call._source.script='// modified without renewed approval';
+ await gm.mod.api.bootstrap.restoreAll();
+ assert.equal(gm.events.get('pf1CreateActionUse')?.length??0,0);
+ await gm.mod.api.scriptApprovals.approve({actor,item,scriptId:call.id});
+ await gm.mod.api.bootstrap.restoreAll();assert.equal(installed,4);
  assert.equal(gm.events.get('pf1CreateActionUse')?.length,1);
  users[1].active=true;
  await gm.mod.api.bootstrap.restoreAll();

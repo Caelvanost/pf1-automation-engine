@@ -38,16 +38,19 @@ messages.set(card.id,card);
 const feature={documentName:'Item',id:'feature',uuid:source.uuid+'.Item.feature',actor:source,
  scriptCalls:{contents:[
  {id:'any',category:'postUse',name:'PF1AE:damage:applied',
+  _source:{id:'any',category:'postUse',name:'PF1AE:damage:applied',script:'// applied handler'},
   async execute(_shared,{event}){scriptCalls.push(event)}},
  {id:'crit',category:'postUse',name:'PF1AE:damage:critical',
+  _source:{id:'crit',category:'postUse',name:'PF1AE:damage:critical',script:'// critical handler'},
   async execute(_shared,{event}){scriptCalls.push(event)}},
  {id:'zero',category:'postUse',name:'PF1AE:damage:zeroHP',
+  _source:{id:'zero',category:'postUse',name:'PF1AE:damage:zeroHP',script:'// zero handler'},
   async execute(_shared,{event}){scriptCalls.push(event)}}
  ]}};
 source.items.set('feature',feature);docs.set(feature.uuid,feature);
 game.modules.set('pf1-automation-engine',{active:true,api:{}});
 vm.createContext(ctx);
-for(const file of ['attack-outcomes.js','damage-events.js'])
+for(const file of ['script-approvals.js','attack-outcomes.js','damage-events.js'])
  vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../scripts/',file),'utf8'),ctx,{filename:file});
 for(const cb of init)cb();for(const cb of ready)cb();
 assert.equal((hooks.get('pf1ApplyDamage')??[]).length,1,'Only original bridge listens to native apply hook');
@@ -158,5 +161,43 @@ async function damage(recipient,{loss=0,critMult=0,attackIndex=0,from=gm,offset=
  for(const fn of hooks.get('socket:module.pf1-automation-engine')??[])fn(incoming);
  await wait();
  assert.equal((store.get('damageEventReceipts')??[]).length>=7,true);
- console.log('PASS damage events: native applied/critical/zeroHP, synthetic offsets, no manual/zero/temp, repeated card, player delivery, two GMs');
+ // GM fallback: offline player, no preapproval = explicit refusal.
+ player.active=false;
+ const current=scriptCalls.length;
+ await damage(synthetic,{loss:1,critMult:0});
+ assert.equal(scriptCalls.length,current,'Unapproved player-owned script must not execute as GM');
+ assert.equal(game.modules.get('pf1-automation-engine').api.scriptApprovals.list().length,0);
+ const a=game.modules.get('pf1-automation-engine').api.scriptApprovals;
+ await a.approve({actor:source,item:feature,scriptId:'any'});
+ await damage(synthetic,{loss:1,critMult:0});
+ assert.equal(scriptCalls.length,current+1,'Approved offline fallback executes exactly once');
+ assert.equal(scriptCalls.at(-1).type,'damage:applied');
+ // Multiple MJ clients never both act: gm2 receives no direct event.
+ game.user=gm2;
+ const priorGM2=scriptCalls.length;
+ await damage(synthetic,{loss:1,critMult:0,from:gm2});
+ assert.equal(scriptCalls.length,priorGM2);
+ game.user=gm;
+ // Script edit must invalidate exact fingerprint, with a clear refusal.
+ feature.scriptCalls.contents[0]._source.script='// modified by player';
+ await damage(synthetic,{loss:1,critMult:0});
+ assert.equal(scriptCalls.length,current+1,'Modified script cannot execute as GM');
+ await a.approve({actor:source,item:feature,scriptId:'any'});
+ await damage(synthetic,{loss:1,critMult:0});
+ assert.equal(scriptCalls.length,current+2,'Reapproved script can execute as GM');
+ // Reconnection transfers execution to the elected online OWNER.
+ player.active=true;
+ await damage(synthetic,{loss:1,critMult:0});
+ assert.equal(scriptCalls.length,current+2,'MJ yields to connected player');
+ const finalPacket=emissions.filter(x=>x.data.channel==='pf1ae-damage-events-v1').at(-1)?.data;
+ assert.equal(finalPacket.recipientId,player.id);
+ game.user=player;
+ for(const fn of hooks.get('socket:module.pf1-automation-engine')??[])fn(finalPacket);
+ await wait();
+ assert.equal(scriptCalls.length,current+3,'Player resumes without a GM fallback call');
+ for(const fn of hooks.get('socket:module.pf1-automation-engine')??[])fn(finalPacket);
+ await wait();
+ assert.equal(scriptCalls.length,current+3,'Replay during handoff remains idempotent');
+ game.user=gm;
+ console.log('PASS damage events: native applied/critical/zeroHP, synthetic offsets, owner fallback approval, script mutation, reconnect and two GMs');
 })().catch(err=>{console.error(err);process.exitCode=1});

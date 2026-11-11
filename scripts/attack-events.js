@@ -117,8 +117,21 @@ async function aeDeliver(source,results,actionUse,message) {
       isAutoTriggered:false
     });
     for (const {item,call} of subs) {
-      // Only client owning the attack executes its own PF1 Script Call.
+      // The rolling client handles its own hook; when a GM handles an Actor
+      // owned by any player, never execute unapproved player-editable code
+      // with GM privileges (online and offline cases alike).
       if (!aeActorOwner(source.actor)) break;
+      if(game.user.isGM&&[...game.users].some(u=>!u.isGM&&
+         source.actor.testUserPermission?.(u,'OWNER')===true)){
+        const approval=game.modules.get(AE_NS)?.api?.scriptApprovals?.check?.(source.actor,item,call)
+          ??{approved:false,reason:'Script approval service unavailable'};
+        if(!approval.approved){
+          console.warn('[PF1AE][AttackEvents] GM Script Call refused',
+            {actorUuid:source.actor.uuid,itemUuid:item.uuid,
+              scriptId:call.id??call._id,reason:approval.reason});
+          continue;
+        }
+      }
       try {
         await call.execute({action:null},{event,api:game.modules.get(AE_NS).api.attackEvents});
         aeLog('Item subscriber executed', {itemUuid:item.uuid, rollIndex:i, callId:call.id});
