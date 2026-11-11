@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.22.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.23.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -174,3 +174,22 @@ PF1 Automation Engine ships `lang/en.json` and `lang/fr.json`. Foundry uses each
 **Note:** Existing chat message contents are stored as HTML at the time of creation; they are not retroactively translated if a reader changes language later. Technical diagnostic logs and errors returned by third-party APIs can also remain in the language emitted by their source.
 
 Translations are maintained as matching JSON keys with identical variable placeholders. The `i18n.test.cjs` regression validates both packs and reproduces a labeled pre-roll attack in both languages.
+
+
+## v1.23.0 — Experimental loaded ammunition and Reload action
+
+This first version implements an **opt-in core for configured firearms and crossbows**, preserving PF1 native inventory ammunition consumption. Activate **Automatic weapon reload tracking** in module settings. Open an actor-owned weapon sheet: a compact widget lets you configure capacity, PF1 ammunition selection, per-Action shot cost for a multi-barrel attack, and base reload action category. Saving the configuration creates one native PF1 reload Action without removing existing Actions. Loaded chamber markers, Reload and Unload controls appear on the Item sheet.
+
+**Architecture B:** Reload reserves rounds already represented in the actor's native PF1 inventory. The inventory quantity decreases only on a successful attack through PF1's normal ammunition deduction. PF1AE then decrements the loaded slots; it does NOT separately subtract native inventory ammo. Only explicitly configured weapons are affected. Bows and thrown weapons retain native behavior. No existing weapon is automatically considered empty.
+
+**Before-roll guard:** On configured weapon ActionUse instances, PF1AE intercepts generation of ChatAttack entries via the pf1CreateActionUse hook and aborts before attack rolls, chat, charges and ammo consumption if the loaded state is insufficient. A native per-Action shot cost can be configured to require two rounds for a simultaneous double-barrel attack. The source-exact PF1 11.11 integration still needs in-game verification: the public mirror inspected is a different source revision.
+
+**Reload time:** The API reports a reload category derived from a configured base and explicit Rapid Reload and alchemical-cartridge inputs. It does **not** yet automatically detect which weapon a feat applies to, enforce the action economy, alter misfire thresholds, implement mixed-ammo barrels, or automatically trigger AoOs. A reminder is shown instead. These are known incomplete features, not automation guarantees.
+
+**API:** game.modules.get('pf1-automation-engine').api.reload exposes getState(weapon), configure(weapon,options), canFire(weapon,action,attacks), reload(weapon,{ammoId,count,rapidReload}), unload(weapon,{count}) and timing(weapon,ammo,options).
+
+**Multiplayer caution:** Locks are per-client and updates are best-effort, not atomic. Concurrent shots from multiple clients or interruptions between native ammo deduction and weapon state updates can require GM reconciliation. This version is experimental and disabled by default; do not enable globally until tested in a live multiplayer world.
+
+**Double barrel:** Set capacity 2 and native Double barrel Action shot cost 2. One loaded barrel permits a single shot but blocks a double shot. The existing PF1 Full Attack button may still be required to produce two attack rolls for that Action.
+
+Note that PF1 Action names are saved world data; an Action created as Reload or Recharger will not automatically change its stored name based on another connected user's locale. Notifications and settings do localize per client.
