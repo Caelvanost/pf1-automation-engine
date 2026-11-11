@@ -1,5 +1,5 @@
 /**
- * PF1 Automation Engine — Attack Outcomes (v1.14.4).
+ * PF1 Automation Engine — Attack Outcomes (v1.19.0).
  * Fail-closed tracking for source-specific attacks whose damage is manually
  * applied from PF1's native ApplyDamage dialog. Only the elected GM mutates
  * the persistent registry or executes a subsequent PF1 ItemAction.
@@ -64,6 +64,22 @@ function aoUpdateHasDamage(changes){
   'system.attributes.hp.nonlethal','system.attributes.hp.nl',
   'system.attributes.hp.temp'].some(key=>aoUpdateField(changes,key)!==undefined);
 }
+function aoNativeCritMult(options){
+ const value=options?.critMult;
+ if(value==null||value==='')return null;
+ const n=Number(value);
+ return Number.isSafeInteger(n)&&n>=0&&n<=100?n:null;
+}
+/** Snapshot taken from the same Actor before and after native PF1 damage. */
+function aoDamageEvidence(record,after){
+ return {hpBefore:Number.isFinite(record.before?.hp)?record.before.hp:null,
+  hpAfter:Number.isFinite(after?.hp)?after.hp:null,
+  tempHpBefore:Number.isFinite(record.before?.temp)?record.before.temp:null,
+  tempHpAfter:Number.isFinite(after?.temp)?after.temp:null,
+  nonlethalBefore:Number.isFinite(record.before?.nonlethal)?record.before.nonlethal:null,
+  nonlethalAfter:Number.isFinite(after?.nonlethal)?after.nonlethal:null,
+  critMult:record.critMult??null};
+}
 function aoOffsetEvidence(options){
  const hp=options?.pf1?.deltas?.hp??{};
  const raw=aoUpdateField(hp,'offset');
@@ -120,7 +136,8 @@ function aoAfterNativeActorUpdate(actor,changes,options,userId){
  aoLog('Native damage applied; dispatching verified outcome',{
    requestId:record.requestId,expected:aoDescribe(record.context),delta});
  const payload={channel:AO_CHANNEL,op:'damage',requestId:record.requestId,
-   userId:game.user.id,context:{...record.context,delta},targetUuid:actor.uuid};
+   userId:game.user.id,context:{...record.context,delta,
+   evidence:aoDamageEvidence(record,evidence.after)},targetUuid:actor.uuid};
  if(aoLeader())void aoResolveDamage(payload).catch(e=>
     console.error('[PF1AE][AttackOutcome] Direct damage dispatch failed',e));
  else game.socket.emit(AO_SOCKET,payload);
@@ -353,7 +370,7 @@ function aoOnApplyOptions(app,target,options){
  const actor=aoActor(target?.actor??target)??aoActor(target?.token);
  const attempts=AO_DIALOG_DAMAGE.get(app)??[];
  const record={context,actor,before:aoDamageSnapshot(actor),nativePre:false,
-   conflicted:false,requestId:foundry.utils.randomID()};
+   conflicted:false,requestId:foundry.utils.randomID(),critMult:aoNativeCritMult(options)};
  if(!AO_ACTIVE_DIALOGS.has(app)){
    aoPrepareDirect(record);
    AO_SOURCE_OPTIONS.set(options,record);
@@ -407,6 +424,12 @@ function aoOnNativeApplyDamage(actor,options){
       attackIndex:options?.attackIndex??null},matchMethod});
   return;
  }
+ const nativeCrit=aoNativeCritMult(options);
+ if(record.critMult!=null&&nativeCrit!=null&&record.critMult!==nativeCrit){
+  record.conflicted=true;
+  aoLog('Conflicting native critical multiplier',{requestId:record.requestId});return;
+ }
+ if(nativeCrit!=null)record.critMult=nativeCrit;
  record.nativePre=true;
  record.nativeEvidence=aoOffsetEvidence(options);
  aoLog('pf1ApplyDamage received',{requestId:record.requestId,matchMethod,
@@ -440,7 +463,7 @@ async function aoFinishNativeDialog(app,completed){
      attackIndex:context.attackIndex,targetUuid:actor.uuid,delta});
    if(!delta.provenDamage)continue;
    const payload={channel:AO_CHANNEL,op:'damage',requestId:record.requestId,userId:game.user.id,
-     context:{...context,delta},targetUuid:actor.uuid};
+     context:{...context,delta,evidence:aoDamageEvidence(record,aoDamageSnapshot(actor))},targetUuid:actor.uuid};
    if(aoLeader())await aoResolveDamage(payload);
    else game.socket.emit(AO_SOCKET,payload);
  }
@@ -500,6 +523,11 @@ async function aoResolveDamage(data){
     console.warn('[PF1AE][AttackOutcome] Non-GM damage attestation cannot be verified on the leader; review required');
     return {processed:false,reason:'GM-authoritative damage attestation required',requiresGM:true};
   }
+ // Corroborated native damage also feeds class-neutral Item subscriptions.
+ // No additional low-level PF1 damage hooks are installed.
+ Hooks.callAll?.('pf1aeVerifiedDamage',{requestId:data.requestId,
+   sourceUserId:data.userId,context:{...c,sourceMessageId:card.id},
+   targetUuid:data.targetUuid});
  return aoQueue(async()=>{
   const entries=aoEntries();
   const matches=entries.filter(r=>aoSourceMatches(r,info,card,c.attackIndex,data.targetUuid)&&r.expiresAt>aoNow());

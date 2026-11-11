@@ -33,6 +33,7 @@ jobs:
           node tests/compendium-templates.test.cjs
           node tests/save-overrides.test.cjs
           node tests/native-save-context.test.cjs
+          node tests/damage-events.test.cjs
 
       - name: Validate Foundry package
         shell: powershell
