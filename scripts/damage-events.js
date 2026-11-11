@@ -106,7 +106,10 @@ async function deRecipientDispatch(event,recipientId){
  if(!Number.isSafeInteger(event.attackIndex)||event.attackIndex<0||
    !deValid(event.targetActorUuid))return;
  const target=await fromUuid(event.targetActorUuid);
- if(target?.documentName!=='Actor')return;
+ const attackItem=await fromUuid(event.itemUuid);
+ if(target?.documentName!=='Actor'||attackItem?.documentName!=='Item'||
+    (attackItem.actor??attackItem.parent)?.uuid!==actor.uuid||
+    ![...(attackItem.actions?.values?.()??[])].some(a=>(a.id??a._id)===event.actionId))return;
  if(!(Number.isFinite(event.hpBefore)&&Number.isFinite(event.hpAfter)&&
       event.hpBefore>event.hpAfter&&event.hpDelta===event.hpAfter-event.hpBefore))return;
  DE_SEEN.add(event.eventId);if(DE_SEEN.size>3000)DE_SEEN.clear();
@@ -134,8 +137,13 @@ async function deProvenDamage(payload){
  if(!event){deLog('Unverified or non-HP damage refused', {requestId:payload?.requestId});return;}
  // Verify target UUID and effective current HP on leader: especially important
  // when the applying GM differs from the elected GM.
- const target=await fromUuid(event.targetActorUuid);
- if(target?.documentName!=='Actor')return;
+ const target=await fromUuid(event.targetActorUuid),attacker=await fromUuid(event.actorUuid),
+  attackItem=await fromUuid(event.itemUuid);
+ if(target?.documentName!=='Actor'||attacker?.documentName!=='Actor'||
+    attackItem?.documentName!=='Item'||(attackItem.actor??attackItem.parent)?.uuid!==attacker.uuid||
+    ![...(attackItem.actions?.values?.()??[])].some(a=>(a.id??a._id)===event.actionId)){
+  deLog('Unverified source Item/Action/Actor; refused',event);return;
+ }
  let matches=false;
  for(let i=0;i<6;i++){
   const value=Number((await fromUuid(event.targetActorUuid))?.system?.attributes?.hp?.value);
