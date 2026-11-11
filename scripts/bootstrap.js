@@ -146,7 +146,6 @@ async function bsRestoreOne(record){
     if(!bsOwned(actor,game.user) || bsExecutor(actor)!==game.user.id) {
       bsCleanup(record.id);return {skipped:'not elected Actor executor'};
     }
-    if(BS_ACTIVE.has(record.id)){bsDebug('Skipped duplicate',{id:record.id});return {skipped:'already active'};}
     const item=await fromUuid(record.itemUuid);
     if(!item || (item.actor??item.parent)?.uuid!==actor.uuid){
       bsCleanup(record.id);bsDebug('Missing Actor/Item',{id:record.id,itemUuid:record.itemUuid});return {skipped:'missing Item'};
@@ -167,6 +166,11 @@ async function bsRestoreOne(record){
           scriptId:call.id??call._id,reason:approval.reason});
         return {skipped:'unapproved GM fallback',reason:approval.reason};
       }
+    }
+    // Keep idempotence, but only after checking the current fingerprint.
+    // Otherwise editing an already-active Script Call leaves stale GM hooks.
+    if(BS_ACTIVE.has(record.id)){
+      bsDebug('Skipped duplicate',{id:record.id});return {skipped:'already active'};
     }
     const runtime={hooks:[],cleanup:[]};
     // Use explicit cleanup and tracked subscriptions to prevent permanent
