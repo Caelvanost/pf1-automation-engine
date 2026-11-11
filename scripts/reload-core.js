@@ -12,6 +12,8 @@ const RL_FIRING=new Set();
 const rlL=(key,data={})=>{
  const fallback={
   Action:'Reload',
+  AutoUnavailable:'Unable to infer weapon capacity or native ammunition automatically',
+  InitialStatus:'Reloading will initialize this weapon automatically',
   Loaded:'Loaded: {loaded}/{capacity}',Unload:'Unload',
   Configure:'Configure reload',Capacity:'Capacity',Ammo:'Ammunition',
   Shots:'Shots for Action',Save:'Save',
@@ -161,6 +163,24 @@ async function rlConfigure(weapon,{capacity,ammoType,base='standard',actionCosts
   return rlClone(state);
  });
 }
+// A generic Rapid Reload feat alone is NOT sufficient: PF1 chooses one weapon
+// type. Accept only an explicit weapon choice in a feat name or a trusted flag.
+function rlRapidReload(weapon){
+ const actor=rlActor(weapon),name=String(weapon?.name??'').toLowerCase();
+ const group=/pistolet|pistol/.test(name)?/(?:pistolet|pistol)/:
+  /mousquet|musket/.test(name)?/(?:mousquet|musket)/:
+  /arbal[eè]te l[eé]g[eè]re|light crossbow/.test(name)?/(?:arbal[eè]te l[eé]g[eè]re|light crossbow)/:
+  /arbal[eè]te lourde|heavy crossbow/.test(name)?/(?:arbal[eè]te lourde|heavy crossbow)/:null;
+ if(!group)return false;
+ return rlItems(actor).some(feat=>{
+  if(feat?.type!=='feat'||feat.system?.disabled===true)return false;
+  const label=String(feat.name??'').toLowerCase();
+  if(!/(?:rechargement rapide|rapid reload)/i.test(label))return false;
+  if(feat.getFlag?.(RL_NS,'rapidReloadWeaponUuid')===weapon.uuid)return true;
+  const explicit=label.match(/(?:rechargement rapide|rapid reload)\s*[\(\[—:\-]\s*([^)\\\]]+)/i);
+  return explicit&&group.test(explicit[1]);
+ });
+}
 function rlTiming(state,ammo,options){
  // Reductions must be explicitly verified/configured per weapon and ammo.
  // No unverified character feat name inference.
@@ -249,143 +269,122 @@ async function rlCommitShot(use){
  }catch(error){console.error('[PF1AE][Reload] Shot state update failed',error);}
  finally{RL_FIRING.delete(weapon.uuid);}
 }
-// Compact controls on the existing PF1 item sheet; preserve its own layout.
+// Automatic but conservative PF1 weapon inference. Capacity is generally
+// printed in the compendium description, not in a universal WeaponModel field.
 const rlItems=actor=>[...(actor?.items?.contents??actor?.items?.values?.()??actor?.items??[])];
-const rlAmmoChoices=actor=>rlItems(actor).filter(item=>item?.type==='ammo' &&
-  !item.inContainer && item.system?.identified!==false);
-const rlAttackActions=weapon=>rlActions(weapon).filter(action=>
-  action?.hasAttack===true || ['rwak','twak','mwak','rsak','msak'].includes(action?.actionType));
-const rlNativeAmmoType=weapon=>rlAttackActions(weapon)
-  .find(action=>action?.actionType==='rwak'&&action?.ammo?.type)?.ammo?.type ??
-  weapon?.system?.ammo?.type ?? null;
+const rlAttackActions=weapon=>[...(weapon?.actions?.contents??weapon?.actions?.values?.()??weapon?.actions??[])].filter(action=>
+  action?.actionType==='rwak'&&action?.hasAttack===true&&action?.ammo?.type&&
+  Number(action?.ammo?.cost)>0);
+const rlPlain=html=>String(html??'').replace(/<[^>]*>/g,' ').replace(/&nbsp;|&#160;/gi,' ')
+  .replace(/\s+/g,' ').trim();
+function rlInfer(weapon){
+ if(weapon?.type!=='weapon'||!rlActor(weapon))return {ok:false,reason:'not a weapon'};
+ const actions=rlAttackActions(weapon);
+ if(!actions.length)return {ok:false,reason:'no native ranged ammunition action'};
+ const types=[...new Set(actions.map(a=>a.ammo.type))];
+ if(types.length!==1)return {ok:false,reason:'ambiguous native ammunition types'};
+ const ammoType=types[0];
+ const name=String(weapon.name??'').toLowerCase();
+ const descriptions=[
+  weapon.system?.description?.value,weapon.system?.description?.unidentified,
+  weapon.system?.description?.summary,weapon.system?.description?.notes,
+  weapon.system?.source?.text
+ ].map(rlPlain).join(' ');
+ const capMatch=descriptions.match(/(?:capacity|capacite|capacité)\s*:?\s*(\d{1,3})\b/i);
+ let capacity=capMatch?Number(capMatch[1]):null;
+ let source=capMatch?'description':null;
+ if(!capacity){
+  if(/double[-\s]barrel(?:ed)?\s+(?:pistol|musket)|(?:pistolet|mousquet)\s+(?:à\s+)?double\s+canon/i.test(name)){
+   capacity=2;source='recognized double-barrel weapon';
+  }else if(/(?:crossbow|arbalète|arbalete|pistol|pistolet|musket|mousquet)/i.test(name)&&
+           !/(?:repeating|répétition|repetition|multiple|multi)/i.test(name)){
+   capacity=1;source='recognized single-load weapon';
+  }
+ }
+ if(!Number.isSafeInteger(capacity)||capacity<1||capacity>100)
+  return {ok:false,reason:'capacity not structurally available; requires explicit GM override'};
+ const actor=rlActor(weapon);
+ const candidates=rlItems(actor).filter(item=>item?.type==='ammo'&&!item.inContainer&&
+   item.system?.identified!==false&&item.system?.subType===ammoType);
+ const defaultId=weapon.system?.ammo?.default;
+ const ammo=candidates.find(x=>x.id===defaultId)??candidates[0];
+ if(!ammo)return {ok:false,capacity,ammoType,reason:'no matching native PF1 ammunition Item'};
+ const kind=/arbalète lourde|arbalete lourde|heavy crossbow|mousquet|musket/i.test(name)?'full':
+  /arbalète légère|arbalete legere|light crossbow|hand crossbow|arbalète de poing/i.test(name)?'move':
+  'standard';
+ return {ok:true,capacity,ammoType,ammoId:ammo.id,base:kind,source};
+}
+async function rlAutoConfigure(weapon){
+ const existing=rlState(weapon);if(existing)return existing;
+ const inferred=rlInfer(weapon);
+ if(!inferred.ok)throw Error(rlL('AutoUnavailable')+': '+inferred.reason);
+ const configured=await rlConfigure(weapon,{
+  capacity:inferred.capacity,ammoType:inferred.ammoType,
+  base:inferred.base,actionCosts:{}
+ });
+ if(weapon.system?.ammo?.default!==inferred.ammoId)
+  await weapon.update({'system.ammo.default':inferred.ammoId});
+ return configured;
+}
+// The only sheet integration is an absolutely positioned compact control.
+// It is not inserted into the sheet's columns, flex sizing or tab structure.
 function rlSheetWidget(sheet,html){
  if(!rlAllowed())return;
  const weapon=sheet?.document??sheet?.item??sheet?.object;
  if(weapon?.type!=='weapon'||!rlActor(weapon)||!rlOwner(rlActor(weapon)))return;
+ const native=rlAttackActions(weapon);
+ if(!native.length&&!rlState(weapon))return;
  const root=html?.[0]??html??sheet?.element?.[0]??sheet?.element;
  if(!root?.querySelector||root.querySelector('[data-pf1ae-reload-widget]'))return;
- const actor=rlActor(weapon),state=rlState(weapon);
- const actions=rlAttackActions(weapon);
- const ammoItems=rlAmmoChoices(actor);
- if(!state&&!actions.length)return;
- const panel=document.createElement('section');
- panel.dataset.pf1aeReloadWidget='true';
- // The native sheet's .window-content is often a flex container. A panel
- // inserted as a naked flex child otherwise grows into a large blank header.
- panel.style.cssText='box-sizing:border-box;flex:0 0 auto;align-self:stretch;min-height:0;max-height:none;padding:6px 9px;margin:4px 0;border:1px solid var(--color-border-light-primary,#888);border-radius:5px;font-size:0.9em;';
- const header=document.createElement('div');
- header.style.cssText='display:flex;align-items:center;gap:7px;flex-wrap:wrap;';
- const title=document.createElement('strong');
- title.textContent=state?rlL('Loaded',{loaded:state.slots.length,capacity:state.capacity}):rlL('Configure');
- header.append(title);panel.append(header);
- const button=(text,parent,handler)=>{
-  const element=document.createElement('button');element.type='button';element.textContent=text;
-  element.style.cssText='width:auto;min-width:70px;padding:2px 7px;flex:none;';
-  element.addEventListener('click',event=>{
-   event.preventDefault();event.stopPropagation();
-   void Promise.resolve().then(handler).then(()=>sheet.render?.(true))
-    .catch(error=>ui.notifications?.warn?.(error.message));
+ const header=root.querySelector('.sheet-header')??root.querySelector('header.sheet-header');
+ if(!header)return;
+ const container=document.createElement('div');
+ container.dataset.pf1aeReloadWidget='true';
+ container.style.cssText='position:absolute;top:5px;right:7px;z-index:8;display:flex;align-items:center;gap:4px;padding:3px 5px;border-radius:5px;background:var(--color-bg-option,#e7dfcc);box-shadow:0 1px 3px #0005;max-width:55%;';
+ if(!header.style.position)header.style.position='relative';
+ const state=rlState(weapon),inferred=rlInfer(weapon);
+ const status=document.createElement('span');
+ status.style.cssText='white-space:nowrap;font-size:11px;line-height:1.2;';
+ status.textContent=state?state.slots.length+' / '+state.capacity:
+   inferred.ok?'0 / '+inferred.capacity:'— / ?';
+ status.title=state?rlL('Loaded',{loaded:state.slots.length,capacity:state.capacity}):
+   (inferred.ok?rlL('InitialStatus'):rlL('AutoUnavailable'));
+ container.append(status);
+ const button=(label,fn)=>{
+  const b=document.createElement('button');b.type='button';b.textContent=label;
+  b.style.cssText='width:auto;min-width:0;max-width:none;flex:0 0 auto;margin:0;padding:2px 5px;font-size:11px;line-height:1.15;';
+  b.addEventListener('click',event=>{
+   event.stopPropagation();event.preventDefault();
+   void Promise.resolve().then(fn).then(()=>sheet.render?.(true))
+    .catch(err=>ui.notifications?.warn?.(err.message));
   });
-  parent.append(element);return element;
+  container.append(b);
  };
- if(state){
-  const dots=document.createElement('span');
-  dots.textContent=Array.from({length:state.capacity},(_,i)=>i<state.slots.length?'●':'○').join(' ');
-  dots.setAttribute('aria-label',state.slots.length+' / '+state.capacity);
-  header.append(dots);
-  const count=document.createElement('input');count.type='number';count.min='1';
-  count.max=String(state.capacity);count.value='1';count.style.cssText='width:55px;min-width:55px;flex:none;';
-  header.append(count);
-  button(rlL('Action'),header,()=>rlReload(weapon,{count:Number(count.value)}));
-  button(rlL('Unload'),header,()=>rlUnload(weapon,{count:Number(count.value)}));
- }
- const details=document.createElement('details');
- details.style.cssText='width:100%;margin-top:4px;';
- const summary=document.createElement('summary');summary.textContent=rlL('Configure');
- details.append(summary);
- const fields=document.createElement('div');
- fields.style.cssText='display:flex;align-items:end;gap:8px;flex-wrap:wrap;padding:7px 0;';
- const withLabel=(text,control)=>{
-  const label=document.createElement('label');
-  label.style.cssText='display:flex;flex-direction:column;gap:3px;min-width:100px;flex:1 1 125px;';
-  const caption=document.createElement('span');caption.textContent=text;
-  label.append(caption,control);fields.append(label);return control;
- };
- const number=(value,min,max)=>{
-  const input=document.createElement('input');input.type='number';
-  input.min=String(min);input.max=String(max);input.value=String(value);
-  input.style.cssText='box-sizing:border-box;width:100%;min-width:70px;min-height:26px;';
-  return input;
- };
- const select=()=>{
-  const input=document.createElement('select');
-  input.style.cssText='box-sizing:border-box;width:100%;min-width:125px;min-height:26px;';
-  return input;
- };
- const option=(input,value,label)=>{
-  const node=document.createElement('option');node.value=value;node.textContent=label;
-  input.append(node);
- };
- const capacity=withLabel(rlL('Capacity'),number(state?.capacity??1,1,100));
- const ammo=select();
- option(ammo,'',rlL('SelectAmmo'));
- // Show inventory ammo even if the weapon's action has no native ammo type.
- // Filter only at validation: an empty action.ammo.type is the common reason
- // both drop-downs were blank in v1.23.0.
- for(const item of ammoItems){
-  const type=item.system?.subType??'?';
-  option(ammo,item.id,(item.name??item.id)+' ('+type+', '+(item.system?.quantity??0)+')');
- }
- const preferred=weapon.system?.ammo?.default??state?.slots?.[0]?.ammoId;
- if(ammoItems.some(item=>item.id===preferred))ammo.value=preferred;
- withLabel(rlL('Ammo'),ammo);
- const actionChoice=select();
- option(actionChoice,'',rlL('SelectAction'));
- for(const action of actions)option(actionChoice,action.id,action.name??action.id);
- withLabel(rlL('Shots'),actionChoice);
- const cost=withLabel(rlL('Count'),number(2,1,100));
- const base=select();
- for(const kind of ['free','move','standard','full'])option(base,kind,rlL('Time'+kind[0].toUpperCase()+kind.slice(1)));
- base.value=state?.base??'standard';
- withLabel(rlL('Base'),base);
- const note=document.createElement('p');
- note.style.cssText='margin:4px 0;font-size:0.9em;opacity:0.85;';
- const native=rlNativeAmmoType(weapon);
- if(!ammoItems.length)note.textContent=rlL('NoAmmo');
- else if(!actions.length)note.textContent=rlL('NoActions');
- else if(!native)note.textContent=rlL('NoNativeAmmo');
- else note.textContent=rlL('Help');
- details.append(fields,note);
- button(rlL('Save'),details,async()=>{
-  if(!ammo.value)throw Error(rlL('NoAmmo'));
-  if(!Number.isSafeInteger(Number(capacity.value))||Number(capacity.value)<1||
-     Number(capacity.value)>100)throw Error(rlL('OutOfCapacity'));
-  const selected=actor.items?.get(ammo.value);
-  if(!selected||selected.type!=='ammo')throw Error(rlL('Missing'));
-  const ammoType=selected.system?.subType;
-  if(!ammoType)throw Error(rlL('NoAmmo'));
-  // PF1 subtractAmmo() requires an explicit native ammo type. Prevent a
-  // misleading successful setup on a weapon whose attacks cannot consume it.
-  const attacks=actions.filter(action=>action.actionType==='rwak');
-  if(!attacks.length||!attacks.some(action=>action.ammo?.type===ammoType))
-   throw Error(rlL('NativeMismatch'));
-  const actionId=actionChoice.value;
-  const costs={...(state?.actionCosts??{})};
-  if(actionId){
-   const selectedAction=actions.find(a=>a.id===actionId);
-   if(selectedAction?.actionType!=='rwak'||selectedAction.ammo?.type!==ammoType)
-    throw Error(rlL('NativeMismatch'));
-   costs[actionId]=Number(cost.value);
-  }
-  await rlConfigure(weapon,{capacity:Number(capacity.value),ammoType,
-   base:base.value,actionCosts:costs});
+ button(rlL('Action'),async()=>{
+  await rlAutoConfigure(weapon);
+  await rlReload(weapon,{count:1});
  });
- panel.append(details);
- // Attach below the native sheet header rather than ahead of the whole sheet.
- const sheetHeader=root.querySelector('.sheet-header')??
-   root.querySelector('header.sheet-header');
- if(sheetHeader?.parentElement)sheetHeader.insertAdjacentElement('afterend',panel);
- else (root.querySelector('.sheet-body')??root.querySelector('.window-content')??root).prepend(panel);
+ if(state?.slots.length)button(rlL('Unload'),()=>rlUnload(weapon,{count:1}));
+ if(game.user?.isGM){
+  // Optional correction exists only if automated capacity could not be read
+  // or the GM deliberately needs to override it; never a mandatory form.
+  button('⚙',async()=>{
+   const current=rlState(weapon),guess=rlInfer(weapon);
+   const input=await Dialog.prompt({
+    title:rlL('Capacity'),
+    content:'<label>'+rlL('Capacity')+' <input name="capacity" type="number" min="1" max="100" value="'+
+      (current?.capacity??guess.capacity??1)+'"></label>',
+    callback:html=>Number(html.find?.('[name="capacity"]')?.val?.()??
+      html.querySelector?.('[name="capacity"]')?.value)
+   });
+   if(input==null)return;
+   const inferredAmmo=current?.ammoType??guess.ammoType;
+   if(!inferredAmmo)throw Error(rlL('AutoUnavailable'));
+   await rlConfigure(weapon,{capacity:input,ammoType:inferredAmmo,
+    base:current?.base??guess.base??'standard',actionCosts:current?.actionCosts??{}});
+  });
+ }
+ header.append(container);
 }
 function rlInstall(){
  const proto=(globalThis.pf1?.components?.ActionUse??
@@ -452,7 +451,8 @@ Hooks.once('ready',()=>{
    return {ok:!!state&&state.slots.length>=needed,needed,loaded:state?.slots.length??0};
   },
   configure:rlConfigure,reload:rlReload,unload:rlUnload,
-  timing:(weapon,ammo,options)=>rlTiming(rlState(weapon),ammo,options)
+  timing:(weapon,ammo,options)=>rlTiming(rlState(weapon),ammo,options),
+  infer:rlInfer,rapidReload:rlRapidReload,initialize:rlAutoConfigure
  });
  rlInstall();
  Hooks.on('renderItemSheet',rlSheetWidget);

@@ -64,25 +64,48 @@ context.globalThis=context;vm.createContext(context);vm.runInContext(code,contex
  for(const fn of once.get('init')??[])fn();
  for(const fn of once.get('ready')??[])fn();
  const api=context.game.modules.get('pf1-automation-engine').api.reload;
- // PF1 weapon Action can have a ranged actionType without a prepared
- // ammo.type yet. Keep it visible in the widget for actionable diagnosis.
+ // Automatic weapon setup uses native action ammo and a conservative
+ // capacity parse; it never requires a full custom configuration form.
+ const originalName=weapon.name;
+ weapon.name='Pistolet à double canon';
+ weapon.system.description={value:'<p>Misfire 1–2 (5 ft.); Capacity 2</p>'};
+ assert.equal(api.infer(weapon).ok,true);
+ assert.equal(api.infer(weapon).capacity,2);
+ assert.equal(api.infer(weapon).ammoId,'am');
+ assert.equal(api.infer(weapon).source,'description');
+ const auto=await api.initialize(weapon);
+ assert.equal(auto.capacity,2);
+ assert.equal(weapon.actions.length,3,'auto init creates Reload once');
+ assert.equal(api.infer(weapon).capacity,2);
+ assert.equal((await api.initialize(weapon)).capacity,2,'idempotent automatic init');
+ const feat={id:'rapid',type:'feat',name:'Rechargement rapide',system:{disabled:false}};
+ actor.items.set('rapid',feat);
+ assert.equal(api.rapidReload(weapon),false,'unselected feat gives no global bonus');
+ feat.name='Rechargement rapide (pistolet)';
+ assert.equal(api.rapidReload(weapon),true,'explicit pistol choice qualifies');
+ feat.name='Rechargement rapide (mousquet)';
+ assert.equal(api.rapidReload(weapon),false,'wrong weapon choice never qualifies');
+ actor.items.delete('rapid');
+ weapon.name=originalName;
+ await weapon.unsetFlag?.('pf1-automation-engine','reloadState');
+ weapon.flags={};
+ weapon.actions.pop();
+ 
+ // Auto setup deliberately ignores unconfigured actions and non-ammo loot.
  context.actor=actor;context.weapon=weapon;
  const rawChoice=vm.runInContext('rlAttackActions(weapon)',context);
  assert.equal(rawChoice.length,2);
- const incomplete={id:'incomplete',name:'Double barrel (unconfigured)',
+ const incomplete={id:'incomplete',name:'Unconfigured attack',
    actionType:'rwak',hasAttack:true,ammo:{type:null,cost:0}};
  weapon.actions.push(incomplete);
- const visible=vm.runInContext('rlAttackActions(weapon)',context);
- assert.equal(visible.length,3,'an unconfigured ranged attack remains selectable');
+ assert.equal(vm.runInContext('rlAttackActions(weapon)',context).length,2);
  weapon.actions.pop();
- const ammoOptions=vm.runInContext('rlAmmoChoices(actor)',context);
- assert.equal(ammoOptions.length,1,'native PF1 Item type ammo is listed');
- assert.equal(ammoOptions[0].id,'am');
+ const ammoOptions=vm.runInContext('rlItems(actor).filter(x=>x.type==="ammo")',context);
+ assert.equal(ammoOptions.length,1,'native PF1 ammo Item found');
  actor.items.set('loot',{id:'loot',type:'loot',system:{quantity:99}});
- assert.equal(vm.runInContext('rlAmmoChoices(actor)',context).length,1,
-   'ordinary loot is not falsely listed as native ammunition');
+ assert.equal(vm.runInContext('rlItems(actor).filter(x=>x.type==="ammo")',context).length,1,
+   'generic loot is not native ammunition');
  actor.items.delete('loot');
- 
  let state=await api.configure(weapon,{capacity:2,ammoType:'gunBullet',
   base:'standard',actionCosts:{double:2}});
  assert.equal(state.slots.length,0);

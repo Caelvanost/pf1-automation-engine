@@ -1,3 +1,13 @@
+## v1.24.0 — Chargement automatique sans configuration obligatoire
+
+- Supprime le grand formulaire de configuration de rechargement qui déformait la fiche PF1 ; le remplace par un contrôle discret dans l'en-tête de l'arme.
+- Déduit la consommation par tir de `action.ammo.cost` et du nombre d'attaques natives ; conserve les anciens réglages manuels quand ils existent.
+- Initialise automatiquement l'arme au premier rechargement en détectant son type de munition et sa capacité lorsqu'elle est explicitement décrite (ou correspond à un modèle simple connu), sans considérer toutes les armes inconnues comme capacité 1.
+- Refuse les armes avec données contradictoires/incomplètes et conserve une correction facultative du MJ.
+- Détecte Rechargement rapide uniquement si le choix de l'arme est explicite ; ne confère pas de réduction universelle à un don sans choix documenté.
+- Régression : capacité du pistolet double canon, munition native, initialisation répétée et sélection de don.
+- Limites inchangées : coûts d'actions non imposés mécaniquement, mélange de munitions et atomicité multijoueur non garantis.
+
 ## v1.23.1 — Correctif de l'interface de rechargement
 
 - Corrige le filtre trop restrictif qui masquait les actions PF1 sans type de munition configuré.

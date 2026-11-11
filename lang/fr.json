@@ -106,7 +106,9 @@
       "TimeFree": "Action libre",
       "TimeMove": "Action de mouvement",
       "TimeStandard": "Action simple",
-      "TimeFull": "Action complexe"
+      "TimeFull": "Action complexe",
+      "AutoUnavailable": "Capacité ou type de munition introuvable automatiquement",
+      "InitialStatus": "Cliquer sur Recharger pour initialiser le chargement à partir des données de l'arme"
     }
   }
 }

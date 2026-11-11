@@ -106,7 +106,9 @@
       "TimeFree": "Free action",
       "TimeMove": "Move action",
       "TimeStandard": "Standard action",
-      "TimeFull": "Full-round action"
+      "TimeFull": "Full-round action",
+      "AutoUnavailable": "Unable to determine capacity or ammunition automatically",
+      "InitialStatus": "Click Reload to initialize loaded ammunition from the weapon's own data"
     }
   }
 }

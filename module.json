@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1AE v1.23.1: readable reload configuration with native ammo/action validation, experimental pre-roll loaded ammunition guard, EN/FR support.",
-  "version": "1.23.1",
+  "description": "PF1 Automation Engine: opt-in automatic PF1 weapon reload initialization, compact controls, bilingual labels, native ammunition use and verified damage hooks.",
+  "version": "1.24.0",
   "authors": [
     {
       "name": "Caelvanost"
@@ -46,7 +46,7 @@
   ],
   "url": "https://github.com/Caelvanost/pf1-automation-engine",
   "manifest": "https://raw.githubusercontent.com/Caelvanost/pf1-automation-engine/main/module.json",
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.23.1/pf1-automation-engine-v1.23.1.zip",
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.24.0/pf1-automation-engine-v1.24.0.zip",
   "readme": "https://github.com/Caelvanost/pf1-automation-engine/blob/main/README.md",
   "changelog": "https://github.com/Caelvanost/pf1-automation-engine/blob/main/CHANGELOG.md",
   "bugs": "https://github.com/Caelvanost/pf1-automation-engine/issues",

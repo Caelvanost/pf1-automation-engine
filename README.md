@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.23.1 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.24.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -203,3 +203,15 @@ La liste **Action d'attaque** montre les actions présentes dans l'arme, y compr
 **Prérequis pour enregistrer :** créer un objet de type *Munition* (PF1 `ammo`) dans l'inventaire de Zéphir et vérifier que l'action *Attaque* du pistolet utilise le même **type de munition** que cet objet. Le chargement PF1AE ne peut pas remplacer la configuration native nécessaire à la déduction PF1. Si ces valeurs manquent ou diffèrent, le bouton affiche désormais un message clair en français ou en anglais au lieu de créer un chargement trompeur.
 
 Configurer **Capacité : 2**, choisir la munition, sélectionner facultativement **Double canon** et saisir **Projectiles nécessaires : 2**, choisir le temps de rechargement de base, puis enregistrer. Les attaques et les munitions compatibles restent à vérifier dans la vraie session PF1 11.11 ; l'option reste expérimentale et désactivée par défaut.
+
+## v1.24.0 — Automatic reload configuration, no intrusive forms
+
+The former large per-weapon configuration widget has been **removed**. The module adds a compact, absolutely positioned reload control inside the existing native weapon sheet header without changing the PF1 sheet grid or flex columns. For an uninitialized recognized weapon it shows an estimated `0 / capacity` and a Reload button. Clicking Reload for the first time initializes the loaded slot state and creates the PF1 Reload Action without requiring a separate save/configuration step.
+
+Auto-detection uses the PF1 action's native `action.ammo.type` and `action.ammo.cost`. Capacity is **not** a universal numeric field in PF1 11.11's WeaponModel, so the module reads explicitly stated `Capacity 2` / `Capacité 2` from available weapon description text; otherwise it recognizes a small set of unambiguous simple pistol/musket/crossbow names, including the double-barrel pistol. Unknown, repeating or ambiguous weapons are **not** silently assigned a capacity: a GM can supply a capacity with the optional compact gear control, but a matching native ammo Action must exist.
+
+Shot cost derives from the number of actual native attack instances multiplied by the native `action.ammo.cost`, which accommodates full attacks, Rapid Shot and the double-barrel PF1 setup with two attack instances. Manual per-action overrides previously stored in flags remain supported for compatibility. Native PF1 remains solely responsible for inventory ammo deductions.
+
+The feat `Rapid Reload / Rechargement rapide` has no universal standardized chosen-weapon field in the inspected PF1 FeatModel. To prevent unjustified benefits, only a **weapon explicitly identified** in the feat's name (e.g. `Rechargement rapide (pistolet)`) or a GM-set `rapidReloadWeaponUuid` flag can qualify. An unqualified feat name is insufficient and never reduces all reloading times. This rule is advisory: action-economy expenditure is not mechanically enforced yet. Paper cartridges and misfire interactions remain future work. The engine stays **disabled by default** pending verification on real Foundry v13.351 / PF1 v11.11.
+
+The API now includes `api.reload.infer(weapon)`, `api.reload.initialize(weapon)` and `api.reload.rapidReload(weapon)` for diagnostics.
