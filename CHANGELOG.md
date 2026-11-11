@@ -1,3 +1,12 @@
+## v1.24.1 — Correction du blocage des tirs sans chargement
+
+- Corrige la cause d'une absence totale de blocage : l'ancien patch exigeait un constructeur interne ActionUse non exporté ; les hooks PF1 n'étaient alors jamais installés.
+- Branche directement les hooks natifs `pf1CreateActionUse` et `pf1PreActionUse` pour refuser un tir **avant le jet, le chat et la consommation native**, sans modifier de prototype PF1.
+- Considère le premier tir d'une arme à feu reconnue, mais pas encore chargée, comme impossible (0 projectile chargé).
+- Utilise uniquement une action native `Recharger` / `Reload` créée par le joueur ; ne crée plus d'action, n'applique plus automatiquement le don Rechargement rapide et ne détermine plus le coût en actions.
+- Retire le bouton de rechargement direct du widget pour ne pas contourner l'action native ; ajoute un diagnostic de blocage `api.reload.lastDiagnostic()`.
+- Tests mis à jour : tir initial interdit, tir interdit à vide, double canon, action Recharger native et consommation des munitions une seule fois.
+
 ## v1.24.0 — Chargement automatique sans configuration obligatoire
 
 - Supprime le grand formulaire de configuration de rechargement qui déformait la fiche PF1 ; le remplace par un contrôle discret dans l'en-tête de l'arme.
