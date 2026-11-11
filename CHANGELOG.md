@@ -1,3 +1,10 @@
+## v1.21.1 — Correctif d'application de portée native
+
+- Corrige l'exclusion accidentelle des jets lorsque PF1 initialise la pénalité de portée à zéro.
+- Accepte Token et TokenDocument pour le contrôle de scène et la mesure des cellules.
+- Expose le dernier diagnostic via `api.range.lastDiagnostic()` pour identifier les cas où le moteur laisse volontairement l'attaque au système natif.
+- Étend la suite de régression, conserve le paramètre opt-in et l'indépendance de Deadeye.
+
 ## v1.21.0 — Assistance de portée avant jet (optionnelle, expérimentale)
 
 - Nouveau réglage de monde indépendant du mode Table de confiance pour les attaques d'armes à distance `rwak` et `twak`, désactivé par défaut.
