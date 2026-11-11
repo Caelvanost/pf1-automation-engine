@@ -18,22 +18,24 @@ jobs:
         shell: powershell
         run: .\build_release.ps1
 
-      - name: Test generic discovery and migration
-        shell: powershell
+      - name: Run maintained regression suites (including trusted-table)
+        shell: pwsh
         run: |
-          node tests/discovery.test.cjs
-          node tests/migration.test.cjs
-          node tests/neutrality.test.cjs
-          node tests/turn-phases.test.cjs
-          node tests/effect-groups.test.cjs
-          node tests/extension-f5.test.cjs
-          node tests/duration.test.cjs
-          node tests/duration-group.test.cjs
-          node tests/rest-hooks.test.cjs
-          node tests/compendium-templates.test.cjs
-          node tests/save-overrides.test.cjs
-          node tests/native-save-context.test.cjs
-          node tests/damage-events.test.cjs
+          $ErrorActionPreference = 'Stop'
+          $tests = @(
+            'attack-events','attack-outcomes','attack-save-outcomes-integration',
+            'bootstrap','combat-cleanup','damage-events','discovery','distraction',
+            'duration','effect-groups-silent','migration','native-save-bridge',
+            'native-save-context','native-save-outcome-dispatch',
+            'native-save-post-chatmessage','neutrality','rest-hooks',
+            'save-outcomes','template-save-outcomes','timed-save-outcomes',
+            'turn-phases','trusted-table'
+          )
+          foreach ($name in $tests) {
+            $file = Join-Path tests "$name.test.cjs"
+            & node $file
+            if ($LASTEXITCODE -ne 0) { throw "Regression failed: $file" }
+          }
 
       - name: Validate Foundry package
         shell: powershell
