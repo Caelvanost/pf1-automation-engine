@@ -60,5 +60,6 @@
       "name": "Français",
       "path": "lang/fr.json"
     }
-  ]
+  ],
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.24.6/pf1-automation-engine-v1.24.6.zip"
 }
