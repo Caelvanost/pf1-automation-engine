@@ -14,4 +14,15 @@ for (const name of manifest.esmodules) {
   const body = fs.readFileSync(path.join(root, name), 'utf8');
   assert.doesNotMatch(body, /kineticistGatherPower|Cold Adaptation|Shroud of Water|Accumulation de pouvoir/i, `Class-specific logic in ${name}`);
 }
-console.log('PASS: manifest and runtime scripts are class-neutral; legacy files absent');
+
+assert.ok(!manifest.esmodules.includes('scripts/reload-core.js'),
+  'PF1AE must not load its old reload hooks after delegation');
+assert.ok(manifest.esmodules.includes('scripts/reload-adapter.js'),
+  'PF1AE must preserve a backward-compatible reload API adapter');
+const adapter=fs.readFileSync(path.join(root,'scripts/reload-adapter.js'),'utf8');
+assert.match(adapter,/reloadDelegated\s*=\s*true/,
+  'PF1AE must explicitly advertise that old reload hooks were removed');
+assert.doesNotMatch(adapter,/Hooks\.on\(['"]pf1(?:CreateActionUse|PreActionUse|PostActionUse)/,
+  'compatibility adapter must not install a second reload event handler');
+
+console.log('PASS: manifest, reload delegation and runtime scripts are class-neutral');

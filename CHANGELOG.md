@@ -1,3 +1,11 @@
+## Unreleased v1.24.6 — Reload responsibility extraction (branch only)
+
+- Removed `scripts/reload-core.js` from Foundry esmodules (no duplicate attack/reload hooks).
+- Added lazy deprecated `api.reload` delegation to `pf1-firearms-and-reload`.
+- Preserved old reload world setting invisibly for rollback; it no longer controls firearm reload functionality. The standalone module works automatically as soon as it is active in Foundry. No additional settings toggle exists.
+- Range automation, attack/damage events, bootstrap and generic automations are unchanged.
+- **Development only:** requires integration and live Foundry tests before release.
+
 ## v1.24.5 — Munitions PF1 liées, y compris objets de butin anciens
 
 - Utilise en priorité la munition réelle associée à l'arme dans le champ natif « Munition par défaut ».
