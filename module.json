@@ -2,7 +2,7 @@
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
   "description": "PF1 Automation Engine preview: reload delegated to separate PF1 Firearms & Reload module.",
-  "version": "1.24.6-dev.0",
+  "version": "1.24.6",
   "authors": [
     {
       "name": "Caelvanost"
