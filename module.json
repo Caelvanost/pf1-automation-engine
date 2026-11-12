@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine v1.24.5: support linked PF1 legacy loot ammunition in native reload and firing with one inventory deduction.",
-  "version": "1.24.5",
+  "description": "PF1 Automation Engine preview: reload delegated to separate PF1 Firearms & Reload module.",
+  "version": "1.24.6-dev.0",
   "authors": [
     {
       "name": "Caelvanost"
@@ -42,11 +42,10 @@
     "scripts/attack-events.js",
     "scripts/bootstrap.js",
     "scripts/range-automation.js",
-    "scripts/reload-core.js"
+    "scripts/reload-adapter.js"
   ],
   "url": "https://github.com/Caelvanost/pf1-automation-engine",
   "manifest": "https://raw.githubusercontent.com/Caelvanost/pf1-automation-engine/main/module.json",
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.24.5/pf1-automation-engine-v1.24.5.zip",
   "readme": "https://github.com/Caelvanost/pf1-automation-engine/blob/main/README.md",
   "changelog": "https://github.com/Caelvanost/pf1-automation-engine/blob/main/CHANGELOG.md",
   "bugs": "https://github.com/Caelvanost/pf1-automation-engine/issues",
