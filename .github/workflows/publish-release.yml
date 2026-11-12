@@ -87,9 +87,10 @@ jobs:
             foreach ($field in @('id','version','manifest','download')) {
               if ($packaged.$field -ne $manifest.$field) { throw "Packaged manifest mismatch: $field" }
             }
-            foreach ($required in @('scripts/bootstrap.js','scripts/attack-events.js','scripts/save-outcomes.js','scripts/effect-groups.js','lang/en.json','lang/fr.json')) {
+            foreach ($required in @('scripts/bootstrap.js','scripts/attack-events.js','scripts/save-outcomes.js','scripts/effect-groups.js','scripts/reload-adapter.js','lang/en.json','lang/fr.json')) {
               if (-not $archive.GetEntry($required)) { throw "Required module file missing: $required" }
             }
+            if ($archive.GetEntry('scripts/reload-core.js')) { throw 'Retired reload engine must not be packaged.' }
           } finally { $archive.Dispose() }
 
       - name: Create GitHub Release and upload module ZIP
