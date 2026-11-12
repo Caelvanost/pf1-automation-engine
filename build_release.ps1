@@ -61,7 +61,7 @@ function Test-PackagedFile {
     $relative = $File.FullName.Substring($repoRoot.Length).TrimStart([char[]]@(92, 47))
     # Keep the source regression fixture in Git, but never ship the retired
     # firearm reload engine in the production PF1AE archive.
-    if ($relative.Replace('\\','/') -eq 'scripts/reload-core.js') { return $false }
+    if ($relative.Replace([char]92, [char]47) -eq 'scripts/reload-core.js') { return $false }
     $parts = $relative -split '[\\/]'
     foreach ($part in $parts) {
         if ($part -in $excludedDirectories) { return $false }
