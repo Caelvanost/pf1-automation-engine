@@ -55,7 +55,8 @@ jobs:
             if ($null -eq $archive.GetEntry('scripts/range-automation.js')) { throw 'Missing native PF1 range increment bridge.' }
             if ($null -eq $archive.GetEntry('lang/en.json')) { throw 'Missing English locale pack.' }
             if ($null -eq $archive.GetEntry('lang/fr.json')) { throw 'Missing French locale pack.' }
-            if ($null -eq $archive.GetEntry('scripts/reload-core.js')) { throw 'Missing reload core.' }
+            if ($null -eq $archive.GetEntry('scripts/reload-adapter.js')) { throw 'Missing reload compatibility adapter.' }
+            if ($null -ne $archive.GetEntry('scripts/reload-core.js')) { throw 'Retired reload engine must not be packaged.' }
             if ($null -eq $archive.GetEntry('API-EXPIRATIONS.md')) { throw 'Missing turn expiry documentation.' }
             if ($null -ne $archive.GetEntry('scripts/combat-hooks.js')) { throw 'Removed class-specific combat hook still packaged.' }
             if ($null -ne $archive.GetEntry('macros/enregistrer-cold-adaptation.js')) { throw 'Removed class-specific example macro still packaged.' }
