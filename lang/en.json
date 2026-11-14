@@ -116,7 +116,9 @@
     "DefaultAction": {
       "Label": "Default action",
       "AskEachTime": "Ask each time",
-      "MissingAction": "Missing action — choose another"
+      "MissingAction": "Missing action — choose another",
+      "Section": "PF1 Automation Engine",
+      "Hint": "Automatically uses this action without showing the action list. Pathfinder still manages the roll configuration dialog."
     }
   }
 }
