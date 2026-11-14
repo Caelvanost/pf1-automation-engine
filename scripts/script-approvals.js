@@ -109,4 +109,6 @@ Hooks.once('ready',()=>{
   approve:saApprove,revoke:saRevoke,list:()=>saClone(saRows()),
   check:(actor,item,call)=>saCheck(actor,item,call)
  });
+ // Bootstrap registrations can safely restore only after check() exists.
+ Hooks.callAll?.('pf1aeScriptApprovalsReady');
 });
