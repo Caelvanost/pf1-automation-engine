@@ -98,5 +98,41 @@ const wait=()=>new Promise(r=>setTimeout(r,35));
  users[1].active=true;
  await gm.mod.api.bootstrap.restoreAll();
  assert.equal(gm.events.get('pf1CreateActionUse')?.length,0,'GM yields execution to online owner');
+ // Regression: bootstrap's ready callback runs before script-approvals.
+ users[1].active=false;
+ setting.set('scriptFallbackApprovals',[]);
+ const startupId=JSON.stringify([actor.uuid,item.uuid,'startup-race']);
+ setting.set('bootstrapRegistry',[{id:startupId,actorUuid:actor.uuid,
+  itemUuid:item.uuid,key:'startup-race',scriptId:call.id,enabled:true}]);
+ const startup=client(users[0]);
+ const warnings=[];
+ startup.ctx.console={...console,warn:(...args)=>warnings.push(args)};
+ startup.ctx.Hooks.callAll=(name,...args)=>{
+  for(const fn of startup.events.get(name)??[])fn(...args);
+ };
+ for(const fn of startup.callbacks.get('init')??[])fn();
+ const readyHandlers=startup.callbacks.get('ready');
+ assert.equal(readyHandlers.length,2);
+ readyHandlers[1](); // bootstrap ready before approval service
+ const premature=await startup.mod.api.bootstrap.restoreAll();
+ assert.equal(premature.deferred,true,'restoration must wait for approval API');
+ assert.equal(installed,4,'no player-controlled code ran as GM before approval');
+ assert.equal(warnings.length,0,'no misleading warning during startup');
+ readyHandlers[0](); // service ready, signal automatically resumes restoration
+ await wait();
+ assert.equal(typeof startup.mod.api.scriptApprovals.check,'function');
+ assert.equal(installed,4,'unapproved script remains blocked after service appears');
+ assert.equal(warnings.some(args=>args[1]?.reason==='Script approval service unavailable'),
+  false,'startup race never produces misleading unavailability warning');
+ assert.equal(warnings.some(args=>args[1]?.reason==='No GM approval for offline-player fallback'),
+  true,'actual unapproved execution is still refused');
+ await startup.mod.api.scriptApprovals.approve({actor,item,scriptId:call.id});
+ const recovered=await startup.mod.api.bootstrap.restoreAll();
+ assert.equal(recovered.restored,1,'approved script can be restored');
+ assert.equal(installed,5,'script runs exactly once after GM approval');
+ const dedup=await startup.mod.api.bootstrap.restoreAll();
+ assert.equal(dedup.restored,0,'subsequent restores remain idempotent');
+ assert.equal(installed,5,'no duplicate script execution');
+ console.log('PASS bootstrap readiness: deferred startup, secure approval, signal and idempotence');
  console.log('PASS bootstrap: persistent owner restore, idempotence, cleanup, orphan, permissions, synthetic UUID, single executor');
 })().catch(e=>{console.error(e);process.exitCode=1});
