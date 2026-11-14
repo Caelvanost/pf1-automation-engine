@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.26.3 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.26.4 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
