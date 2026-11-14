@@ -75,7 +75,8 @@ function aeOnAttackRoll(action,roll,context={}) {
   if (!aeEnabled() || !roll || typeof roll !== 'object' || AE_ROLL_SEEN.has(roll)) return;
   const source = aeSource(action);
   if (!source || !source.actionId || !aeActorOwner(source.actor) || AE_BUSY.has(source.actor.uuid)) return;
-  if (!aeSubscribers(source.actor).length) return;
+  // Resolve attacks even without a Script Call subscriber; the enriched
+  // PF1AE event and public API must work independently of item scripts.
   AE_ROLL_SEEN.add(roll);
   aePrune();
   const key = aeKey(source);
