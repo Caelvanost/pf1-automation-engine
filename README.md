@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.24.2 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.25.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -277,3 +277,16 @@ Note: if the native PF1 action itself is disabled because `Action.canUse` insist
 ## Upcoming 1.24.6: split Reload into PF1 Firearms & Reload (development preview)
 
 The legacy `scripts/reload-core.js` is no longer imported on this **development branch**. It is replaced by `scripts/reload-adapter.js`, which registers the old `reloadEnabled` world setting for rollback and delegates legacy `api.reload` calls to `game.modules.get("pf1-firearms-and-reload")?.api?.reload`. It advertises `mod.api.reloadDelegated=true` only because no PF1AE reload hooks are installed. The range automation and other PF1AE core modules remain loaded. **Do not deploy the development branch to a live campaign.** The new module must be installed and active to obtain reload functionality; **no extra enable/disable setting exists in the new module**: activating it in Foundry's Manage Modules automatically enables its reload manager. Retain a Foundry world backup. Legacy weapon flags remain intact.
+
+
+## v1.25.0 — Generic attack resolution (PF1 / external provider API)
+
+PF1AE now provides \`game.modules.get('pf1-automation-engine').api.attackResolution\`, a generic service for comparing **native PF1 attack rolls and combat maneuvers against a target defense**. A compact **Défense ciblée / Target defense** selector appears on native attack actions: Automatic (default), Normal AC, Touch AC, Flat-footed AC, CMD, Manual resolution. Each nondefault choice persists in a PF1AE flag indexed by native action ID on the Item (the PF1 data schema is unchanged).
+
+The existing \`PF1AE:attack:resolved\` Script Call and \`api.attackEvents\` retain their previous fields while gaining a verified natural d20 when available, a selected \`defense\`, \`resolution\`, \`targetResults\`, and an optional individual target actor/token reference. The public \`pf1aeAttackResolution\` hook fires independently of Script Call subscriptions. PF1 attack and damage rolls/cards are neither replaced nor recreated, and the damage pipeline is independent.
+
+**External defense provider contract:** \`api.attackResolution.registerDefenseProvider({id,priority,resolve:context=>({type:'touch',reason:'...'}|null)})\` returns an unregister callback. Deterministic priority: explicit action choice > external providers > native PF1 action defaults. Equal-priority incompatible providers or exceptions cause an indeterminate result. Provider exceptions are surfaced as diagnostics. No firearm/Deadeye/reload rules exist in this service; such modules must provide only their verified defense choice.
+
+**Safety and limitations:** natural 1 always misses and natural 20 succeeds against the defense, while concealment can require a second verification before a final hit. An AC comparison may report \`defenseHit:true\` with \`hit:null\` if visibility is unverified. Multiple targets without proven roll correlation are indeterminate rather than duplicating a result. Runtime PF1 11.11 behavior, advanced touch-flat-footed variants and scene-based concealment still require live validation. All 27 regression suites run on every release.
+
+Full public API, provider priorities, fields and examples: [API-ATTACK-RESOLUTION.md](API-ATTACK-RESOLUTION.md).
