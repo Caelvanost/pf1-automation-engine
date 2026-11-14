@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine v1.25.1: generic attack/CMD resolution using native PF1 Contact, maneuvers and saving-throw classifications; no duplicate action selector.",
-  "version": "1.25.1",
+  "description": "PF1 Automation Engine v1.26.0: optional native PF1 per-Item default action that skips the action selection menu without changing roll or resource handling.",
+  "version": "1.26.0",
   "authors": [
     {
       "name": "Caelvanost"
@@ -41,6 +41,7 @@
     "scripts/damage-events.js",
     "scripts/attack-resolution.js",
     "scripts/attack-events.js",
+    "scripts/item-default-action.js",
     "scripts/bootstrap.js",
     "scripts/range-automation.js",
     "scripts/reload-adapter.js"
@@ -62,5 +63,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.25.1/pf1-automation-engine-v1.25.1.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.0/pf1-automation-engine-v1.26.0.zip"
 }
