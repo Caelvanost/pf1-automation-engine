@@ -59,7 +59,7 @@ function daUse(item,options,next){
 function daInstall(){
  if(!daEnabled())return false;
  if(DA_PATCHED?.mode==='libWrapper')return true;
- if(DA_PATCHED?.mode==='direct'&&
+ if((DA_PATCHED?.mode==='direct'||DA_PATCHED?.mode==='external')&&
     DA_PATCHED.proto?.use===DA_PATCHED.wrapper)return true;
  const cls=daItemClass();
  // Do not incorrectly patch ItemBasePF, which has no use() method.
@@ -99,7 +99,7 @@ function daInstall(){
 }
 function daInstallSelector(){
  if(DA_SELECTOR_PATCHED?.mode==='libWrapper')return true;
- if(DA_SELECTOR_PATCHED?.mode==='direct'&&
+ if((DA_SELECTOR_PATCHED?.mode==='direct'||DA_SELECTOR_PATCHED?.mode==='external')&&
     DA_SELECTOR_PATCHED.selector?.open===DA_SELECTOR_PATCHED.wrapper)return true;
  const selector=globalThis.pf1?.applications?.ActionSelector;
  if(!selector||typeof selector.open!=='function')return false;
@@ -138,9 +138,9 @@ function daInstallSelector(){
 }
 const daInstallStatus=()=>({
  itemUse:DA_PATCHED?.mode==='libWrapper'||
-  (DA_PATCHED?.proto?.use===DA_PATCHED?.wrapper),
+  (!!DA_PATCHED?.proto&&DA_PATCHED.proto.use===DA_PATCHED.wrapper),
  selector:DA_SELECTOR_PATCHED?.mode==='libWrapper'||
-  (DA_SELECTOR_PATCHED?.selector?.open===DA_SELECTOR_PATCHED?.wrapper),
+  (!!DA_SELECTOR_PATCHED?.selector&&DA_SELECTOR_PATCHED.selector.open===DA_SELECTOR_PATCHED.wrapper),
  mode:DA_PATCHED?.mode??'unavailable',
  selectorMode:DA_SELECTOR_PATCHED?.mode??'unavailable'
 });
