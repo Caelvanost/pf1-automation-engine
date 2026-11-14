@@ -2,27 +2,13 @@
  * PF1AE generic attack resolution — no firearm-specific rules.
  * Foundry v13 / PF1 v11.11. Optional service: never changes AC, attacks or HP.
  */
-const AR_NS='pf1-automation-engine',AR_FLAG='attackDefenseConfig';
-const AR_TYPES=new Set(['auto','normal','touch','flatFooted','cmd','manual']);
+const AR_NS='pf1-automation-engine';
+const AR_TYPES=new Set(['normal','touch','flatFooted','cmd','manual']);
 const AR_PROVIDERS=new Map();
 let AR_LAST=null;
-const arActions=item=>[...(item?.actions?.contents??item?.actions?.values?.()??item?.actions??[])];
-const arGet=(item,action)=>{
- const id=typeof action==='string'?action:action?.id??action?._id;
- return item?.getFlag?.(AR_NS,AR_FLAG)?.[id]??'auto';
-};
-async function arSet(item,action,type){
- const id=typeof action==='string'?action:action?.id??action?._id;
- if(!AR_TYPES.has(type)||!id||!arActions(item).some(a=>(a.id??a._id)===id))
-  throw Error('Invalid PF1 action or defense setting.');
- const actor=item?.actor??item?.parent;
- if(!game.user?.isGM&&!actor?.testUserPermission?.(game.user,'OWNER'))
-  throw Error('Actor OWNER permission required.');
- const data={...(item.getFlag?.(AR_NS,AR_FLAG)??{})};
- if(type==='auto')delete data[id];else data[id]=type;
- await item.setFlag(AR_NS,AR_FLAG,data);
- return type;
-}
+// PF1 native action.touch, action.isCombatManeuver and action.hasSave are
+// authoritative. Legacy attackDefenseConfig flags from v1.25.0 are ignored,
+// but are left untouched in the world to avoid destructive migration.
 const arNatural=roll=>{
  if(!roll||typeof roll!=='object')return null;
  const dice=Array.isArray(roll.dice)?roll.dice:[];
@@ -63,20 +49,23 @@ function arProviders(){return [...AR_PROVIDERS.values()]
  .sort((a,b)=>b.priority-a.priority||a.id.localeCompare(b.id))
  .map(({id,priority})=>({id,priority}));}
 async function arSelect(context){
- const item=context.item??context.action?.item;
  const action=context.action??context.actionUse?.action;
- const explicit=arGet(item,action);
- if(!AR_TYPES.has(explicit))return {type:null,reason:'invalid saved defense'};
- if(explicit==='manual')return {type:'manual',provider:'item',reason:'explicit manual choice'};
- if(explicit!=='auto')return {type:explicit,provider:'item',reason:'explicit action choice'};
- // Per-attack overrides are deliberately not accepted as arbitrary caller
- // input: a trusted external module should register a provider instead.
+ // Native combat maneuver always targets CMD; the system has already
+ // resolved the category of the action (including a trip maneuver).
+ if(action?.isCombatManeuver===true||
+  globalThis.pf1?.config?.maneuverActionTypes?.has?.(action?.actionType))
+  return {type:'cmd',provider:'pf1-native',reason:'native combat maneuver'};
+ // A pure saving-throw action has NO attack roll to compare against AC.
+ // PF1AE saveContext/saveOutcomes handle the eventual native target saves.
+ if(action?.hasSave===true&&action?.hasAttack!==true)
+  return {type:null,provider:'pf1-native',reason:'native saving throw action; use saveContext/saveOutcomes',
+   save:{type:action.save?.type??null,dc:null}};
  const byPriority=new Map(),errors=[];
  for(const provider of [...AR_PROVIDERS.values()].sort((a,b)=>b.priority-a.priority||a.id.localeCompare(b.id))){
   try{
    const result=await provider.resolve(Object.freeze({...context}));
    if(result==null)continue;
-   if(!result||!AR_TYPES.has(result.type)||result.type==='auto')
+   if(!result||!AR_TYPES.has(result.type))
     {errors.push(provider.id+': invalid defense type');continue;}
    const value={type:result.type,provider:provider.id,priority:provider.priority,
     reason:typeof result.reason==='string'?result.reason.slice(0,250):'external provider'};
@@ -98,7 +87,8 @@ function arOutcome({natural,total,defense,context}){
   resolution:'indeterminate',reason:null};
  if(defense.type==='manual')return {...base,reason:'manual resolution requested'};
  if(!defense.type||defense.value==null)
-  return {...base,reason:defense.reason??'target defense unavailable'};
+  return {...base,reason:defense.reason??'target defense unavailable',
+   resolution:defense.save?'pendingSave':'indeterminate'};
  if(natural==null||total==null)return {...base,reason:'native d20 result or final total unavailable'};
  const success=natural===20?true:natural===1?false:total>=defense.value;
  const result={...base,defenseHit:success};
@@ -134,61 +124,19 @@ async function arResolve(context={}){
  const defense={...selected,value:baseValue==null?null:baseValue+cover,
    baseValue,coverBonus:cover};
  const result=arOutcome({natural,total,defense,context});
- const final={...result,actorUuid:actor?.uuid??null,itemUuid:item?.uuid??null,
+ const final={...result,save:selected.save??null,actorUuid:actor?.uuid??null,itemUuid:item?.uuid??null,
   actionId:action?.id??action?._id??null,
   targetActorUuid:targetActor?.uuid??null,targetTokenUuid:targetToken?.document?.uuid??targetToken?.uuid??null,
   attackIndex:Number.isSafeInteger(context.attackIndex)?context.attackIndex:null,
   sourceMessageId:context.sourceMessageId??null};
  AR_LAST=final;return final;
 }
-function arSheet(sheet,html){
- const item=sheet?.document??sheet?.item??sheet?.object;
- if(!item||!arActions(item).some(a=>a?.hasAttack||a?.isCombatManeuver))return;
- const root=html?.[0]??html??sheet?.element?.[0]??sheet?.element;
- if(!root?.querySelectorAll)return;
- for(const row of root.querySelectorAll('.item-groups-list.actions .action-part[data-action-id]')){
-  if(row.nextElementSibling?.dataset?.pf1aeDefense==='true')continue;
-  const actionId=row.dataset.actionId,action=arActions(item).find(a=>a.id===actionId);
-  if(!action||(action.hasAttack!==true&&action.isCombatManeuver!==true))continue;
-  const wrap=document.createElement('label');
-  wrap.dataset.pf1aeDefense='true';
-  wrap.style.cssText='display:flex;align-items:center;gap:4px;min-width:0;flex:0 1 auto;padding:0 3px;font-size:11px;';
-  const caption=document.createElement('span');
-  caption.textContent=game.i18n?.localize?.('PF1AE.AttackResolution.TargetDefense')??'Target defense';
-  caption.style.cssText='white-space:nowrap;';
-  const select=document.createElement('select');
-  select.style.cssText='font-size:11px;max-width:135px;min-width:80px;width:auto;height:22px;padding:0 2px;';
-  const current=arGet(item,action);
-  for(const type of AR_TYPES){
-   const option=document.createElement('option');option.value=type;
-   option.textContent=game.i18n?.localize?.('PF1AE.AttackResolution.'+type)??type;
-   select.append(option);
-  }
-  select.value=AR_TYPES.has(current)?current:'auto';
-  select.addEventListener('click',e=>e.stopPropagation());
-  select.addEventListener('change',event=>{
-   event.stopPropagation();const next=select.value;
-   void arSet(item,action,next).catch(error=>{
-    select.value=current;ui.notifications?.warn?.(error.message);
-   });
-  });
-  wrap.append(caption,select);
-  // An additional list row avoids flex overflow in native PF1 action rows.
-  const li=document.createElement('li');
-  li.dataset.pf1aeDefense='true';
-  li.style.cssText='list-style:none;display:flex;justify-content:flex-end;padding:2px 5px;min-height:24px;';
-  li.append(wrap);row.insertAdjacentElement('afterend',li);
- }
-}
 Hooks.once('ready',()=>{
  const mod=game.modules.get(AR_NS);if(!mod)return;mod.api??={};
  mod.api.attackResolution=Object.freeze({
   registerDefenseProvider:arRegister,unregisterDefenseProvider:arUnregister,
   listDefenseProviders:arProviders,resolveAttack:arResolve,
-  getActionDefenseConfig:arGet,setActionDefenseConfig:arSet,
   lastDiagnostic:()=>AR_LAST?{...AR_LAST}:null,
   getNaturalD20:arNatural
  });
- Hooks.on('renderItemSheet',arSheet);
- Hooks.on('renderItemSheetV2',arSheet);
 });
