@@ -1,3 +1,10 @@
+## v1.26.2 — Défilement de l'onglet Avancé
+
+- Insère la section « Action par défaut » à l'intérieur du conteneur défilant natif de l'onglet « Avancé » lorsqu'il existe.
+- Ajoute une marge de défilement en bas pour accéder au sélecteur dans les fenêtres d'objet de faible hauteur.
+- Conserve le choix enregistré et le comportement natif de l'utilisation d'objet.
+- Correctif à confirmer visuellement sur Foundry 13 / PF1 11.11 avec le module Little Helper.
+
 ## v1.26.1 — Sélection de l'action par défaut dans l'onglet Avancé
 
 - Déplace le sélecteur d'action par défaut de la liste native des actions vers une section « PF1 Automation Engine — Action par défaut » en bas de l'onglet « Avancé » des fiches d'objet contenant plusieurs actions.
