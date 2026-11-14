@@ -64,22 +64,29 @@ function daRender(sheet,html){
  if(actions.length<2)return; // Native PF1 already uses the only action.
  const root=html?.[0]??html??sheet?.element?.[0]??sheet?.element;
  if(!root?.querySelector)return;
- const list=root.querySelector('ol.item-groups-list.actions > ol.item-list')??
-  root.querySelector('.item-groups-list.actions .item-list');
- if(!list||list.querySelector('[data-pf1ae-default-action]'))return;
- const first=list.querySelector('li.item-list-header');
- if(!first)return;
- const row=document.createElement('li');
- row.dataset.pf1aeDefaultAction='true';
- row.style.cssText='list-style:none;display:flex;align-items:center;gap:8px;'+
-  'flex-wrap:wrap;padding:5px 8px;min-width:0;border-bottom:1px solid var(--color-border-light-primary,#888);';
+ // Add the preference to the very end of the native Advanced tab,
+ // not to the Actions list. Never attach it to the tab navigation.
+ const advanced=root.querySelector('.sheet-body .tab[data-tab="advanced"]')??
+  root.querySelector('.tab[data-tab="advanced"]')??
+  root.querySelector('.tab.advanced');
+ if(!advanced||advanced.querySelector('[data-pf1ae-default-action]'))return;
+ const section=document.createElement('section');
+ section.dataset.pf1aeDefaultAction='true';
+ section.className='pf1ae-default-action-section';
+ section.style.cssText='margin:12px 0 0;padding:10px;border:1px solid var(--color-border-light-primary,#888);'+
+  'border-radius:4px;box-sizing:border-box;clear:both;';
+ const heading=document.createElement('h3');
+ heading.style.cssText='margin:0 0 8px;font-size:14px;border-bottom:1px solid var(--color-border-light-primary,#888);padding-bottom:4px;';
+ heading.textContent='PF1 Automation Engine — '+
+  (game.i18n?.localize?.('PF1AE.DefaultAction.Label')??'Preferred action');
+ const field=document.createElement('div');
+ field.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;';
  const label=document.createElement('label');
- label.style.cssText='font-size:12px;white-space:nowrap;font-weight:600;';
+ label.style.cssText='font-size:12px;font-weight:600;flex:0 0 auto;';
  label.textContent=game.i18n?.localize?.('PF1AE.DefaultAction.Label')??'Preferred action';
  const select=document.createElement('select');
  select.dataset.pf1aeDefaultActionSelect='true';
- select.style.cssText='min-width:130px;max-width:100%;flex:1 1 170px;'+
-  'box-sizing:border-box;height:26px;font-size:12px;';
+ select.style.cssText='min-width:130px;max-width:100%;flex:1 1 170px;box-sizing:border-box;height:26px;font-size:12px;';
  const option=(id,text)=>{
   const o=document.createElement('option');o.value=id;o.textContent=text;select.append(o);
  };
@@ -90,11 +97,12 @@ function daRender(sheet,html){
   option(current,game.i18n?.localize?.('PF1AE.DefaultAction.MissingAction')??'Missing action (choose another)');
  }
  select.value=current??'';
- // Avoid triggering PF1's own action-row clicks or native form auto-submit.
+ label.append(document.createTextNode(' '));
+ // Avoid native form auto-submit and delegated handlers.
  for(const type of ['click','pointerdown','mousedown'])select.addEventListener(type,e=>e.stopPropagation());
  select.addEventListener('change',event=>{
   event.stopPropagation();
-  const selected=select.value,previous=current??'';
+  const selected=select.value,previous=daPreference(item)??'';
   select.disabled=true;
   void daSet(item,selected).then(()=>{
    select.disabled=false;
@@ -103,8 +111,9 @@ function daRender(sheet,html){
    ui.notifications?.warn?.(error.message);
   });
  });
- row.append(label,select);
- first.insertAdjacentElement('afterend',row);
+ field.append(label,select);
+ section.append(heading,field);
+ advanced.append(section);
 }
 Hooks.once('ready',()=>{
  const mod=game.modules.get(DA_NS);
