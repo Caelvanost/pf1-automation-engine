@@ -67,7 +67,7 @@ const item=new ItemPF();
  });
  const selectedUse=makeActionUse(actions.get('b'));
  preRoll(selectedUse);
- assert.deepEqual(await selectedUse.createAttackDialog(),{});
+ assert.equal(Object.keys(await selectedUse.createAttackDialog()).length,0);
  assert.equal(opened,0,'chosen action must not open the native configuration dialog');
  assert.equal(selectedUse.shared.skipDialog,true,'native shared context records quick use');
  const otherUse=makeActionUse(actions.get('reload'));
