@@ -1,3 +1,13 @@
+## v1.25.0 — Résolution générique des attaques et manœuvres
+
+- Ajoute `api.attackResolution` : comparaison indépendante des jets PF1 à la CA normale, de contact, prise au dépourvu ou DMD ; gestion des 1 et 20 naturels et des données manquantes.
+- Fournisseurs de défense asynchrones enregistrables, priorités explicites, erreurs et conflits diagnostiqués, désenregistrement et conservation du choix explicite de la fiche.
+- Ajoute « Défense ciblée » aux actions natives, en conservant les modèles de données PF1 ; configuration persistante par Item/action ID, traduite FR/EN.
+- Enrichit les événements existants `PF1AE:attack:resolved` sans retirer les anciens champs : `roll.natural`, `defense`, `resolution`, `targetResults`, UUID cible, et hook indépendant `pf1aeAttackResolution`.
+- N'invente ni correspondance des attaques à plusieurs cibles, ni résultat naturel, ni succès final de camouflage non vérifié ; aucun calcul spécifique aux armes à feu.
+- Garde la résolution indépendante des dégâts et des pénalités de portée natives ; documentation publique `API-ATTACK-RESOLUTION.md`.
+- Deux nouvelles suites (moteur et intégration aux hooks) ; la CI passe de 25 à 27 suites automatisées.
+
 ## Unreleased v1.24.6 — Reload responsibility extraction (branch only)
 
 - Removed `scripts/reload-core.js` from Foundry esmodules (no duplicate attack/reload hooks).
