@@ -118,7 +118,9 @@
       "AskEachTime": "Demander à chaque utilisation",
       "MissingAction": "Action supprimée — choisir une autre action",
       "Section": "PF1 Automation Engine",
-      "Hint": "Utilise automatiquement cette action sans afficher la liste des actions. Le dialogue de configuration du jet reste géré par Pathfinder."
+      "Hint": "Utilise automatiquement cette action sans afficher la liste des actions. Le dialogue de configuration du jet reste géré par Pathfinder.",
+      "SkipDialog": "Ignorer le dialogue (Skip dialog)",
+      "SkipDialogHint": "Utiliser directement l'action par défaut sans ouvrir sa fenêtre de configuration. Les jets et consommations restent gérés par PF1."
     }
   }
 }

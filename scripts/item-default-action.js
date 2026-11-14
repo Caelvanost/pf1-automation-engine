@@ -5,6 +5,7 @@
  */
 const DA_NS='pf1-automation-engine';
 const DA_FLAG='defaultActionId';
+const DA_SKIP_FLAG='defaultActionSkipDialog';
 let DA_PATCHED=null;
 const daActions=item=>[...(item?.actions?.contents??item?.actions?.values?.()??item?.actions??[])];
 const daEnabled=()=>game.modules.get(DA_NS)?.active===true;
@@ -12,6 +13,14 @@ const daPreference=item=>{
  const saved=item?.getFlag?.(DA_NS,DA_FLAG);
  return typeof saved==='string'&&saved.length>0?saved:null;
 };
+const daSkipDialog=item=>item?.getFlag?.(DA_NS,DA_SKIP_FLAG)===true;
+async function daSetSkipDialog(item,enabled){
+ if(!item||!daIsOwner(item))throw Error('Item OWNER permission required.');
+ if(typeof enabled!=='boolean')throw TypeError('Skip dialog must be a boolean.');
+ if(!enabled){await item.unsetFlag(DA_NS,DA_SKIP_FLAG);return false;}
+ await item.setFlag(DA_NS,DA_SKIP_FLAG,true);
+ return true;
+}
 const daAction=(item,id)=>id ? item?.actions?.get?.(id) ??
  daActions(item).find(a=>(a.id??a._id)===id)??null:null;
 const daIsOwner=item=>game.user?.isGM===true||
@@ -48,7 +57,10 @@ function daInstall(){
     {itemUuid:this.uuid,actionId:id});
    return native.call(this,options);
   }
-  return native.call(this,{...options,actionId:id});
+  // Skip only the chosen default action's configuration dialog. PF1 owns
+  // all subsequent rolls, scripts, ammunition and resource consumption.
+  return native.call(this,{...options,actionId:id,
+   ...(daSkipDialog(this)?{skipDialog:true}:{})});
  };
  Object.defineProperty(wrapper,'pf1aeDefaultActionWrapped',{value:true});
  Object.defineProperty(wrapper,'pf1aeOriginalUse',{value:native});
@@ -132,17 +144,51 @@ function daRender(sheet,html){
   select.disabled=true;
   void daSet(item,selected).then(()=>{
    select.disabled=false;
+   skip.disabled=!selected;
   }).catch(error=>{
    select.value=previous;select.disabled=false;
    ui.notifications?.warn?.(error.message);
   });
  });
  fields.append(select);group.append(label,fields);
+ const skipGroup=document.createElement('div');
+ skipGroup.className='form-group';
+ skipGroup.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0;';
+ const skipLabel=document.createElement('label');
+ skipLabel.style.cssText='display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer;';
+ const skip=document.createElement('input');
+ skip.type='checkbox';
+ skip.dataset.pf1aeDefaultActionSkipDialog='true';
+ skip.checked=daSkipDialog(item);
+ skip.disabled=!current||!daAction(item,current);
+ skip.setAttribute('aria-label',t('SkipDialog'));
+ const skipText=document.createElement('span');
+ skipText.textContent=t('SkipDialog');
+ skipLabel.append(skip,skipText);
+ skipGroup.append(skipLabel);
+ const skipHint=document.createElement('p');
+ skipHint.className='notes';
+ skipHint.style.cssText='margin:2px 0 0;font-size:12px;';
+ skipHint.textContent=t('SkipDialogHint');
+ for(const type of ['click','pointerdown','mousedown'])
+  skip.addEventListener(type,event=>event.stopPropagation());
+ skip.addEventListener('change',event=>{
+  event.stopPropagation();
+  const checked=skip.checked,previous=daSkipDialog(item);
+  skip.disabled=true;
+  void daSetSkipDialog(item,checked).then(()=>{
+   skip.disabled=!daPreference(item);
+  }).catch(error=>{
+   skip.checked=previous;
+   skip.disabled=!daPreference(item);
+   ui.notifications?.warn?.(error.message);
+  });
+ });
  const hint=document.createElement('p');
  hint.className='notes';
  hint.textContent=t('Hint');
  hint.style.cssText='margin:3px 0 0;font-size:12px;';
- section.append(heading,group,hint);
+ section.append(heading,group,hint,skipGroup,skipHint);
  // Insert in the native content flow rather than after an outer scroll wrapper.
  const nativeFields=[...advanced.querySelectorAll('input, select, textarea')]
   .filter(el=>!el.closest('[data-pf1ae-default-action]'));
@@ -161,6 +207,7 @@ Hooks.once('ready',()=>{
  mod.api??={};
  mod.api.defaultAction=Object.freeze({
   get:daPreference,set:daSet,resolve:daAction,
+  getSkipDialog:daSkipDialog,setSkipDialog:daSetSkipDialog,
   installed:()=>DA_PATCHED?.proto?.use===DA_PATCHED?.wrapper
  });
  if(!daInstall()){
