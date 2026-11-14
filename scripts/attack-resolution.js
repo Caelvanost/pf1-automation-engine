@@ -125,9 +125,14 @@ async function arResolve(context={}){
  const value=context.total??roll?.total;
  const total=typeof value==='number'&&Number.isFinite(value)?value:null;
  const selected=await arSelect({...context,item,action,actor,targetToken,targetActor,roll});
- const defense=selected.type&&selected.type!=='manual'
-   ?{...selected,value:arValue(targetActor,selected.type)}
-   :{...selected,value:null};
+ const baseValue=selected.type&&selected.type!=='manual'
+   ?arValue(targetActor,selected.type):null;
+ // Cover is a modifier to the defense (not concealment); allow a verified
+ // external caller to pass its actual numeric bonus, without altering PF1.
+ const cover=typeof context.coverBonus==='number'&&Number.isFinite(context.coverBonus)
+   &&context.coverBonus>=0&&context.coverBonus<=100?context.coverBonus:0;
+ const defense={...selected,value:baseValue==null?null:baseValue+cover,
+   baseValue,coverBonus:cover};
  const result=arOutcome({natural,total,defense,context});
  const final={...result,actorUuid:actor?.uuid??null,itemUuid:item?.uuid??null,
   actionId:action?.id??action?._id??null,
@@ -142,7 +147,7 @@ function arSheet(sheet,html){
  const root=html?.[0]??html??sheet?.element?.[0]??sheet?.element;
  if(!root?.querySelectorAll)return;
  for(const row of root.querySelectorAll('.item-groups-list.actions .action-part[data-action-id]')){
-  if(row.querySelector('[data-pf1ae-defense]'))continue;
+  if(row.nextElementSibling?.dataset?.pf1aeDefense==='true')continue;
   const actionId=row.dataset.actionId,action=arActions(item).find(a=>a.id===actionId);
   if(!action||(action.hasAttack!==true&&action.isCombatManeuver!==true))continue;
   const wrap=document.createElement('label');
