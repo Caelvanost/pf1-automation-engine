@@ -30,7 +30,7 @@ jobs:
             'native-save-post-chatmessage','neutrality','rest-hooks',
             'save-outcomes','template-save-outcomes','timed-save-outcomes',
             'turn-phases','trusted-table','range-automation','i18n','reload-core',
-            'attack-resolution','attack-resolution-integration'
+            'attack-resolution','attack-resolution-integration','item-default-action'
           )
           foreach ($name in $tests) {
             $file = Join-Path tests "$name.test.cjs"
@@ -56,6 +56,7 @@ jobs:
             if ($null -eq $archive.GetEntry('scripts/range-automation.js')) { throw 'Missing native PF1 range increment bridge.' }
             if ($null -eq $archive.GetEntry('lang/en.json')) { throw 'Missing English locale pack.' }
             if ($null -eq $archive.GetEntry('lang/fr.json')) { throw 'Missing French locale pack.' }
+            if ($null -eq $archive.GetEntry('scripts/item-default-action.js')) { throw 'Missing native default action service.' }
             if ($null -eq $archive.GetEntry('scripts/reload-adapter.js')) { throw 'Missing reload compatibility adapter.' }
             if ($null -ne $archive.GetEntry('scripts/reload-core.js')) { throw 'Retired reload engine must not be packaged.' }
             if ($null -eq $archive.GetEntry('API-EXPIRATIONS.md')) { throw 'Missing turn expiry documentation.' }

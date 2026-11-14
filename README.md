@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.25.1 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.26.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -303,3 +303,15 @@ The existing \`PF1AE:attack:resolved\` Script Call and \`api.attackEvents\` reta
 **Safety and limitations:** natural 1 always misses and natural 20 succeeds against the defense, while concealment can require a second verification before a final hit. An AC comparison may report \`defenseHit:true\` with \`hit:null\` if visibility is unverified. Multiple targets without proven roll correlation are indeterminate rather than duplicating a result. Runtime PF1 11.11 behavior, advanced touch-flat-footed variants and scene-based concealment still require live validation. All 27 regression suites run on every release.
 
 Full public API, provider priorities, fields and examples: [API-ATTACK-RESOLUTION.md](API-ATTACK-RESOLUTION.md).
+
+## v1.26.0 — Action par défaut des objets
+
+Un objet PF1 possédant au moins deux actions affiche désormais un menu compact **« Action par défaut »** dans sa liste native des actions. Le choix initial **« Demander à chaque utilisation »** conserve exactement le comportement PF1. En choisissant une action, l'utilisation normale de l'objet transmet son véritable ID à `ItemPF.use({actionId})` et évite l'ouverture du sélecteur d'actions. L'exécution de l'action reste entièrement native : jets, attaque, sauvegardes, charges, consommations de munitions et appels de scripts sont conservés.
+
+La préférence est stockée dans `flags.pf1-automation-engine.defaultActionId` sur l'objet lui-même ; elle est spécifique à chaque exemplaire, persiste après rechargement du monde et n'altère pas `system.actions`. Un joueur doit posséder les droits sur l'objet pour la modifier. Si l'action désignée est supprimée, PF1AE rend immédiatement la main au sélecteur natif au lieu de bloquer l'objet. Pour effacer la préférence, choisir « Demander à chaque utilisation ».
+
+Un lancement qui indique explicitement `actionId`, ou utilise `skipDialog: true`, conserve la sémantique native de PF1. Les utilisations directes d'une action depuis sa propre ligne continuent de fonctionner. Aucun changement de classe PF1, de jet, d'économie d'action ou de déduction de ressources n'est introduit, hormis un enveloppement minimal et conditionnel de `ItemPF.use()`.
+
+L'API `game.modules.get('pf1-automation-engine').api.defaultAction` expose `get(item)`, `set(item,actionId|null)`, `resolve(item,id)` et `installed()`. Le service est actif quand le module l'est et n'exige pas l'activation des automatisations génériques.
+
+**Test manuel recommandé :** sur un objet contenant plusieurs actions, choisir l'une d'elles comme action par défaut, fermer la fiche, utiliser l'objet depuis la feuille du personnage, vérifier l'absence du sélecteur puis les jets et dépenses habituels. Tester également la sélection directe d'une autre action et la remise sur « Demander à chaque utilisation ».
