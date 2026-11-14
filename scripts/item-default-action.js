@@ -29,7 +29,7 @@ function daInstall(){
  if(!daEnabled())return false;
  // PF1 11.11's ItemPF.use is the single native entry point that displays
  // ActionSelector.open only when actionId is absent.
- const cls=globalThis.pf1?.documents?.ItemPF??CONFIG?.Item?.documentClass;
+ const cls=globalThis.pf1?.documents?.ItemPF??globalThis.CONFIG?.Item?.documentClass;
  const proto=cls?.prototype;
  if(!proto||typeof proto.use!=='function')return false;
  if(proto.use.pf1aeDefaultActionWrapped)return true;
