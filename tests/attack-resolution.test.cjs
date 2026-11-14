@@ -33,11 +33,14 @@ const run=(natural,total,options={})=>ar.resolveAttack({
  assert.equal(r.hit,true);
  assert.equal(r.defense.provider,'pf1-native');
  assert.equal(ar.getActionDefenseConfig,undefined);
+ assert.equal(ar.classifyAction(action).kind,'attack');
+ assert.equal(ar.classifyAction(action).defenseType,'normal');
  assert.equal(ar.setActionDefenseConfig,undefined);
  assert.equal(hooks.render.length,0,'no duplicate selector on native Item sheets');
  assert.equal(item.flags.attackDefenseConfig.atk,'flatFooted','old flags preserved, not applied');
  // Checkbox Contact is authoritative even in presence of external provider.
  action.touch=true;
+ assert.equal(ar.classifyAction(action).defenseType,'touch');
  const removeOverride=ar.registerDefenseProvider({id:'wrong-override',priority:900,
   resolve:()=>({type:'normal'})});
  r=await run(9,15);assert.equal(r.defense.type,'touch');assert.equal(r.defense.value,12);
@@ -48,6 +51,7 @@ const run=(natural,total,options={})=>ar.resolveAttack({
  r=await run(9,15);assert.equal(r.hit,false);
  // Manœuvre offensive targets CMD independently of action name or source Item.
  const trip={id:'trip',item,actor,actionType:'cmb',isCombatManeuver:true,hasAttack:true,hasSave:false};
+ assert.equal(ar.classifyAction(trip).defenseType,'cmd');
  r=await run(10,23,{action:trip});assert.equal(r.defense.type,'cmd');assert.equal(r.hit,true);
  const overrideCmd=ar.registerDefenseProvider({id:'touch-exception',priority:100,
   resolve:()=>({type:'touch'})});
@@ -57,10 +61,13 @@ const run=(natural,total,options={})=>ar.resolveAttack({
  // Save only: no AC/CMD comparison; use pre-existing PF1 save pipeline.
  const save={id:'save',item,actor,actionType:'other',hasAttack:false,hasSave:true,
   save:{type:'ref',dc:'18'},isCombatManeuver:false,touch:false};
+ assert.equal(ar.classifyAction(save).kind,'save');
+ assert.equal(ar.classifyAction(save).saveType,'ref');
  r=await run(20,99,{action:save});
  assert.equal(r.resolution,'pendingSave');assert.equal(r.hit,null);
  assert.equal(r.defense.value,null);assert.equal(r.save.type,'ref');
  const mixed={...action,id:'mixed',hasSave:true,save:{type:'fort',dc:'17'}};
+ assert.equal(ar.classifyAction(mixed).kind,'attackAndSave');
  r=await run(11,21,{action:mixed});
  assert.equal(r.defense.type,'normal','attack + save first resolves attack');
  assert.equal(r.resolution,'success');
