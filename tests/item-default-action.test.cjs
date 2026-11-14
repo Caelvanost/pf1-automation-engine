@@ -70,6 +70,8 @@ const item=new ItemPF();
  await assert.rejects(()=>api.set(item,'a'),/OWNER/);
  context.game.user.isGM=true;
  await api.set(item,'reload');
+ assert.equal(await ActionSelector.open({document:item}),'reload','native selector direct call honors preferred action');
+ assert.equal(selectorOpenCalls,0,'native selector not opened when preference valid');
  assert.equal(await item.use(),'used:reload');
  // A deleted selected action falls back to the true native selector.
  await item.setFlag('pf1-automation-engine','defaultActionId','deleted');
@@ -92,8 +94,6 @@ const item=new ItemPF();
  assert.equal(src.includes("heading.className='section-header'"),true,'native style heading');
  assert.equal(src.includes("group.className='form-group'"),true,'native form layout');
  assert.equal(src.includes("t('Hint')"),true,'localized help text');
- assert.equal(await ActionSelector.open({document:item}),'reload','native selector direct call honors preferred action');
- assert.equal(selectorOpenCalls,0,'native selector not opened when preference valid');
  assert.equal(src.includes("scrollHost.style.overflowY='auto'"),false,'never override PF1 scrolling');
  assert.equal(src.includes('pf1aeDefaultActionSpacer'),false,'do not add spacer outside PF1 scroll area');
  assert.equal(src.includes('eval('),false);
