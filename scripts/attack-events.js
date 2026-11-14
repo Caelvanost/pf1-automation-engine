@@ -137,7 +137,7 @@ async function aeDeliver(source,results,actionUse,message) {
           targetToken:token,targetActor:actor,attackIndex,
           sourceMessageId:msg?.id??null,
           // Never silently assert concealment was checked.
-          concealment:'unknown'
+          // Visibility/concealment is separate from the AC comparison.
         }));
       }catch(error){
         paired.push({targetTokenUuid:target.tokenUuid,targetActorUuid:actor?.uuid??target.actorUuid,
