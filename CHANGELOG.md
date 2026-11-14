@@ -1,3 +1,13 @@
+## v1.26.0 — Action par défaut des objets PF1
+
+- Ajoute un choix « Action par défaut » / « Demander à chaque utilisation » dans la liste native d'actions des objets possédant plusieurs actions.
+- Enregistre l'identifiant de l'action choisie sur chaque objet, sans modification de son schéma PF1.
+- Transmet l'ID à `ItemPF.use()`, évite le menu uniquement lors de l'utilisation ordinaire de l'objet et conserve les jets et consommations natives.
+- Respecte les lancements directs d'une autre action et les appels demandant explicitement `skipDialog: true`.
+- Si l'action sauvegardée est supprimée, rétablit automatiquement le sélecteur natif ; la correction reste possible dans la fiche.
+- Prend en charge les permissions OWNER et les fiches V2, sans dépendre des automatisations génériques.
+- Ajoute une API diagnostique et une suite de tests de non-régression ; 28 suites dans le contrôle CI.
+
 ## v1.25.1 — Utiliser les défenses et jets de sauvegarde natifs PF1
 
 - Supprime le sélecteur « Défense ciblée » ajouté à la fiche par PF1AE : la case native **Contact** définit déjà l'attaque de contact.
