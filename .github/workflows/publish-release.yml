@@ -45,7 +45,8 @@ jobs:
             'native-save-context','native-save-outcome-dispatch',
             'native-save-post-chatmessage','neutrality','rest-hooks',
             'save-outcomes','template-save-outcomes','timed-save-outcomes',
-            'turn-phases','trusted-table','range-automation','i18n','reload-core'
+            'turn-phases','trusted-table','range-automation','i18n','reload-core',
+            'attack-resolution','attack-resolution-integration'
           )
           $legacy = @(
             'compendium-templates','duration-group','dynamic-effects',
@@ -57,7 +58,7 @@ jobs:
           if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) {
             throw 'Test inventory changed: update the maintained gate or the legacy list'
           }
-          if ($tests.Count -ne 25 -or $legacy.Count -ne 7) { throw 'Unexpected regression gate size' }
+          if ($tests.Count -ne 27 -or $legacy.Count -ne 7) { throw 'Unexpected regression gate size' }
           foreach ($name in $tests) {
             $file = Join-Path 'tests' "$name.test.cjs"
             if (-not (Test-Path $file)) { throw "Missing regression test: $file" }
