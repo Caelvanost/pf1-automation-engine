@@ -113,24 +113,24 @@ function daRender(sheet,html){
  });
  field.append(label,select);
  section.append(heading,field);
- // Some PF1 sheets keep the real scroller inside the Advanced tab rather
- // than on the tab itself. The section must be a CHILD OF THAT SCROLLER:
- // appending after it makes the control visible but impossible to reach.
- const directScroller=[...advanced.children].find(child=>
-  child.matches?.('.scrollable, .tab-content, [data-scrollable]'))??null;
- const scrollHost=directScroller??advanced;
- scrollHost.append(section);
- // Leave enough space beyond the selector for the full dropdown to remain
- // reachable even in compact item-sheet windows.
- const spacer=document.createElement('div');
- spacer.dataset.pf1aeDefaultActionSpacer='true';
- spacer.setAttribute('aria-hidden','true');
- spacer.style.cssText='height:76px;min-height:76px;flex-shrink:0;pointer-events:none;';
- scrollHost.append(spacer);
- // On sheets where the tab is the scrolling surface, explicitly permit
- // vertical overflow. Do not change dimensions of the enclosing sheet.
- scrollHost.style.overflowY='auto';
- scrollHost.style.minHeight='0';
+ // The PF1 Advanced tab (and modules such as Little Helper) can have
+ // nested content wrappers with their own clipping/scroll boundaries.
+ // Inserting after the wrapper makes the selector appear but unreachable.
+ // Instead place it directly after the final native field INSIDE the same
+ // content container. This also lets native sheet scrolling size correctly.
+ const fields=[...advanced.querySelectorAll('input, select, textarea')]
+  .filter(el=>!el.closest('[data-pf1ae-default-action]'));
+ const last=fields.at(-1);
+ const row=last?.closest('.form-group, .form-group-stacked, .form-row, .form-field')??
+  last?.parentElement;
+ if(row?.parentElement&&advanced.contains(row.parentElement)){
+  row.insertAdjacentElement('afterend',section);
+ }else{
+  // No native form controls: keep the normal Advanced-tab fallback.
+  advanced.append(section);
+ }
+ // Do not override the system's overflow or add artificial blank spacers:
+ // both can escape the PF1 sheet's actual scrollable content boundary.
 }
 Hooks.once('ready',()=>{
  const mod=game.modules.get(DA_NS);

@@ -1,3 +1,10 @@
+## v1.26.3 — Correction du panneau d'action par défaut coupé
+
+- Insère le réglage directement après le dernier champ natif de l'onglet « Avancé », dans son conteneur de contenu, plutôt qu'après un conteneur éventuellement masqué par PF1 ou Little Helper.
+- Supprime le faux espace de défilement et les surcharges CSS de scrolling qui n'avaient pas permis d'accéder au sélecteur.
+- Préserve la sélection d'action, les permissions et les appels natifs PF1.
+- À vérifier manuellement dans Foundry v13 / PF1 v11.11 avec Little Helper.
+
 ## v1.26.2 — Défilement de l'onglet Avancé
 
 - Insère la section « Action par défaut » à l'intérieur du conteneur défilant natif de l'onglet « Avancé » lorsqu'il existe.

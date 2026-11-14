@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine v1.26.2: make the Advanced tab default-action selector reachable by scrolling in compact item sheets.",
-  "version": "1.26.2",
+  "description": "PF1 Automation Engine v1.26.3: place the Advanced default-action selector inside the native fields container to prevent clipping.",
+  "version": "1.26.3",
   "authors": [
     {
       "name": "Caelvanost"
@@ -63,5 +63,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.2/pf1-automation-engine-v1.26.2.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.3/pf1-automation-engine-v1.26.3.zip"
 }
