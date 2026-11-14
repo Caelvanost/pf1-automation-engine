@@ -1,3 +1,12 @@
+## v1.26.7 — libWrapper facultatif et diagnostic ItemPF
+
+- Résout la classe native PF1 via `pf1.documents.item.ItemPF`, et non `ItemBasePF` via `CONFIG.Item.documentClass`.
+- En présence de libWrapper, utilise `libWrapper.register()` pour `ItemPF.use` (type `WRAPPER`) et `ActionSelector.open` (type `MIXED`). Sans libWrapper, les wrappers directs ciblent le bon prototype.
+- Déclare `lib-wrapper` dans `relationships.recommends` : recommandation facultative, aucune dépendance obligatoire.
+- Empêche les enregistrements multiples, ajoute `api.defaultAction.status()` pour indiquer les modes d'installation et corrige `installed()`.
+- Laisse inchangé le hook PF1 natif `pf1CreateActionUse` et les flags persistés d'action par défaut / Skip dialog.
+- Tests automatisés avec et sans libWrapper ; validation en jeu après mise à jour recommandée.
+
 ## v1.26.6 — Correction de Skip dialog dans le pipeline PF1
 
 - Intercepte la création de la fenêtre de configuration au hook PF1 natif `pf1CreateActionUse` pour l'action par défaut lorsque la case Skip dialog est cochée.

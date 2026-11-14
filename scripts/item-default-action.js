@@ -34,60 +34,116 @@ async function daSet(item,actionId){
  await item.setFlag(DA_NS,DA_FLAG,id);
  return id;
 }
+// PF1 11.11 publishes the actual ItemPF constructor under documents.item.
+// CONFIG.Item.documentClass is ItemBasePF, which does not implement use().
+const DA_USE_PATH='pf1.documents.item.ItemPF.prototype.use';
+const DA_SELECTOR_PATH='pf1.applications.ActionSelector.open';
+let DA_SELECTOR_PATCHED=null;
+const daItemClass=()=>globalThis.pf1?.documents?.item?.ItemPF??
+ globalThis.pf1?.documents?.ItemPF??null;
+const daWrapperAvailable=()=>game.modules.get('lib-wrapper')?.active===true&&
+ typeof globalThis.libWrapper?.register==='function';
+function daUse(item,options,next){
+ if(!daEnabled()||!options||typeof options!=='object'||
+    options.actionId!=null||options.skipDialog===true)return next(options);
+ const id=daPreference(item);
+ if(!id)return next(options);
+ if(!daAction(item,id)){
+  console.warn('[PF1AE][DefaultAction] Saved action missing: native selector restored',
+   {itemUuid:item.uuid,actionId:id});
+  return next(options);
+ }
+ return next({...options,actionId:id,
+  ...(daSkipDialog(item)?{skipDialog:true}:{})});
+}
 function daInstall(){
  if(!daEnabled())return false;
- // PF1 11.11's ItemPF.use is the single native entry point that displays
- // ActionSelector.open only when actionId is absent.
- const cls=globalThis.pf1?.documents?.ItemPF??globalThis.CONFIG?.Item?.documentClass;
- const proto=cls?.prototype;
- if(!proto||typeof proto.use!=='function')return false;
- if(proto.use.pf1aeDefaultActionWrapped)return true;
- const native=proto.use;
- const wrapper=async function(options={}){
-  // Do not interfere with explicit action selection or callers requesting
-  // native skipDialog semantics. Leave Item.use options intact.
-  if(!daEnabled()||!options||typeof options!=='object'||
-    options.actionId!=null||options.skipDialog===true)
-   return native.call(this,options);
-  const id=daPreference(this);
-  if(!id)return native.call(this,options);
-  // An action deleted after configuration cannot leave the Item unusable.
-  if(!daAction(this,id)){
-   console.warn('[PF1AE][DefaultAction] Saved action missing: native selector restored',
-    {itemUuid:this.uuid,actionId:id});
-   return native.call(this,options);
+ if(DA_PATCHED?.mode==='libWrapper')return true;
+ if((DA_PATCHED?.mode==='direct'||DA_PATCHED?.mode==='external')&&
+    DA_PATCHED.proto?.use===DA_PATCHED.wrapper)return true;
+ const cls=daItemClass();
+ // Do not incorrectly patch ItemBasePF, which has no use() method.
+ if(!cls||typeof cls.prototype?.use!=='function')return false;
+ if(daWrapperAvailable()){
+  try{
+   const registerId=globalThis.libWrapper.register(
+    DA_NS,DA_USE_PATH,function(wrapped,options={},...args){
+     return daUse(this,options,nextOptions=>wrapped(nextOptions,...args));
+    },'WRAPPER');
+   DA_PATCHED={mode:'libWrapper',target:DA_USE_PATH,registerId};
+   return true;
+  }catch(error){
+   console.warn('[PF1AE][DefaultAction] libWrapper registration failed; using direct fallback.',error);
   }
-  // Skip only the chosen default action's configuration dialog. PF1 owns
-  // all subsequent rolls, scripts, ammunition and resource consumption.
-  return native.call(this,{...options,actionId:id,
-   ...(daSkipDialog(this)?{skipDialog:true}:{})});
+ }
+ const proto=cls.prototype;
+ if(proto.use?.pf1aeDefaultActionWrapped){
+  DA_PATCHED={mode:'external',proto,wrapper:proto.use};
+  return true;
+ }
+ const native=proto.use;
+ const wrapper=function(options={},...args){
+  return daUse(this,options,nextOptions=>native.call(this,nextOptions,...args));
  };
  Object.defineProperty(wrapper,'pf1aeDefaultActionWrapped',{value:true});
  Object.defineProperty(wrapper,'pf1aeOriginalUse',{value:native});
- proto.use=wrapper;
- DA_PATCHED={proto,native,wrapper};
- return true;
+ try{
+  proto.use=wrapper;
+  if(proto.use!==wrapper)return false;
+  DA_PATCHED={mode:'direct',proto,native,wrapper};
+  return true;
+ }catch(error){
+  console.warn('[PF1AE][DefaultAction] Direct ItemPF.use fallback failed.',error);
+  return false;
+ }
 }
 function daInstallSelector(){
+ if(DA_SELECTOR_PATCHED?.mode==='libWrapper')return true;
+ if((DA_SELECTOR_PATCHED?.mode==='direct'||DA_SELECTOR_PATCHED?.mode==='external')&&
+    DA_SELECTOR_PATCHED.selector?.open===DA_SELECTOR_PATCHED.wrapper)return true;
  const selector=globalThis.pf1?.applications?.ActionSelector;
  if(!selector||typeof selector.open!=='function')return false;
- if(selector.open.pf1aeDefaultActionWrapped)return true;
- const native=selector.open;
- const wrapper=function(options,...args){
-  // Selector.open is the authoritative entry point for the PF1 multi-action
-  // picker. Some sheet buttons and integrations call it directly, without
-  // entering ItemPF.use(). Return the native action ID so PF1 still owns rolls.
+ const resolve=(options,next)=>{
   const item=options?.document??options?.item;
   if(daEnabled()&&item?.documentName==='Item'){
    const id=daPreference(item);
    if(id&&daAction(item,id))return Promise.resolve(id);
   }
-  return native.call(this,options,...args);
+  return next();
+ };
+ if(daWrapperAvailable()){
+  try{
+   const registerId=globalThis.libWrapper.register(
+    DA_NS,DA_SELECTOR_PATH,function(wrapped,options,...args){
+     return resolve(options,()=>wrapped(options,...args));
+    },'MIXED'); // A valid default deliberately bypasses the picker.
+   DA_SELECTOR_PATCHED={mode:'libWrapper',target:DA_SELECTOR_PATH,registerId};
+   return true;
+  }catch(error){
+   console.warn('[PF1AE][DefaultAction] Selector libWrapper registration failed; using direct fallback.',error);
+  }
+ }
+ if(selector.open.pf1aeDefaultActionWrapped){
+  DA_SELECTOR_PATCHED={mode:'external',selector,wrapper:selector.open};
+  return true;
+ }
+ const native=selector.open;
+ const wrapper=function(options,...args){
+  return resolve(options,()=>native.call(this,options,...args));
  };
  Object.defineProperty(wrapper,'pf1aeDefaultActionWrapped',{value:true});
  selector.open=wrapper;
- return true;
+ DA_SELECTOR_PATCHED={mode:'direct',selector,native,wrapper};
+ return selector.open===wrapper;
 }
+const daInstallStatus=()=>({
+ itemUse:DA_PATCHED?.mode==='libWrapper'||
+  (!!DA_PATCHED?.proto&&DA_PATCHED.proto.use===DA_PATCHED.wrapper),
+ selector:DA_SELECTOR_PATCHED?.mode==='libWrapper'||
+  (!!DA_SELECTOR_PATCHED?.selector&&DA_SELECTOR_PATCHED.selector.open===DA_SELECTOR_PATCHED.wrapper),
+ mode:DA_PATCHED?.mode??'unavailable',
+ selectorMode:DA_SELECTOR_PATCHED?.mode??'unavailable'
+});
 /**
  * PF1's ItemPF.use resolves skipDialog BEFORE awaiting ActionSelector.open.
  * When ActionSelector chooses our default, the already captured option can
@@ -235,10 +291,11 @@ Hooks.once('ready',()=>{
  mod.api.defaultAction=Object.freeze({
   get:daPreference,set:daSet,resolve:daAction,
   getSkipDialog:daSkipDialog,setSkipDialog:daSetSkipDialog,
-  installed:()=>DA_PATCHED?.proto?.use===DA_PATCHED?.wrapper
+  installed:()=>daInstallStatus().itemUse===true,
+  status:daInstallStatus
  });
  if(!daInstall()){
-  console.warn('[PF1AE][DefaultAction] PF1 Item.use not available during ready.');
+  console.warn('[PF1AE][DefaultAction] PF1 ItemPF.use not available on the PF1 ItemPF class during ready.');
  }
  if(!daInstallSelector()){
   console.warn('[PF1AE][DefaultAction] PF1 ActionSelector.open not available during ready.');
