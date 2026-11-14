@@ -40,6 +40,10 @@ const api=modules.get('pf1-automation-engine').api.defaultAction;
 const item=new ItemPF();
 (async()=>{
  assert.equal(api.installed(),true);
+ assert.equal(api.status().mode,'direct','without libWrapper PF1AE uses the direct fallback');
+ assert.equal(api.status().itemUse,true);
+ assert.equal(api.status().selector,true);
+
  // Default is "ask every time": no behavior changes whatsoever.
  assert.equal(await item.use({foo:42}),'native-select');
  assert.equal(nativeSelector.length,1);
@@ -144,5 +148,77 @@ const item=new ItemPF();
  assert.equal(src.includes('eval('),false);
  assert.equal(src.includes('generateChatAttacks'),false);
  assert.equal(src.includes('subtractAmmo'),false);
+ // Simulate PF1 11.11's actual public class path and an active libWrapper.
+ // CONFIG.Item.documentClass is ItemBasePF and intentionally lacks use().
+ const registered=[];
+ const wrappedCalls=[];
+ class LiveItemPF{
+  constructor(){
+   this.documentName='Item';
+   this.actions=new Map([['x',{id:'x',name:'Blast'}],['y',{id:'y',name:'Pulse'}]]);
+   this.flags={defaultActionId:'y',defaultActionSkipDialog:true};
+   this.uuid='Actor.live.Item.x';
+  }
+  getFlag(_ns,key){return this.flags[key]??null;}
+  async setFlag(_ns,key,value){this.flags[key]=value;return value;}
+  async unsetFlag(_ns,key){delete this.flags[key];}
+  testUserPermission(){return true;}
+  async use(options={}){wrappedCalls.push(options);return options.actionId??'native-selector';}
+ }
+ const liveSelector={async open(){return 'native-choice';}};
+ const fakeLibWrapper={
+  register(packageId,target,fn,type){
+   registered.push({packageId,target,type});
+   let owner,key;
+   if(target==='pf1.documents.item.ItemPF.prototype.use'){
+    owner=LiveItemPF.prototype;key='use';
+   }else if(target==='pf1.applications.ActionSelector.open'){
+    owner=liveSelector;key='open';
+   }else throw Error('Unexpected wrapper target: '+target);
+   const original=owner[key];
+   owner[key]=function(...args){
+    return fn.call(this,(...replaced)=>original.apply(this,replaced),...args);
+   };
+   return registered.length;
+  }
+ };
+ const liveReady=[];
+ const liveModules=new Map([
+  ['pf1-automation-engine',{active:true,api:{}}],
+  ['lib-wrapper',{active:true}]
+ ]);
+ const liveContext={
+  console,Map,Set,Promise,
+  CONFIG:{Item:{documentClass:class ItemBasePF{}}},
+  pf1:{documents:{item:{ItemPF:LiveItemPF}},applications:{ActionSelector:liveSelector}},
+  libWrapper:fakeLibWrapper,
+  game:{modules:liveModules,user:{isGM:true},i18n:{localize:key=>key}},
+  Hooks:{once(name,fn){if(name==='ready')liveReady.push(fn)},on(){}},
+  ui:{notifications:{warn(){} }}
+ };
+ liveContext.globalThis=liveContext;
+ vm.createContext(liveContext);
+ vm.runInContext(src,liveContext,{filename:'item-default-action-libwrapper.js'});
+ for(const cb of liveReady)cb();
+ const liveApi=liveModules.get('pf1-automation-engine').api.defaultAction;
+ assert.equal(liveApi.installed(),true,'libWrapper installation reports success');
+ assert.equal(liveApi.status().mode,'libWrapper');
+ assert.equal(liveApi.status().selectorMode,'libWrapper');
+ assert.deepEqual(registered.map(x=>[x.target,x.type]),[
+  ['pf1.documents.item.ItemPF.prototype.use','WRAPPER'],
+  ['pf1.applications.ActionSelector.open','MIXED']
+ ]);
+ const liveItem=new LiveItemPF();
+ assert.equal(await liveItem.use({caller:'sheet'}),'y');
+ assert.equal(wrappedCalls.at(-1).actionId,'y');
+ assert.equal(wrappedCalls.at(-1).skipDialog,true);
+ assert.equal(wrappedCalls.at(-1).caller,'sheet');
+ assert.equal(await liveItem.use({actionId:'x'}),'x');
+ assert.equal(wrappedCalls.at(-1).skipDialog,undefined,'explicit action preserved');
+ assert.equal(await liveSelector.open({document:liveItem}),'y');
+ assert.equal(registered.length,2,'no duplicate registration');
+ assert.equal(liveApi.status().itemUse,true);
+ assert.equal(liveApi.status().selector,true);
+ console.log('PASS optional libWrapper: native PF1 public class path, WRAPPER and MIXED, default action and explicit action');
  console.log('PASS default Item action: native selector bypass, explicit action, skipDialog, missing action fallback, permissions, persistence, deactivate, single action');
 })().catch(e=>{console.error(e);process.exitCode=1});
