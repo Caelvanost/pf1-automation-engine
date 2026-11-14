@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine v1.26.7: optional libWrapper integration and corrected PF1 ItemPF.use installation diagnostics.",
-  "version": "1.26.7",
+  "description": "PF1 Automation Engine v1.26.8: defer bootstrap restoration until GM Script Approvals service is initialized; preserve permission enforcement.",
+  "version": "1.26.8",
   "authors": [
     {
       "name": "Caelvanost"
@@ -69,5 +69,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.7/pf1-automation-engine-v1.26.7.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.8/pf1-automation-engine-v1.26.8.zip"
 }
