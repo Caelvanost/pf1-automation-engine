@@ -116,7 +116,9 @@
     "DefaultAction": {
       "Label": "Action par défaut",
       "AskEachTime": "Demander à chaque utilisation",
-      "MissingAction": "Action supprimée — choisir une autre action"
+      "MissingAction": "Action supprimée — choisir une autre action",
+      "Section": "PF1 Automation Engine",
+      "Hint": "Utilise automatiquement cette action sans afficher la liste des actions. Le dialogue de configuration du jet reste géré par Pathfinder."
     }
   }
 }

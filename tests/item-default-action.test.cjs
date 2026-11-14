@@ -26,8 +26,10 @@ class ItemPF{
   uses.push({actionId:first,options,kind:'native-default'});return 'used:'+first;
  }
 }
+let selectorOpenCalls=0;
+const ActionSelector={async open(){selectorOpenCalls++;return 'a';}};
 const modules=new Map([['pf1-automation-engine',{active:true,api:{}}]]);
-const context={console,Map,Set,Promise,CONFIG:{Item:{documentClass:ItemPF}},pf1:{documents:{ItemPF}},
+const context={console,Map,Set,Promise,CONFIG:{Item:{documentClass:ItemPF}},pf1:{documents:{ItemPF},applications:{ActionSelector}},
  game:{modules,user:{isGM:true},i18n:{localize:k=>k}},
  Hooks:{once(n,cb){if(n==='ready')ready.push(cb)},on(n,cb){render.set(n,cb)}},
  ui:{notifications:{warn(msg){throw Error('unexpected warning: '+msg)}}}};
@@ -68,7 +70,14 @@ const item=new ItemPF();
  await assert.rejects(()=>api.set(item,'a'),/OWNER/);
  context.game.user.isGM=true;
  await api.set(item,'reload');
+ assert.equal(await ActionSelector.open({document:item}),'reload','native selector direct call honors preferred action');
+ assert.equal(selectorOpenCalls,0,'native selector not opened when preference valid');
  assert.equal(await item.use(),'used:reload');
+ // A deleted selected action falls back to the true native selector.
+ await item.setFlag('pf1-automation-engine','defaultActionId','deleted');
+ assert.equal(await ActionSelector.open({document:item}),'a');
+ assert.equal(selectorOpenCalls,1);
+ await api.set(item,'reload');
  // No global game setting required, but module deactivation restores native path.
  modules.get('pf1-automation-engine').active=false;
  assert.equal(await item.use(),'native-select');
@@ -82,6 +91,9 @@ const item=new ItemPF();
  assert.equal(item.flags.defaultActionId,'reload','only the custom Item flag was used');
  assert.equal(src.includes("advanced.querySelectorAll('input, select, textarea')"),true,'locate actual native Advanced fields');
  assert.equal(src.includes("row.insertAdjacentElement('afterend',section)"),true,'insert inside last field container');
+ assert.equal(src.includes("heading.className='section-header'"),true,'native style heading');
+ assert.equal(src.includes("group.className='form-group'"),true,'native form layout');
+ assert.equal(src.includes("t('Hint')"),true,'localized help text');
  assert.equal(src.includes("scrollHost.style.overflowY='auto'"),false,'never override PF1 scrolling');
  assert.equal(src.includes('pf1aeDefaultActionSpacer'),false,'do not add spacer outside PF1 scroll area');
  assert.equal(src.includes('eval('),false);

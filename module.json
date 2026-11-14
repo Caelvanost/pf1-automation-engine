@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine v1.26.3: place the Advanced default-action selector inside the native fields container to prevent clipping.",
-  "version": "1.26.3",
+  "description": "PF1 Automation Engine v1.26.4: native-styled localized Advanced section and reliable default action interception through PF1 ActionSelector.",
+  "version": "1.26.4",
   "authors": [
     {
       "name": "Caelvanost"
@@ -63,5 +63,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.3/pf1-automation-engine-v1.26.3.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.4/pf1-automation-engine-v1.26.4.zip"
 }

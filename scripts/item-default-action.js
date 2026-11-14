@@ -56,50 +56,76 @@ function daInstall(){
  DA_PATCHED={proto,native,wrapper};
  return true;
 }
+function daInstallSelector(){
+ const selector=globalThis.pf1?.applications?.ActionSelector;
+ if(!selector||typeof selector.open!=='function')return false;
+ if(selector.open.pf1aeDefaultActionWrapped)return true;
+ const native=selector.open;
+ const wrapper=function(options,...args){
+  // Selector.open is the authoritative entry point for the PF1 multi-action
+  // picker. Some sheet buttons and integrations call it directly, without
+  // entering ItemPF.use(). Return the native action ID so PF1 still owns rolls.
+  const item=options?.document??options?.item;
+  if(daEnabled()&&item?.documentName==='Item'){
+   const id=daPreference(item);
+   if(id&&daAction(item,id))return Promise.resolve(id);
+  }
+  return native.call(this,options,...args);
+ };
+ Object.defineProperty(wrapper,'pf1aeDefaultActionWrapped',{value:true});
+ selector.open=wrapper;
+ return true;
+}
 function daRender(sheet,html){
  if(!daEnabled())return;
  const item=sheet?.document??sheet?.item??sheet?.object;
  if(item?.documentName!=='Item'||!daIsOwner(item))return;
  const actions=daActions(item);
- if(actions.length<2)return; // Native PF1 already uses the only action.
+ if(actions.length<2)return;
  const root=html?.[0]??html??sheet?.element?.[0]??sheet?.element;
  if(!root?.querySelector)return;
- // Add the preference to the very end of the native Advanced tab,
- // not to the Actions list. Never attach it to the tab navigation.
  const advanced=root.querySelector('.sheet-body .tab[data-tab="advanced"]')??
   root.querySelector('.tab[data-tab="advanced"]')??
   root.querySelector('.tab.advanced');
  if(!advanced||advanced.querySelector('[data-pf1ae-default-action]'))return;
- const section=document.createElement('section');
+ const t=key=>game.i18n.localize('PF1AE.DefaultAction.'+key);
+ // Use the same native heading and form layout as the other PF1 Advanced
+ // sections (e.g. Script and Little Helper), without a bordered card.
+ const section=document.createElement('div');
  section.dataset.pf1aeDefaultAction='true';
- section.className='pf1ae-default-action-section';
- section.style.cssText='margin:12px 0 0;padding:10px;border:1px solid var(--color-border-light-primary,#888);'+
-  'border-radius:4px;box-sizing:border-box;clear:both;';
+ section.className='pf1ae-default-action';
+ section.style.cssText='margin-top:10px;clear:both;width:100%;box-sizing:border-box;';
  const heading=document.createElement('h3');
- heading.style.cssText='margin:0 0 8px;font-size:14px;border-bottom:1px solid var(--color-border-light-primary,#888);padding-bottom:4px;';
- heading.textContent='PF1 Automation Engine — '+
-  (game.i18n?.localize?.('PF1AE.DefaultAction.Label')??'Preferred action');
- const field=document.createElement('div');
- field.style.cssText='display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;';
+ heading.className='section-header';
+ heading.style.cssText='margin:0 0 6px;padding-bottom:3px;border-bottom:1px solid var(--color-border-light-primary,#888);';
+ const icon=document.createElement('i');
+ icon.className='fa-solid fa-crosshairs';
+ icon.setAttribute('aria-hidden','true');
+ heading.append(icon,document.createTextNode(' '+t('Section')));
+ const group=document.createElement('div');
+ group.className='form-group';
+ group.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0;';
  const label=document.createElement('label');
- label.style.cssText='font-size:12px;font-weight:600;flex:0 0 auto;';
- label.textContent=game.i18n?.localize?.('PF1AE.DefaultAction.Label')??'Preferred action';
+ label.textContent=t('Label');
+ label.style.cssText='flex:0 0 auto;min-width:0;';
+ const fields=document.createElement('div');
+ fields.className='form-fields';
+ fields.style.cssText='flex:1 1 160px;min-width:0;';
  const select=document.createElement('select');
  select.dataset.pf1aeDefaultActionSelect='true';
- select.style.cssText='min-width:130px;max-width:100%;flex:1 1 170px;box-sizing:border-box;height:26px;font-size:12px;';
+ select.setAttribute('aria-label',t('Label'));
+ select.style.cssText='width:100%;min-width:120px;box-sizing:border-box;';
  const option=(id,text)=>{
-  const o=document.createElement('option');o.value=id;o.textContent=text;select.append(o);
+  const node=document.createElement('option');
+  node.value=id;node.textContent=text;select.append(node);
  };
- option('',game.i18n?.localize?.('PF1AE.DefaultAction.AskEachTime')??'Ask each time');
+ option('',t('AskEachTime'));
  for(const action of actions)option(action.id??action._id,action.name??action.id);
  const current=daPreference(item);
- if(current&&!daAction(item,current)){
-  option(current,game.i18n?.localize?.('PF1AE.DefaultAction.MissingAction')??'Missing action (choose another)');
- }
+ if(current&&!daAction(item,current))option(current,t('MissingAction'));
  select.value=current??'';
- label.append(document.createTextNode(' '));
- // Avoid native form auto-submit and delegated handlers.
- for(const type of ['click','pointerdown','mousedown'])select.addEventListener(type,e=>e.stopPropagation());
+ for(const type of ['click','pointerdown','mousedown'])
+  select.addEventListener(type,event=>event.stopPropagation());
  select.addEventListener('change',event=>{
   event.stopPropagation();
   const selected=select.value,previous=daPreference(item)??'';
@@ -111,26 +137,23 @@ function daRender(sheet,html){
    ui.notifications?.warn?.(error.message);
   });
  });
- field.append(label,select);
- section.append(heading,field);
- // The PF1 Advanced tab (and modules such as Little Helper) can have
- // nested content wrappers with their own clipping/scroll boundaries.
- // Inserting after the wrapper makes the selector appear but unreachable.
- // Instead place it directly after the final native field INSIDE the same
- // content container. This also lets native sheet scrolling size correctly.
- const fields=[...advanced.querySelectorAll('input, select, textarea')]
+ fields.append(select);group.append(label,fields);
+ const hint=document.createElement('p');
+ hint.className='notes';
+ hint.textContent=t('Hint');
+ hint.style.cssText='margin:3px 0 0;font-size:12px;';
+ section.append(heading,group,hint);
+ // Insert in the native content flow rather than after an outer scroll wrapper.
+ const nativeFields=[...advanced.querySelectorAll('input, select, textarea')]
   .filter(el=>!el.closest('[data-pf1ae-default-action]'));
- const last=fields.at(-1);
+ const last=nativeFields.at(-1);
  const row=last?.closest('.form-group, .form-group-stacked, .form-row, .form-field')??
   last?.parentElement;
  if(row?.parentElement&&advanced.contains(row.parentElement)){
   row.insertAdjacentElement('afterend',section);
  }else{
-  // No native form controls: keep the normal Advanced-tab fallback.
   advanced.append(section);
  }
- // Do not override the system's overflow or add artificial blank spacers:
- // both can escape the PF1 sheet's actual scrollable content boundary.
 }
 Hooks.once('ready',()=>{
  const mod=game.modules.get(DA_NS);
@@ -142,6 +165,9 @@ Hooks.once('ready',()=>{
  });
  if(!daInstall()){
   console.warn('[PF1AE][DefaultAction] PF1 Item.use not available during ready.');
+ }
+ if(!daInstallSelector()){
+  console.warn('[PF1AE][DefaultAction] PF1 ActionSelector.open not available during ready.');
  }
  Hooks.on('renderItemSheet',daRender);
  Hooks.on('renderItemSheetV2',daRender);
