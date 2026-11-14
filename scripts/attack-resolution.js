@@ -60,6 +60,11 @@ async function arSelect(context){
  if(action?.hasSave===true&&action?.hasAttack!==true)
   return {type:null,provider:'pf1-native',reason:'native saving throw action; use saveContext/saveOutcomes',
    save:{type:action.save?.type??null,dc:null}};
+ // The native PF1 "Contact" checkbox (including ActionUse touch override)
+ // is authoritative. Other modules must not silently override an explicit
+ // PF1 touch attack with a different AC.
+ if(context.actionUse?.shared?.touch===true||action?.touch===true)
+  return {type:'touch',provider:'pf1-native',reason:'native Contact checkbox'};
  const byPriority=new Map(),errors=[];
  for(const provider of [...AR_PROVIDERS.values()].sort((a,b)=>b.priority-a.priority||a.id.localeCompare(b.id))){
   try{
