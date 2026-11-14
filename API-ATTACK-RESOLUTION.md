@@ -1,4 +1,4 @@
-# PF1AE — Generic Attack Resolution API (v1.25.0)
+# PF1AE — Generic Attack Resolution API (v1.25.1)
 
 **Scope:** Foundry VTT 13.351, PF1 system 11.11. This module resolves generic attacks and combat maneuvers; it does **not** implement firearms, Deadeye, misfire, reload, firearm touch-range rules, alchemical cartridges or any specialized combat feat. Specialized modules provide a **defense choice**, not an attack-roll implementation.
 
@@ -110,4 +110,5 @@ The resolution engine **never** applies damage, never changes AC/conditions, and
 - Dynamic cover and concealment must be supplied by a verified upstream provider/caller; they are not automatically inferred from arbitrary scene geometry.
 - Flat-footed touch and special CMD variants are separate situational mechanics; no unsupported native values are invented.
 - This module intentionally declines to resolve ambiguous multi-target attacks or unknown natural d20s. Advanced mapping to individual PF1 ChatAttack IDs should follow actual live metadata validation.
-- The action UI adds a compact per-action selector in the native action list on Item sheets; Item flags survive F5, duplicated Items and scene changes. In the compendium itself, actor ownership/GM permissions still apply.
+- PF1's native `Action.touch`, `Action.isCombatManeuver`, `Action.hasAttack` and `Action.hasSave` are authoritative. No extra selector or Item schema modification is required. The older `attackDefenseConfig` flags are no longer used; they remain on existing Items as non-destructive historical data.
+- Saving throw actions **must not** be resolved by comparing their caster's attack total to AC. Use the native source Action's Fortitude/Reflex/Will and DC, and PF1AE's separate saving throw pipeline to resolve target saves.
