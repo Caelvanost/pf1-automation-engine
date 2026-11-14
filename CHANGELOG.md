@@ -1,3 +1,14 @@
+## v1.25.1 — Utiliser les défenses et jets de sauvegarde natifs PF1
+
+- Supprime le sélecteur « Défense ciblée » ajouté à la fiche par PF1AE : la case native **Contact** définit déjà l'attaque de contact.
+- Détecte `action.isCombatManeuver` (manœuvre offensive) et compare le jet à la **DMD**, indépendamment du nom de l'action.
+- Privilégie `action.touch` et le choix temporaire `ActionUse.shared.touch` pour comparer à la **CA de contact** ; utilise sinon la CA normale ou un fournisseur externe vérifié.
+- Une action qui demande uniquement un jet de sauvegarde n'est jamais considérée comme une attaque contre la CA : état `pendingSave`, délégation au système PF1 et aux services PF1AE existants de sauvegardes.
+- Les actions mixtes (attaque et jet de sauvegarde) conservent deux résolutions indépendantes.
+- Retire les méthodes API de configuration de défense et leurs traductions ; les flags historiques `attackDefenseConfig` restent présents mais sont ignorés pour éviter une migration destructrice.
+- Ajoute `api.attackResolution.classifyAction(action,actionUse?)` ; le contrat public des fournisseurs demeure disponible.
+- Étend les tests de non-régression pour Contact, manœuvre, sauvegarde seule, action mixte, anciennes configurations et absence de contrôles dupliqués.
+
 ## v1.25.0 — Résolution générique des attaques et manœuvres
 
 - Ajoute `api.attackResolution` : comparaison indépendante des jets PF1 à la CA normale, de contact, prise au dépourvu ou DMD ; gestion des 1 et 20 naturels et des données manquantes.
