@@ -1,3 +1,9 @@
+## v1.26.1 — Sélection de l'action par défaut dans l'onglet Avancé
+
+- Déplace le sélecteur d'action par défaut de la liste native des actions vers une section « PF1 Automation Engine — Action par défaut » en bas de l'onglet « Avancé » des fiches d'objet contenant plusieurs actions.
+- Conserve les paramètres enregistrés, les permissions OWNER, les traductions et la délégation native à `ItemPF.use()`.
+- Compatibilité visée : Foundry VTT 13.351 et PF1 11.11 ; vérification finale de l'interface à effectuer en jeu.
+
 ## v1.26.0 — Action par défaut des objets PF1
 
 - Ajoute un choix « Action par défaut » / « Demander à chaque utilisation » dans la liste native d'actions des objets possédant plusieurs actions.
