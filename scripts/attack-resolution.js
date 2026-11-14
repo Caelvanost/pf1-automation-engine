@@ -25,6 +25,19 @@ const arValue=(actor,type)=>{
    attrs?.ac?.[type==='flatFooted'?'flatFooted':type]?.total;
  return typeof value==='number'&&Number.isFinite(value)?value:null;
 };
+function arClassify(action,actionUse=null){
+ const maneuver=action?.isCombatManeuver===true||
+  !!globalThis.pf1?.config?.maneuverActionTypes?.has?.(action?.actionType);
+ const attack=maneuver||action?.hasAttack===true;
+ const save=action?.hasSave===true;
+ const touch=!maneuver&&(actionUse?.shared?.touch===true||action?.touch===true);
+ return {
+  kind:attack?(save?'attackAndSave':'attack'):(save?'save':'other'),
+  defenseType:attack?(maneuver?'cmd':(touch?'touch':'normal')):null,
+  saveType:save?(action.save?.type??null):null,
+  hasAttack:attack,hasSave:save
+ };
+}
 function arNative(action,actionUse){
  if(action?.isCombatManeuver===true||globalThis.pf1?.config?.maneuverActionTypes?.has?.(action?.actionType))
   return {type:'cmd',provider:'pf1-native',reason:'native combat maneuver'};
@@ -142,6 +155,6 @@ Hooks.once('ready',()=>{
   registerDefenseProvider:arRegister,unregisterDefenseProvider:arUnregister,
   listDefenseProviders:arProviders,resolveAttack:arResolve,
   lastDiagnostic:()=>AR_LAST?{...AR_LAST}:null,
-  getNaturalD20:arNatural
+  getNaturalD20:arNatural,classifyAction:arClassify
  });
 });
