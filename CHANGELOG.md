@@ -1,3 +1,12 @@
+## v1.26.5 — Skip dialog pour l'action par défaut
+
+- Ajoute une case « Skip dialog » dans la section PF1 Automation Engine de l'onglet Avancé, activable lorsqu'une action par défaut valide est sélectionnée.
+- Sauvegarde ce réglage indépendamment par Item via le flag `defaultActionSkipDialog`, désactivé par défaut.
+- Lors d'une utilisation normale de l'Item sans action explicite, transmet `{actionId, skipDialog:true}` à la méthode native `ItemPF.use()` si la case est cochée.
+- Ne modifie pas les utilisations avec action explicitement imposée, les consommations ni les jets ; si l'action par défaut est absente, le comportement natif est préservé.
+- Ajoute les libellés et descriptions FR/EN, la gestion des permissions et les tests de non-régression.
+- Validation en interface Foundry VTT 13 / PF1 11.11 encore nécessaire.
+
 ## v1.26.4 — Présentation native, langues utilisateur et sélection automatique
 
 - Présentation du réglage dans une section semblable aux autres sections de l'onglet Avancé, avec en-tête et groupe de formulaire natifs, sans carte encadrée.
