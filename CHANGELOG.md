@@ -1,3 +1,11 @@
+## v1.26.8 — Ordre de démarrage Bootstrap / Script Approvals
+
+- Retarde la restauration persistante des scripts jusqu'à la disponibilité de l'API d'approbation MJ `scriptApprovals.check()`.
+- Émet l'événement interne `pf1aeScriptApprovalsReady` après initialisation du service, puis reprend la restauration sans faux avertissement `Script approval service unavailable`.
+- Empêche toute restauration prématurée d'un script de joueur par un MJ et conserve l'exigence d'une autorisation correspondant exactement au contenu du script.
+- Ne supprime pas les runtimes existants lors d'une attente temporaire d'initialisation, et préserve les protections contre les doublons.
+- Ajoute des tests reproduisant un `ready` inversé et vérifiant les refus légitimes.
+
 ## v1.26.7 — libWrapper facultatif et diagnostic ItemPF
 
 - Résout la classe native PF1 via `pf1.documents.item.ItemPF`, et non `ItemBasePF` via `CONFIG.Item.documentClass`.

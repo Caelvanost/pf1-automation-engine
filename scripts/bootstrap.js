@@ -245,9 +245,16 @@ async function bsRestoreOne(record){
     // of this native ItemScriptCall was explicitly approved by the GM.
     const playerOwners=[...game.users].filter(u=>!u.isGM&&bsOwned(actor,u));
     if(game.user.isGM&&playerOwners.length){
-      const approval=game.modules.get(BS_NS)?.api?.scriptApprovals?.check?.(actor,item,call)
-        ??{approved:false,reason:'Script approval service unavailable'};
-      if(!approval.approved){
+      const check=game.modules.get(BS_NS)?.api?.scriptApprovals?.check;
+      // Never evaluate player-editable JS with GM privileges before the
+      // approval service is ready. Defer instead of treating a startup race
+      // as a denied approval (and do not clear an existing runtime).
+      if(typeof check!=='function'){
+        bsDebug('Deferred GM fallback until approval service is ready',{id:record.id});
+        return {skipped:'approval service not ready',deferred:true};
+      }
+      const approval=check(actor,item,call);
+      if(!approval?.approved){
         bsCleanup(record.id);
         console.warn('[PF1AE][Bootstrap] GM fallback blocked', {
           id:record.id,actorUuid:actor.uuid,itemUuid:item.uuid,
@@ -304,11 +311,19 @@ async function bsRestoreOne(record){
   BS_INFLIGHT.set(record.id,job);
   try{return await job}finally{BS_INFLIGHT.delete(record.id)}
 }
+const bsApprovalReady=()=>typeof game.modules.get(BS_NS)?.api?.scriptApprovals?.check==='function';
 async function bsRestoreAll(){
   if(!bsEnabled()){
     for(const id of [...BS_ACTIVE.keys()])bsCleanup(id);
     bsAutoCleanup();
     return {restored:0,skipped:0,disabled:true};
+  }
+  // On Foundry ready, bootstrap.js may run before script-approvals.js
+  // attaches its API. Do not mutate the active registry or reject records
+  // during that initialization window; approvals-ready will retry once.
+  if(!bsApprovalReady()){
+    bsDebug('Restoration deferred: approval service is initializing');
+    return {restored:0,skipped:0,deferred:true};
   }
   bsAutoScan();
   const records=[...bsList(),...BS_AUTO.values()];
@@ -359,5 +374,9 @@ Hooks.once('ready',()=>{
     unregister:data=>bsSend('unregister',data),list:()=>bsClone(bsList()),
     listAutomatic:()=>bsClone([...BS_AUTO.values()]),restoreAll:bsRestoreAll});
   game.socket.on(BS_SOCKET,data=>{if(data?.channel===BS_CHANNEL)void bsReceive(data)});
-  void bsRestoreAll();
+  // The service may initialize after this ready callback due to module
+  // ES module ordering. The dedicated event runs restoration once ready.
+  Hooks.on('pf1aeScriptApprovalsReady',()=>{void bsRestoreAll()});
+  if(bsApprovalReady())void bsRestoreAll();
+  else bsDebug('Waiting for Script Approvals service');
 });
