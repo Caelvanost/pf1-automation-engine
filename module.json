@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine v1.26.5: optional per-Item Skip dialog for the selected default action, using native PF1 action execution.",
-  "version": "1.26.5",
+  "description": "PF1 Automation Engine v1.26.6: fix Skip dialog when PF1 selects the configured default action through ActionSelector.",
+  "version": "1.26.6",
   "authors": [
     {
       "name": "Caelvanost"
@@ -63,5 +63,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.5/pf1-automation-engine-v1.26.5.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.6/pf1-automation-engine-v1.26.6.zip"
 }

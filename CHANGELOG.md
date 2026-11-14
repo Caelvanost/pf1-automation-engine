@@ -1,3 +1,12 @@
+## v1.26.6 — Correction de Skip dialog dans le pipeline PF1
+
+- Intercepte la création de la fenêtre de configuration au hook PF1 natif `pf1CreateActionUse` pour l'action par défaut lorsque la case Skip dialog est cochée.
+- Corrige le cas où `ItemPF.use()` capture `skipDialog=false` avant la sélection d'action asynchrone, puis continue à ouvrir le dialogue malgré la préférence.
+- Retourne un formulaire vide valide dans le flux PF1 ; conserve les calculs de jets, scripts, templates, validations et consommation de ressources natifs.
+- Les autres actions et les utilisations sans option cochée conservent le dialogue normal.
+- Tests supplémentaires ciblant directement l'ouverture du dialogue d'`ActionUse` et le choix d'action.
+- Validation réelle dans Foundry VTT v13 / PF1 v11.11 nécessaire.
+
 ## v1.26.5 — Skip dialog pour l'action par défaut
 
 - Ajoute une case « Skip dialog » dans la section PF1 Automation Engine de l'onglet Avancé, activable lorsqu'une action par défaut valide est sélectionnée.

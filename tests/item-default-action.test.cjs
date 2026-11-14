@@ -55,10 +55,34 @@ const item=new ItemPF();
  assert.equal(api.getSkipDialog(item),true);
  assert.equal(await item.use({source:'hotbar'}),'used:b');
  assert.equal(uses.at(-1).options.skipDialog,true,'skipDialog passed into PF1 native use');
- assert.equal(uses.at(-1).options.source,'hotbar');
+ assert.equal(uses.at(-1).options.source,'hotbar'); 
+ // PF1 native ItemPF.use may have captured skipDialog=false before awaiting
+ // ActionSelector.open. Confirm the actual ActionUse dialog method is skipped.
+ const preRoll=render.get('pf1CreateActionUse');
+ assert.equal(typeof preRoll,'function','must subscribe to PF1 pre-dialog ActionUse hook');
+ let opened=0;
+ const makeActionUse=(action)=>({
+  item,action,shared:{item,action,skipDialog:false},
+  async createAttackDialog(){opened++;return {from:'native'};}
+ });
+ const selectedUse=makeActionUse(actions.get('b'));
+ preRoll(selectedUse);
+ assert.equal(Object.keys(await selectedUse.createAttackDialog()).length,0);
+ assert.equal(opened,0,'chosen action must not open the native configuration dialog');
+ assert.equal(selectedUse.shared.skipDialog,true,'native shared context records quick use');
+ const otherUse=makeActionUse(actions.get('reload'));
+ preRoll(otherUse);
+ assert.deepEqual(await otherUse.createAttackDialog(),{from:'native'});
+ assert.equal(opened,1,'other actions still display their configuration dialog');
+
  await api.setSkipDialog(item,false);
  assert.equal(api.getSkipDialog(item),false);
- assert.equal(await item.use(),'used:b');
+ assert.equal(await item.use(),'used:b'); 
+ const normalUse=makeActionUse(actions.get('b'));
+ preRoll(normalUse);
+ assert.deepEqual(await normalUse.createAttackDialog(),{from:'native'});
+ assert.equal(opened,2,'unchecked option restores native dialog');
+
  assert.equal(uses.at(-1).options.skipDialog,undefined,'unchecked leaves PF1 dialog alone');
  // Explicit action selection never gets replaced.
  assert.equal(await item.use({actionId:'reload',other:true}),'used:reload');

@@ -88,6 +88,33 @@ function daInstallSelector(){
  selector.open=wrapper;
  return true;
 }
+/**
+ * PF1's ItemPF.use resolves skipDialog BEFORE awaiting ActionSelector.open.
+ * When ActionSelector chooses our default, the already captured option can
+ * still be false. Use PF1's native pre-roll hook to suppress only the
+ * configuration UI on the selected ActionUse, leaving process(), attack
+ * preparation, script calls and deductions entirely native.
+ */
+function daConfigureActionUse(actionUse){
+ if(!daEnabled()||!actionUse||typeof actionUse.createAttackDialog!=='function')return;
+ const item=actionUse.item??actionUse.shared?.item;
+ const action=actionUse.action??actionUse.shared?.action;
+ const id=daPreference(item);
+ if(!id||!daSkipDialog(item)||!daAction(item,id)||
+    (action?.id??action?._id)!==id)return;
+ if(actionUse.pf1aeDefaultActionDialogWrapped)return;
+ const native=actionUse.createAttackDialog;
+ const wrapped=async function(...args){
+  // The preference may change between hook dispatch and dialog creation.
+  if(daEnabled()&&daSkipDialog(item)&&daPreference(item)===id){
+   if(this.shared)this.shared.skipDialog=true;
+   return {}; // Valid empty native PF1 dialog result; defaults remain in effect.
+  }
+  return native.apply(this,args);
+ };
+ Object.defineProperty(actionUse,'pf1aeDefaultActionDialogWrapped',{value:true});
+ actionUse.createAttackDialog=wrapped;
+}
 function daRender(sheet,html){
  if(!daEnabled())return;
  const item=sheet?.document??sheet?.item??sheet?.object;
@@ -216,6 +243,7 @@ Hooks.once('ready',()=>{
  if(!daInstallSelector()){
   console.warn('[PF1AE][DefaultAction] PF1 ActionSelector.open not available during ready.');
  }
+ Hooks.on('pf1CreateActionUse',daConfigureActionUse);
  Hooks.on('renderItemSheet',daRender);
  Hooks.on('renderItemSheetV2',daRender);
 });
