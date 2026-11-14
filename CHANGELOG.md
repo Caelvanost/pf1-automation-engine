@@ -1,3 +1,10 @@
+## v1.26.4 — Présentation native, langues utilisateur et sélection automatique
+
+- Présentation du réglage dans une section semblable aux autres sections de l'onglet Avancé, avec en-tête et groupe de formulaire natifs, sans carte encadrée.
+- Libellés et explications FR/EN chargés via game.i18n pour chaque client.
+- Interception supplémentaire du sélecteur natif ActionSelector.open pour les utilisations qui ne passent pas par ItemPF.use, avec retour de l'identifiant d'action enregistré ; si la préférence manque ou est invalide, le sélecteur normal reste disponible.
+- Le moteur PF1 garde l'exécution, la consommation et le dialogue de configuration des jets. Vérification en jeu nécessaire.
+
 ## v1.26.3 — Correction du panneau d'action par défaut coupé
 
 - Insère le réglage directement après le dernier champ natif de l'onglet « Avancé », dans son conteneur de contenu, plutôt qu'après un conteneur éventuellement masqué par PF1 ou Little Helper.
