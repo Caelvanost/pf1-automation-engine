@@ -29,7 +29,8 @@ jobs:
             'native-save-context','native-save-outcome-dispatch',
             'native-save-post-chatmessage','neutrality','rest-hooks',
             'save-outcomes','template-save-outcomes','timed-save-outcomes',
-            'turn-phases','trusted-table','range-automation','i18n','reload-core'
+            'turn-phases','trusted-table','range-automation','i18n','reload-core',
+            'attack-resolution','attack-resolution-integration'
           )
           foreach ($name in $tests) {
             $file = Join-Path tests "$name.test.cjs"

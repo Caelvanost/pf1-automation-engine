@@ -75,7 +75,8 @@ function aeOnAttackRoll(action,roll,context={}) {
   if (!aeEnabled() || !roll || typeof roll !== 'object' || AE_ROLL_SEEN.has(roll)) return;
   const source = aeSource(action);
   if (!source || !source.actionId || !aeActorOwner(source.actor) || AE_BUSY.has(source.actor.uuid)) return;
-  if (!aeSubscribers(source.actor).length) return;
+  // Resolve attacks even without a Script Call subscriber; the enriched
+  // PF1AE event and public API must work independently of item scripts.
   AE_ROLL_SEEN.add(roll);
   aePrune();
   const key = aeKey(source);
@@ -92,6 +93,8 @@ function aeOnAttackRoll(action,roll,context={}) {
   entry.rolls.push({rollId:typeof roll.id === 'string' ? roll.id : null,
     total:Number.isFinite(total) ? total : null,
     formula:typeof roll.formula === 'string' ? roll.formula.slice(0,500) : null,
+    nativeRoll:roll,
+    natural:game.modules.get(AE_NS)?.api?.attackResolution?.getNaturalD20?.(roll)??null,
     explicitIndex:Number.isSafeInteger(context?.attackIndex) && context.attackIndex >= 0 ? context.attackIndex : null,
     contextTargets:aeTargets(context,null)});
   aeLog('Attack roll evaluated', {actorUuid:source.actor.uuid, itemUuid:source.item.uuid,
@@ -103,19 +106,62 @@ async function aeDeliver(source,results,actionUse,message) {
   const targets = aeTargets(null,actionUse);
   const attackerTokens = source.actor.getActiveTokens?.() ?? [];
   const attackerToken = attackerTokens.length === 1 ? aeToken(attackerTokens[0])?.tokenUuid ?? null : null;
+  const resolutionApi=game.modules.get(AE_NS)?.api?.attackResolution;
+  const action=actionUse?.action??actionUse?.shared?.action;
+  const nativeChatAttacks=actionUse?.shared?.chatAttacks;
+  const nativeIndicesKnown=Array.isArray(nativeChatAttacks)&&
+    nativeChatAttacks.length===results.length;
   for (let i=0;i<results.length;i++) {
-    const result = results[i];
-    const event = Object.freeze({
-      type:'attack:resolved', actorUuid:source.actor.uuid, itemUuid:source.item.uuid,
-      actionId:source.actionId, attackerTokenUuid:attackerToken,
-      sourceMessageId:msg?.id ?? null,
-      rollIndex:i, attackIndex:result.explicitIndex,
-      roll:{id:result.rollId,total:result.total,formula:result.formula},
-      // PF1 hook does not certify a hit or an AC comparison.
-      hit:null,
-      targets:result.contextTargets.length ? result.contextTargets : targets,
-      isAutoTriggered:false
+    const result=results[i];
+    const resultTargets=result.contextTargets.length?result.contextTargets:targets;
+    const attackIndex=result.explicitIndex??(nativeIndicesKnown?i:null);
+    const paired=[];
+    for(const target of resultTargets){
+      let token=null,actor=null;
+      try{
+       token=typeof fromUuid==='function'?await fromUuid(target.tokenUuid):null;
+       actor=token?.actor??null;
+      }catch(error){aeLog('Target resolution failed',{tokenUuid:target.tokenUuid,error:String(error)});}
+      // PF1's generic roll hook is not sufficient proof of mapping one
+      // attack to several targets: refuse to reuse an ambiguous roll.
+      if(resultTargets.length!==1){
+        paired.push({targetTokenUuid:target.tokenUuid,targetActorUuid:actor?.uuid??target.actorUuid,
+          resolution:'indeterminate',hit:null,reason:'multiple targets without verified per-target roll mapping',
+          attackIndex,defense:null,roll:{natural:result.natural,total:result.total}});
+        continue;
+      }
+      if(!resolutionApi?.resolveAttack)continue;
+      try{
+        paired.push(await resolutionApi.resolveAttack({
+          actor:source.actor,item:source.item,action,actionUse,roll:result.nativeRoll,
+          natural:result.natural,total:result.total,attackerToken,
+          targetToken:token,targetActor:actor,attackIndex,
+          sourceMessageId:msg?.id??null,
+          // Never silently assert concealment was checked.
+          // Visibility/concealment is separate from the AC comparison.
+        }));
+      }catch(error){
+        paired.push({targetTokenUuid:target.tokenUuid,targetActorUuid:actor?.uuid??target.actorUuid,
+          resolution:'indeterminate',hit:null,reason:'resolution error: '+String(error?.message??error),
+          attackIndex,defense:null});
+      }
+    }
+    const single=paired.length===1?paired[0]:null;
+    const event=Object.freeze({
+      type:'attack:resolved',actorUuid:source.actor.uuid,itemUuid:source.item.uuid,
+      actionId:source.actionId,attackerTokenUuid:attackerToken,
+      sourceMessageId:msg?.id??null,
+      rollIndex:i,attackIndex,
+      roll:{id:result.rollId,total:result.total,formula:result.formula,natural:result.natural},
+      defense:single?.defense??null,
+      hit:single?.hit??null,
+      resolution:single?.resolution??'indeterminate',
+      targetActorUuid:single?.targetActorUuid??null,
+      targetTokenUuid:single?.targetTokenUuid??null,
+      targetResults:paired,
+      targets:resultTargets,isAutoTriggered:false
     });
+    Hooks.callAll?.('pf1aeAttackResolution',event);
     for (const {item,call} of subs) {
       // The rolling client handles its own hook; when a GM handles an Actor
       // owned by any player, never execute unapproved player-editable code
