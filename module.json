@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine v1.26.6: fix Skip dialog when PF1 selects the configured default action through ActionSelector.",
-  "version": "1.26.6",
+  "description": "PF1 Automation Engine v1.26.7: optional libWrapper integration and corrected PF1 ItemPF.use installation diagnostics.",
+  "version": "1.26.7",
   "authors": [
     {
       "name": "Caelvanost"
@@ -21,6 +21,12 @@
           "minimum": "11.11",
           "verified": "11.11"
         }
+      }
+    ],
+    "recommends": [
+      {
+        "id": "lib-wrapper",
+        "type": "module"
       }
     ]
   },
@@ -63,5 +69,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.6/pf1-automation-engine-v1.26.6.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.7/pf1-automation-engine-v1.26.7.zip"
 }
