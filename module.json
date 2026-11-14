@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine v1.26.0: optional native PF1 per-Item default action that skips the action selection menu without changing roll or resource handling.",
-  "version": "1.26.0",
+  "description": "PF1 Automation Engine v1.26.1: default Item action selection moved into a dedicated section at the bottom of the Advanced tab.",
+  "version": "1.26.1",
   "authors": [
     {
       "name": "Caelvanost"
@@ -63,5 +63,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.0/pf1-automation-engine-v1.26.0.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.26.1/pf1-automation-engine-v1.26.1.zip"
 }
