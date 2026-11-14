@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine preview: reload delegated to separate PF1 Firearms & Reload module.",
-  "version": "1.24.6",
+  "description": "PF1 Automation Engine v1.25.0: generic PF1 attack and combat maneuver resolution with extensible defense providers, action controls and native events.",
+  "version": "1.25.0",
   "authors": [
     {
       "name": "Caelvanost"
@@ -39,6 +39,7 @@
     "scripts/attack-outcomes.js",
     "scripts/script-approvals.js",
     "scripts/damage-events.js",
+    "scripts/attack-resolution.js",
     "scripts/attack-events.js",
     "scripts/bootstrap.js",
     "scripts/range-automation.js",
@@ -61,5 +62,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.24.6/pf1-automation-engine-v1.24.6.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.25.0/pf1-automation-engine-v1.25.0.zip"
 }
