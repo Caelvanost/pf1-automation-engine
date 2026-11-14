@@ -1,26 +1,25 @@
-# PF1AE — Generic Attack Resolution API (v1.25.0)
+# PF1AE — Generic Attack Resolution API (v1.25.1)
 
 **Scope:** Foundry VTT 13.351, PF1 system 11.11. This module resolves generic attacks and combat maneuvers; it does **not** implement firearms, Deadeye, misfire, reload, firearm touch-range rules, alchemical cartridges or any specialized combat feat. Specialized modules provide a **defense choice**, not an attack-roll implementation.
 
 ## API entry point
 
-\`\`\`javascript
+```javascript
 const api=game.modules.get('pf1-automation-engine')?.api?.attackResolution;
-\`\`\`
+```
 
-Available after Foundry's \`ready\` lifecycle:
-- \`registerDefenseProvider({id,priority=0,resolve:async context=>choice|null})\` returns an unregister callback.
-- \`unregisterDefenseProvider(id)\` returns \`boolean\`.
-- \`listDefenseProviders()\` returns an array of \`{id,priority}\`, descending priority.
-- \`resolveAttack(context)\` returns a Promise containing the result of one attack/target pair.
-- \`getActionDefenseConfig(item,action)\` returns the \`auto|normal|touch|flatFooted|cmd|manual\` choice.
-- \`setActionDefenseConfig(item,action,type)\` persists the choice in \`flags.pf1-automation-engine.attackDefenseConfig[action.id]\` on the parent Item; only owners/GM can edit. \`auto\` removes the override and leaves native actions unchanged.
-- \`getNaturalD20(nativeRoll)\` returns an integer 1–20 if **exactly one** active d20 result is unambiguous; otherwise \`null\`.
-- \`lastDiagnostic()\` returns the last locally resolved result.
+Available after Foundry's `ready` lifecycle:
+- `registerDefenseProvider({id,priority=0,resolve:async context=>choice|null})` returns an unregister callback.
+- `unregisterDefenseProvider(id)` returns `boolean`.
+- `listDefenseProviders()` returns an array of `{id,priority}`, descending priority.
+- `resolveAttack(context)` returns a Promise containing the result of one attack/target pair.
+- `classifyAction(action,actionUse?)` returns the native PF1 `{kind,defenseType,saveType,hasAttack,hasSave}` classification, with `kind: 'attack'|'save'|'attackAndSave'|'other'`.
+- `getNaturalD20(nativeRoll)` returns an integer 1–20 if **exactly one** active d20 result is unambiguous; otherwise `null`.
+- `lastDiagnostic()` returns the last locally resolved result.
 
 ## Registering a defense provider
 
-\`\`\`javascript
+```javascript
 const api=game.modules.get('pf1-automation-engine').api.attackResolution;
 const unregister=api.registerDefenseProvider({
  id:'my-special-defense-module',
@@ -34,42 +33,42 @@ const unregister=api.registerDefenseProvider({
 });
 // On hot disable/unload: unregister();
 // Or: api.unregisterDefenseProvider('my-special-defense-module');
-\`\`\`
+```
 
-**Provider contract:** \`resolve(context)\` may be synchronous or asynchronous and must return \`null\` for irrelevant attacks. Otherwise it returns \`{type,reason?}\`, where \`type\` is one of \`normal\`, \`touch\`, \`flatFooted\`, \`cmd\`, \`manual\`. The framework records the provider ID itself (do not trust external \`provider\` fields). Priorities must be finite numbers; a duplicate ID is rejected in the same session. Two providers at the same top priority choosing different defenses cause \`indeterminate\`, never an arbitrary winner. Exceptions in any provider are recorded and produce an indeterminate result; they do not silently fall back.
+**Provider contract:** `resolve(context)` may be synchronous or asynchronous and must return `null` for irrelevant attacks. Otherwise it returns `{type,reason?}`, where `type` is one of `normal`, `touch`, `flatFooted`, `cmd`, `manual`. The framework records the provider ID itself (do not trust external `provider` fields). Priorities must be finite numbers; a duplicate ID is rejected in the same session. Two providers at the same top priority choosing different defenses cause `indeterminate`, never an arbitrary winner. Exceptions in any provider are recorded and produce an indeterminate result; they do not silently fall back.
 
-**Priority:** Item action explicit manual choice (\`normal/touch/flatFooted/cmd/manual\`) > registered provider by descending numeric priority > native PF1 action type (combat maneuver \`cmd\`, native touch \`touch\`, otherwise ordinary attack \`normal\`) > indeterminate. In \`auto\` mode a provider can select the defense for an individual action/target/roll without changing the Item. An explicit Item selection always wins.
+**Priority:** Native PF1 combat maneuver (`cmd`) > native **Contact** checkbox or ActionUse touch override (`touch`) > external providers by numeric priority > ordinary native attack (`normal`) > indeterminate. No PF1AE defense selector, no action flags and no manual defense override exist in v1.25.1. A pure saving-throw action reports `pendingSave` to this attack service, while PF1AE's existing `saveContext` and `saveOutcomes` services evaluate the native target saving throw separately. A mixed attack-and-save action follows both paths independently.
 
-**Registration lifecycle:** Register **once** on your own module's \`ready\`, retain the unregister callback, and unregister on disable/change. On browser F5 the JS Map is recreated; the same callback must not register twice within one running client.
+**Registration lifecycle:** Register **once** on your own module's `ready`, retain the unregister callback, and unregister on disable/change. On browser F5 the JS Map is recreated; the same callback must not register twice within one running client.
 
 ## Context
 
-\`resolveAttack(context)\` and providers receive:
+`resolveAttack(context)` and providers receive:
 
 | Field | Meaning |
 |---|---|
-| \`actor\` | Attacker Actor document, if available |
-| \`item\` | Native PF1 parent Item |
-| \`action\` | Native PF1 Action model |
-| \`actionUse\` | Native PF1 ActionUse object after the attack's process |
-| \`attackerToken\` | Token UUID (when uniquely available on the existing event path) |
-| \`targetToken\` | Actual Target Token document/object, if resolved |
-| \`targetActor\` | Target Actor document, including synthetic Token Actor |
-| \`attackIndex\` | Verified index when provided by PF1 or native chat-attack count corresponds; otherwise null |
-| \`sourceMessageId\` | Native ChatMessage ID |
-| \`roll\` | Actual native d20 attack Roll object (not the crit-confirmation/damage Roll) |
-| \`natural\` | Optional explicit native d20 integer, otherwise parsed safely from \`roll.dice\` |
-| \`total\` | Optional native final attack total, otherwise \`roll.total\` |
-| \`coverBonus\` | Optional **verified** numeric situational defense modifier, 0–100; the API adds it to the selected defense without changing PF1 |
-| \`concealmentPending\` | True if a separate concealment miss-chance roll remains necessary |
-| \`concealmentCleared\` | True only when absence/passing of concealment has been **verified** |
-| \`additionalCheckPending\` | True for another verified unresolved step |
+| `actor` | Attacker Actor document, if available |
+| `item` | Native PF1 parent Item |
+| `action` | Native PF1 Action model |
+| `actionUse` | Native PF1 ActionUse object after the attack's process |
+| `attackerToken` | Token UUID (when uniquely available on the existing event path) |
+| `targetToken` | Actual Target Token document/object, if resolved |
+| `targetActor` | Target Actor document, including synthetic Token Actor |
+| `attackIndex` | Verified index when provided by PF1 or native chat-attack count corresponds; otherwise null |
+| `sourceMessageId` | Native ChatMessage ID |
+| `roll` | Actual native d20 attack Roll object (not the crit-confirmation/damage Roll) |
+| `natural` | Optional explicit native d20 integer, otherwise parsed safely from `roll.dice` |
+| `total` | Optional native final attack total, otherwise `roll.total` |
+| `coverBonus` | Optional **verified** numeric situational defense modifier, 0–100; the API adds it to the selected defense without changing PF1 |
+| `concealmentPending` | True if a separate concealment miss-chance roll remains necessary |
+| `concealmentCleared` | True only when absence/passing of concealment has been **verified** |
+| `additionalCheckPending` | True for another verified unresolved step |
 
-Do **not** assume \`targetToken\`, \`attackerToken\`, \`attackIndex\` or native \`roll.dice\` always exists. Return \`null\` from a provider if the evidence needed for your special rule is absent. In particular, a Deadeye-like feature should inspect its own action/target/roll and return a choice only when its prerequisite is established; the core does not compute these rules.
+Do **not** assume `targetToken`, `attackerToken`, `attackIndex` or native `roll.dice` always exists. Return `null` from a provider if the evidence needed for your special rule is absent. In particular, a Deadeye-like feature should inspect its own action/target/roll and return a choice only when its prerequisite is established; the core does not compute these rules.
 
 ## Results
 
-\`\`\`javascript
+```javascript
 {
  actorUuid:'Actor....',itemUuid:'Actor....Item....',actionId:'actionId',
  attackIndex:0,sourceMessageId:'chatId',targetActorUuid:'Actor....',
@@ -82,27 +81,27 @@ Do **not** assume \`targetToken\`, \`attackerToken\`, \`attackIndex\` or native 
  resolution:'success',
  reason:'defense beaten; concealment unverified'
 }
-\`\`\`
+```
 
-\`resolution\` values: \`success\`, \`failure\`, \`indeterminate\`, \`pendingConcealment\`. A natural 1 fails; a natural 20 succeeds against the selected defense; otherwise \`total >= defense.value\`. The defense values are read from PF1's prepared attributes:
-- \`normal\`: \`targetActor.system.attributes.ac.normal.total\`
-- \`touch\`: \`targetActor.system.attributes.ac.touch.total\`
-- \`flatFooted\`: \`targetActor.system.attributes.ac.flatFooted.total\`
-- \`cmd\`: \`targetActor.system.attributes.cmd.total\`
+`resolution` values: `success`, `failure`, `indeterminate`, `pendingConcealment`, and `pendingSave` (pure save action with no attack roll). A natural 1 fails; a natural 20 succeeds against the selected defense; otherwise `total >= defense.value`. The defense values are read from PF1's prepared attributes:
+- `normal`: `targetActor.system.attributes.ac.normal.total`
+- `touch`: `targetActor.system.attributes.ac.touch.total`
+- `flatFooted`: `targetActor.system.attributes.ac.flatFooted.total`
+- `cmd`: `targetActor.system.attributes.cmd.total`
 
-The native PF1 total already contains its own defenses and modifiers; \`coverBonus\` is only applied if explicitly verified and supplied. Concealment requires a separate success check: \`defenseHit\` and \`hit\` are distinct. When concealment has **not** been verified, a successful defense comparison yields \`resolution:'success',defenseHit:true,hit:null\`; \`hit:true\` requires a verified cleared concealment flag. A miss is definitive (\`hit:false\`). A missing target, defense, final total or natural d20 may force \`indeterminate\`.
+The native PF1 total already contains its own attack bonuses and penalties; `coverBonus` is only applied if explicitly verified and supplied. Concealment requires a separate success check: `defenseHit` and `hit` are distinct. When concealment has **not** been verified, a successful defense comparison yields `resolution:'success',defenseHit:true,hit:null`; `hit:true` requires a verified cleared concealment flag. A miss is definitive (`hit:false`). A missing target, defense, final total or natural d20 may force `indeterminate`.
 
 ### Existing native attack events and Script Calls
 
-PF1AE reuses \`pf1AttackRoll\` and \`pf1PostActionUse\`. The existing \`PF1AE:attack:resolved\` **postUse** Script Call still receives one event **per native attack roll** with its original fields:
+PF1AE reuses `pf1AttackRoll` and `pf1PostActionUse`. The existing `PF1AE:attack:resolved` **postUse** Script Call still receives one event **per native attack roll** with its original fields:
 
-\`type,actorUuid,itemUuid,actionId,attackerTokenUuid,sourceMessageId,rollIndex,attackIndex,roll,hit,targets,isAutoTriggered\`.
+`type,actorUuid,itemUuid,actionId,attackerTokenUuid,sourceMessageId,rollIndex,attackIndex,roll,hit,targets,isAutoTriggered`.
 
-New additive fields: \`roll.natural\`, \`defense\`, \`resolution\`, \`targetActorUuid\`, \`targetTokenUuid\`, \`targetResults\`. \`targetResults\` contains individual target/attack-pair results and may have zero entries when no target is known. The module also emits the generic \`pf1aeAttackResolution\` Hook once per attack with this same event **even without any Script Call subscriber**.
+New additive fields: `roll.natural`, `defense`, `resolution`, `targetActorUuid`, `targetTokenUuid`, `targetResults`. `targetResults` contains individual target/attack-pair results and may have zero entries when no target is known. The module also emits the generic `pf1aeAttackResolution` Hook once per attack with this same event **even without any Script Call subscriber**.
 
-For several targets and **no verified roll-to-target pairing**, every pair is marked \`indeterminate\`. The module never duplicates one native attack result across several targets arbitrarily. The original \`event.hit\` remains \`true\`, \`false\` or \`null\`. Existing scripts receiving old event fields are not required to change.
+For several targets and **no verified roll-to-target pairing**, every pair is marked `indeterminate`. The module never duplicates one native attack result across several targets arbitrarily. The original `event.hit` remains `true`, `false` or `null`. Existing scripts receiving old event fields are not required to change.
 
-The resolution engine **never** applies damage, never changes AC/conditions, and does not infer a hit from HP changes. \`PF1AE:damage:applied\` stays independent. The existing source Message ID is retained when available.
+The resolution engine **never** applies damage, never changes AC/conditions, and does not infer a hit from HP changes. `PF1AE:damage:applied` stays independent. The existing source Message ID is retained when available.
 
 ## Notes / remaining validation
 
@@ -110,4 +109,5 @@ The resolution engine **never** applies damage, never changes AC/conditions, and
 - Dynamic cover and concealment must be supplied by a verified upstream provider/caller; they are not automatically inferred from arbitrary scene geometry.
 - Flat-footed touch and special CMD variants are separate situational mechanics; no unsupported native values are invented.
 - This module intentionally declines to resolve ambiguous multi-target attacks or unknown natural d20s. Advanced mapping to individual PF1 ChatAttack IDs should follow actual live metadata validation.
-- The action UI adds a compact per-action selector in the native action list on Item sheets; Item flags survive F5, duplicated Items and scene changes. In the compendium itself, actor ownership/GM permissions still apply.
+- PF1's native `Action.touch`, `Action.isCombatManeuver`, `Action.hasAttack` and `Action.hasSave` are authoritative. No extra selector or Item schema modification is required. The older `attackDefenseConfig` flags are no longer used; they remain on existing Items as non-destructive historical data.
+- Saving throw actions **must not** be resolved by comparing their caster's attack total to AC. Use the native source Action's Fortitude/Reflex/Will and DC, and PF1AE's separate saving throw pipeline to resolve target saves.

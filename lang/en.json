@@ -112,15 +112,6 @@
       "ReloadFailed": "Reload failed",
       "AmmoGuidance": "Check native PF1 Ammunition Items, their subtype and quantity. The Reload action must have ammunition set to None.",
       "Loading": "Loading"
-    },
-    "AttackResolution": {
-      "TargetDefense": "Target defense",
-      "auto": "Automatic",
-      "normal": "Normal AC",
-      "touch": "Touch AC",
-      "flatFooted": "Flat-footed AC",
-      "cmd": "CMD",
-      "manual": "Manual resolution"
     }
   }
 }

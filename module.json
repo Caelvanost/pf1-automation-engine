@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine v1.25.0: generic PF1 attack and combat maneuver resolution with extensible defense providers, action controls and native events.",
-  "version": "1.25.0",
+  "description": "PF1 Automation Engine v1.25.1: generic attack/CMD resolution using native PF1 Contact, maneuvers and saving-throw classifications; no duplicate action selector.",
+  "version": "1.25.1",
   "authors": [
     {
       "name": "Caelvanost"
@@ -62,5 +62,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.25.0/pf1-automation-engine-v1.25.0.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.25.1/pf1-automation-engine-v1.25.1.zip"
 }
