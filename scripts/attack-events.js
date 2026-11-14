@@ -160,7 +160,7 @@ async function aeDeliver(source,results,actionUse,message) {
       targetResults:paired,
       targets:resultTargets,isAutoTriggered:false
     });
-    Hooks.callAll('pf1aeAttackResolution',event);
+    Hooks.callAll?.('pf1aeAttackResolution',event);
     for (const {item,call} of subs) {
       // The rolling client handles its own hook; when a GM handles an Actor
       // owned by any player, never execute unapproved player-editable code
