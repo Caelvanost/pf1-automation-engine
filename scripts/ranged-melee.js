@@ -173,6 +173,26 @@ function rmNativeManual(use){
  // prefer manual resolution rather than charging twice.
  return typeof form['attack-bonus']==='string'&&form['attack-bonus'].trim().length>0;
 }
+async function rmManualPrompt(target){
+ const DialogV2=globalThis.foundry?.applications?.api?.DialogV2;
+ if(typeof DialogV2?.wait!=='function')return null;
+ const name=String(target?.name??'Target').replace(/[&<>"]/g,ch=>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+ const result=await DialogV2.wait({
+  window:{title:'Shooting into Melee — PF1AE'},
+  content:'<p>Engagement cannot be determined reliably for <strong>'+
+    name+'</strong>. Choose the shooting-into-melee penalty for this '+
+    'one-target ActionUse (before any dice roll).</p>',
+  buttons:[
+   {action:'none',label:'No penalty (0)',callback:()=>0},
+   {action:'reduced',label:'−2',callback:()=>-2},
+   {action:'normal',label:'−4',callback:()=>-4},
+   {action:'manual',label:'Do not modify',callback:()=>null}
+  ],
+  rejectClose:false,modal:true
+ });
+ return [0,-2,-4].includes(result)?result:null;
+}
 async function rmNativeScripts(use){
  const owner=use.actor;
  for(const item of rmItems(owner)){
@@ -205,7 +225,7 @@ async function rmBeforeRoll(use,wrapped,args){
     !Array.isArray(use.shared?.attacks))return wrapped(...args);
  const attacks=use.shared.attacks;
  const context=rmSelectTarget(use);
- const decision=context.reason?{status:'manual',reason:context.reason}:
+ let decision=context.reason?{status:'manual',reason:context.reason}:
   rmJudge({origin:context.origin,target:context.target,
    allTokens:canvas?.tokens?.placeables??[],grid:canvas.grid,
    sceneUnit:context.scene.grid?.units});
@@ -215,6 +235,17 @@ async function rmBeforeRoll(use,wrapped,args){
   rmReport('native-manual',{reason:'explicit native attack bonus or melee modifier'});
   rmCleanup(use);return wrapped(...args);
  }
+ if(decision.status==='manual'&&context.target&&overrides.size===0&&
+    game.settings.get(RM_NS,'manualRangedMeleePrompt')===true){
+  try{
+   const selected=await rmManualPrompt(context.target);
+   if(selected!==null)
+    decision={status:'manual-choice',penalty:selected,
+     reason:'explicit user selection after ambiguous engagement'};
+  }catch(error){
+   rmReport('manual',{reason:'manual dialog unavailable: '+String(error?.message??error)});
+  }
+ }
  const original=attacks.map(a=>a.attackBonus);
  const changed=[];
  try{
@@ -223,7 +254,7 @@ async function rmBeforeRoll(use,wrapped,args){
    const chosen=overrides.get(index);
    // An override replaces an engagement penalty; it cannot invent
    // engagement when the target is safe or the evidence is unknown.
-   if(decision.status!=='engaged')continue;
+   if(decision.status!=='engaged'&&decision.status!=='manual-choice')continue;
    // An override affects ONLY the melee-engagement penalty; if there is
    // no independently established engagement, do not add a penalty.
    const penalty=chosen?chosen.penalty:decision.penalty;
@@ -258,6 +289,11 @@ Hooks.once('init',()=>{
  game.settings.register(RM_NS,RM_SETTING,{
   name:'PF1AE: Automatic shooting into melee penalty',
   hint:'Apply verified Pathfinder 1e engagement penalties before ranged attack dice; ambiguous cases require manual resolution.',
+  scope:'world',config:true,restricted:true,type:Boolean,default:true
+ });
+ game.settings.register(RM_NS,'manualRangedMeleePrompt',{
+  name:'PF1AE: Ask when melee engagement is uncertain',
+  hint:'Before rolling against one target, ask for 0 / -2 / -4 if engagement cannot be verified. Multi-target ambiguity is never guessed.',
   scope:'world',config:true,restricted:true,type:Boolean,default:true
  });
  Hooks.on('pf1CreateActionUse',use=>{if(rmAuthorized(use))RM_PENDING.add(use)});
