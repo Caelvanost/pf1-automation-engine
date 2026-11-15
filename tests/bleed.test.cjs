@@ -52,7 +52,7 @@ const mockRoll=class Roll {
  }
  async evaluate(){
   this.total=this.formula.includes('d')?
-   (dice[this.formula]?.shift()??Number(this.formula.split('d')[1])):Number(this.formula);
+   (dice[this.formula]?.shift()??1):Number(this.formula);
   return this;
  }
 };
