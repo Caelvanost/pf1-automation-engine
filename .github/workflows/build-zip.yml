@@ -30,7 +30,7 @@ jobs:
             'native-save-post-chatmessage','neutrality','rest-hooks',
             'save-outcomes','template-save-outcomes','timed-save-outcomes',
             'turn-phases','trusted-table','range-automation','i18n','reload-core',
-            'attack-resolution','attack-resolution-integration','item-default-action','chat-actions','chat-action-bootstrap','bleed','bleed-manual','bleed-display'
+            'attack-resolution','attack-resolution-integration','item-default-action','chat-actions','chat-action-bootstrap','bleed','bleed-manual','bleed-display','ranged-melee'
           )
           foreach ($name in $tests) {
             $file = Join-Path tests "$name.test.cjs"
@@ -54,6 +54,7 @@ jobs:
             if ($null -eq $archive.GetEntry('scripts/save-overrides.js')) { throw 'Missing saving throw override service.' }
             if ($null -eq $archive.GetEntry('scripts/save-context.js')) { throw 'Missing native PF1 save context bridge.' }
             if ($null -eq $archive.GetEntry('scripts/range-automation.js')) { throw 'Missing native PF1 range increment bridge.' }
+            if ($null -eq $archive.GetEntry('scripts/ranged-melee.js')) { throw 'Missing native PF1 shooting into melee engine.' }
             if ($null -eq $archive.GetEntry('lang/en.json')) { throw 'Missing English locale pack.' }
             if ($null -eq $archive.GetEntry('lang/fr.json')) { throw 'Missing French locale pack.' }
             if ($null -eq $archive.GetEntry('scripts/item-default-action.js')) { throw 'Missing native default action service.' }
