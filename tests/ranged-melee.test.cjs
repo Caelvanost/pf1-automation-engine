@@ -76,6 +76,7 @@ game.combat.combatants=[
 const weapon={name:'Longbow',uuid:shooter.uuid+'.Item.bow',documentName:'Item',
  actor:shooter};
 const action={name:'Shoot',actionType:'rwak',hasAttack:true,item:weapon};
+user.targets.add(target);
 const begin=use=>{for(const fn of hooks.get('pf1CreateActionUse')??[])fn(use)};
 const make=(count=1,actorDoc=shooter,itemDoc=weapon,actionDoc=action,origin=source)=>{
  const u=new ActionUse(actorDoc,itemDoc,actionDoc,origin,count);begin(u);return u;
