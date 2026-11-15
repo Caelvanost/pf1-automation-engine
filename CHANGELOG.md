@@ -1,3 +1,12 @@
+## v1.30.0 — Manual native Bleed condition DialogV2
+
+- When a user manually enables the native PF1 `bleed` condition, their originating client opens a `DialogV2` for an HP Bleed formula (default `1`). The native `pf1ToggleActorCondition` hook is paired with a local authenticated Actor update to prevent opening the dialog on every connected client.
+- Validate with Foundry 13 `Roll.validate` without evaluating any dice; an invalid formula is rejected without changing Buffs, and cancellation returns the native condition to disabled.
+- Generate or reuse **one** native PF1 Buff carrying `manualBleed.generated: true`, configure it through the v1.29.0 Bleed API, and activate it with PF1's Item API. Disabling native Bleed deactivates **only** generated manual Buffs, leaving ability/spell/attack Bleed Buffs untouched.
+- Add native Bleed Script Calls `PF1AE:bleed:before` and `PF1AE:bleed:applied` to the explicit Trusted Table Mode allowlist; normal mode remains fingerprint-approval gated.
+- Safeguards for user origin, OWNER rights, non-linked tokens, duplicate dialogs, internal condition removal recursion and F5. No second damage engine.
+- New maintained regression suite `bleed-manual.test.cjs`. See `docs/BLEED.md` for complete behavior and manual verification.
+
 ## v1.29.0 — Generic HP Bleed infrastructure
 
 - Adds an opt-in HP Bleed metadata flag on native PF1 Buffs, with API `api.bleed.configure/get/isBleed/list/process/receipts`.
