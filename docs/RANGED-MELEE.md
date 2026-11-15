@@ -20,11 +20,11 @@ PF1AE wraps native ActionUse.addAttacks, adds a temporary **per-index** attack b
 
 The engine examines one explicit target from the attacker's native user.targets, scene identity, occupied grid cells and measured distance, PF1 token disposition, actor size, known numeric reach, equipped melee weapons and Combat Tracker participation.
 
-It applies -4 or -2 only if this provides positive evidence of a melee threat between an opposed target and a friendly combatant **within 10 feet**. If a relation, reach, geometry or attack target is uncertain, it reports status "manual" and does **not** invent a penalty. Neutral tokens, complex allegiances, grapple, vertical geometry, special reach dead zones and third-party movement/range rules can require GM adjudication.
+It applies -4 or -2 only if this provides positive evidence of a melee threat between an opposed target and a friendly combatant **within 10 feet**. If a relation, reach, geometry or attack target is uncertain, it reports status "manual" and does **not** invent a penalty. For **exactly one selected target**, an optional native Foundry DialogV2 asks for an explicit pre-roll choice (0, −2, −4 or no modification). Multiple targets are never assigned a guessed common penalty. Neutral tokens, complex allegiances, grapple, vertical geometry, special reach dead zones and third-party movement/range rules can require GM adjudication.
 
 If the native attack dialog already specifies a melee penalty or a generic attack-bonus entry, PF1AE leaves native data alone to prevent doubling. A full attack against one explicitly targeted creature can apply the modifier independently to each generated index. If individual attacks change targets without a verified per-index mapping, the game master should handle those attacks manually. PF1AE does not guess a per-index target.
 
-World setting: **PF1AE: Automatic shooting into melee penalty** (enabled by default, independent of range automation).
+World settings: **PF1AE: Automatic shooting into melee penalty** (enabled by default, independent of range automation) and **PF1AE: Ask when melee engagement is uncertain** (enabled by default). These prompts require a single selected target; a missing DialogV2 leaves the attack unchanged.
 
 ## API
 
@@ -95,7 +95,7 @@ No ammunition, Grit, actor statistics or weapon settings are changed.
 game.modules.get("pf1-automation-engine")?.api?.rangedMelee?.lastDiagnostic()
 ~~~
 
-Possible results include: engaged, not-engaged, manual, native-manual, unavailable, override-refused. The engine does not flood chat. The existing genericDebug world setting enables additional console traces.
+Possible results include: engaged, not-engaged, manual, manual-choice, native-manual, unavailable, override-refused. The engine does not flood chat. The existing genericDebug world setting enables additional console traces.
 
 ## Foundry live checks
 
