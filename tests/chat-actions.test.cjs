@@ -163,6 +163,15 @@ async function reject(p,pattern){await assert.rejects(p,pattern)}
   'only one concurrent GM/player click can resolve');
  assert.equal(effects,2,'no duplicate condition mutation');
  assert.equal(state(contested).buttons[0].status,'used');
+ // The card author and target owner can be different players. Only
+ // ownership of the SELECTED actor authorizes a click.
+ const crossOwner=await create();
+ world.enemy.statuses.add('bleed');
+ other.select(world.enemy);
+ assert.equal((await apiX.click(crossOwner.id,'stop')).ok,true,
+  'a different player can act on their own target');
+ assert.equal(world.enemy.statuses.has('bleed'),false);
+ assert.equal(state(crossOwner).buttons[0].status,'used');
  // Direct attempts to forge another user's identity through payload flags
  // cannot bypass the server-authenticated userId of updateActor.
  other.select(world.target);
@@ -176,7 +185,7 @@ async function reject(p,pattern){await assert.rejects(p,pattern)}
  world.target.statuses.add('bleed');
  refreshed.select(world.target);
  assert.equal((await fresh.click(next.id,'stop')).ok,true);
- assert.equal(effects,3);
+ assert.equal(effects,4);
  refreshed.select();
  await reject(fresh.click(next.id,'stop'),/already been used/i);
  // Different scene: no selected token; never apply action to a stale target.
@@ -191,7 +200,7 @@ async function reject(p,pattern){await assert.rejects(p,pattern)}
  player.select();player.target(world.target);
  world.target.statuses.add('bleed');
  assert.equal((await apiP.click(targetMsg.id,'target')).ok,true);
- assert.equal(effects,4);
+ assert.equal(effects,5);
  // Missing GM handlers: fail closed, no card created.
  await reject(apiP.create({...props,buttons:[{...props.buttons[0],
   id:'unknown',handlerKey:'unregistered'}]}),/handler unavailable/i);
@@ -249,5 +258,5 @@ async function reject(p,pattern){await assert.rejects(p,pattern)}
  assert.equal(usedHTML.container.children.length,1,'render must be idempotent');
  console.log('PASS Chat Actions: authenticated requests, GM message authority, OWNER/GM permissions,');
  console.log(' controlled/targeted, single selection, Bleed success/failure, atomic once, concurrency,');
- console.log(' forged user denial, F5, scene change, missing handler, fail-closed and GM reset.');
+ console.log(' cross-owner permissions, forged user denial, F5, scene change, missing handler and GM reset.');
 })().catch(err=>{console.error(err);process.exitCode=1});
