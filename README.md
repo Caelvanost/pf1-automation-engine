@@ -1,10 +1,13 @@
 # PF1 Automation Engine
 
-**Version 1.31.1 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.32.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
-## Generic Bleed automation (v1.31.1)
+## Generic Bleed automation (v1.32.0)
+
+**Native-status mode (v1.32.0):** Manually activated Bleed now stores its formula directly on the *native* Bleed ActiveEffect, not on a generated secondary Buff. The generic Bleed engine reads either native Bleed flags or existing Buff Bleed metadata. Rolled formulas are published as a single evaluated Foundry Roll message for Dice So Nice; fixed values post a compact chat result. Previously generated manual Buffs are migrated to native Bleed and removed. See [Bleed documentation](docs/BLEED.md).
+
 
 **Compatibility fix (v1.31.1):** HP Bleed now always passes the required options object into PF1 Actor.applyDamage. When `pf1-automate-damage` is active, the call uses its existing dialog-origin bypass flag to avoid intercepting periodic Bleed damage as a selected-token chat-card attack. This prevents a third-party `undefined` config crash without bypassing PF1 native HP handling. Existing pending turn receipts are intentionally not retried automatically.
 
