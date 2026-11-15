@@ -209,6 +209,44 @@ async function reject(p,pattern){await assert.rejects(p,pattern)}
  await reject(apiP.reset({messageId:failMsg.id,buttonId:'fail'}),/elected GM/);
  assert.equal(await apiGM.reset({messageId:failMsg.id,buttonId:'fail'}),true);
  assert.equal(state(failMsg).buttons[0].status,'ready');
+ // Foundry v13 render hook reconstructs buttons from stored message flags.
+ // No listener from an Item Script Call is required on the viewing client.
+ const htmlClient=client(userX);
+ function fakeDom(){
+  const container={
+   children:[],
+   querySelector(selector){
+    if(selector==='[data-pf1ae-chat-actions]')
+     return this.children.find(x=>x.dataset?.pf1aeChatActions)??null;
+    return null;
+   },
+   append(node){this.children.push(node)}
+  };
+  return {container,
+   querySelector(selector){return selector==='.message-content'?container:null;}};
+ }
+ htmlClient.ctx.document={
+  createElement(tag){return {tag,children:[],dataset:{},style:{},
+   className:'',disabled:false,listeners:{},
+   append(...children){this.children.push(...children)},
+   setAttribute(name,value){this[name]=value},
+   addEventListener(name,fn){this.listeners[name]=fn}
+  }},
+  createTextNode(value){return {textContent:value}}
+ };
+ const renderFn=htmlClient.listeners.get('renderChatMessageHTML')[0];
+ const readyHTML=fakeDom();
+ renderFn(nextScene,readyHTML);
+ assert.equal(readyHTML.container.children.length,1);
+ assert.equal(readyHTML.container.children[0].children.length,1);
+ assert.equal(readyHTML.container.children[0].children[0].disabled,false,
+  'available button reconstructed in a fresh client');
+ const usedHTML=fakeDom();
+ renderFn(msg,usedHTML);
+ assert.equal(usedHTML.container.children[0].children[0].disabled,true,
+  'used button reconstructed disabled after reconnect');
+ renderFn(msg,usedHTML);
+ assert.equal(usedHTML.container.children.length,1,'render must be idempotent');
  console.log('PASS Chat Actions: authenticated requests, GM message authority, OWNER/GM permissions,');
  console.log(' controlled/targeted, single selection, Bleed success/failure, atomic once, concurrency,');
  console.log(' forged user denial, F5, scene change, missing handler, fail-closed and GM reset.');
