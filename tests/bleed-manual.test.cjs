@@ -195,6 +195,26 @@ const dialogValue=value=>()=>value;
  await signal(gm,'updateActor',b,{flags:{fake:'effect'}},{},users[0].id);
  await flush();
  assert.equal(prompts.length,before+2);
+ // Migrate the exact old generated Buff, but never a spell/ability Buff.
+ a.effects.contents=[native(a)];
+ const oldBuff=item(a,'Saignement — 1d4',{active:true,
+  flags:{[NS]:{
+   manualBleed:{generated:true},
+   bleed:{enabled:true,type:'hp',formula:'1d4',stacking:'highest'}
+  }}
+ });
+ const kept=item(a,'Spell Bleed',{active:true,
+  flags:{[NS]:{bleed:{enabled:true,type:'hp',formula:'2',stacking:'highest'}}}
+ });
+ const migration=await api.migrate(a);
+ assert.equal(migration.migrated,true);
+ assert.equal(a.effects.contents[0].getFlag(NS,'bleed').formula,'1d4');
+ assert.equal(a.effects.contents[0].getFlag(NS,'manualBleed').generated,true);
+ assert.equal(a.items.contents.includes(oldBuff),false,
+  'legacy generated Buff removed after safe transfer');
+ assert.equal(a.items.contents.includes(kept),true,
+  'unrelated spell Buff preserved');
+ assert.equal(kept.activeState,true);
  // The original v1.29 Bleed engine is still the sole turn damage resolver:
  // only the API's configure method is used here, never Roll.evaluate().
  assert.equal(formEvaluations,0);
