@@ -25,21 +25,26 @@ const blItems=actor=>[...(actor?.items?.contents??actor?.items?.values?.()??[])]
 const blCalls=item=>[...(item?.scriptCalls?.contents??item?.scriptCalls?.values?.()??item?.system?.scriptCalls??[])];
 const blSource=effect=>effect?.actor??effect?.parent;
 const blIsBuff=effect=>effect?.documentName==='Item'&&effect.type==='buff';
+const blIsNativeBleed=effect=>effect?.documentName==='ActiveEffect'&&
+ effect.statuses?.has?.('bleed')===true;
+const blIsSource=effect=>blIsBuff(effect)||blIsNativeBleed(effect);
 const blConfig=effect=>{
- if(!blIsBuff(effect))return null;
+ if(!blIsSource(effect))return null;
  const data=effect.getFlag?.(BL_NS,BL_FLAG);
  if(!data||data.enabled!==true||data.type!=='hp'||
     typeof data.formula!=='string'||!data.formula.trim()||
     data.formula.length>100||data.stacking!=='highest')return null;
  // PF1 ItemBuffPF.activeState is the authoritative native activation
  // accessor. A stale/absent system.active must not veto an active Buff.
- if(effect.activeState===false||
-   (effect.activeState==null&&effect.system?.active===false))return null;
+ if(blIsBuff(effect)&&(effect.activeState===false||
+   (effect.activeState==null&&effect.system?.active===false)))return null;
+ if(blIsNativeBleed(effect)&&effect.disabled===true)return null;
  // Built-in PF1 item time tracking remains authoritative: an inactive Buff
  // is not a candidate; existing PF1AE duration service may deactivate it.
  return {enabled:true,type:'hp',formula:data.formula,stacking:'highest'};
 };
-const blList=actor=>blItems(actor).filter(item=>blConfig(item)!==null);
+const blEffects=actor=>[...(actor?.effects?.contents??actor?.effects?.values?.()??[])];
+const blList=actor=>[...blItems(actor),...blEffects(actor)].filter(item=>blConfig(item)!==null);
 const blReceipt=(combat,combatant)=>JSON.stringify([combat.id,combatant.id,combat.round]);
 const blRows=()=>game.settings.get(BL_NS,BL_LEDGER)??[];
 const blEligible=()=>blEnabled()&&blLeader();
@@ -72,7 +77,7 @@ async function blRoll(formula){
  const value=Number(roll.total);
  if(!Number.isSafeInteger(value)||value<0||value>100000)
   throw Error('Bleed formula must evaluate to a nonnegative integer <= 100000.');
- return value;
+ return {amount:value,roll,formula};
 }
 const blDamage=async (actor,amount)=>{
  if(amount===0)return true;
@@ -92,6 +97,24 @@ const blDamage=async (actor,amount)=>{
  if(result===false)throw Error('Native PF1 damage was cancelled.');
  return true;
 };
+function blHasDice(roll){
+ return Array.isArray(roll?.dice)&&roll.dice.length>0;
+}
+async function blAnnounce(actor,roll,original,remaining){
+ const prevented=original-remaining;
+ const safeName=foundry.utils.escapeHTML?.(actor.name??'Actor')??String(actor.name??'Actor').replace(/[&<>]/g,'');
+ const summary='<strong>🩸 Bleed — '+safeName+'</strong>'+
+  '<p>Rolled: <strong>'+original+'</strong> · Prevented: <strong>'+prevented+
+  '</strong> · HP damage: <strong>'+remaining+'</strong></p>';
+ const speaker=ChatMessage.getSpeaker({actor});
+ if(blHasDice(roll)&&typeof roll?.toMessage==='function'){
+  // This publishes a real Foundry dice roll; Dice So Nice can animate it
+  // without rolling twice or introducing any new damage resolution.
+  await roll.toMessage({speaker,flavor:summary});
+ }else{
+  await ChatMessage.create({speaker,content:summary});
+ }
+}
 function blHealth(actor){
  const hp=actor?.system?.attributes?.hp;
  return typeof hp?.value==='number'?hp.value:null;
@@ -157,7 +180,7 @@ async function blProcess(combat){
   for(const effect of candidates){
    const data=blConfig(effect);
    if(!data)continue; // removed or disabled during asynchronous evaluation
-   rolled.push({effect,amount:await blRoll(data.formula)});
+   rolled.push({effect,...await blRoll(data.formula)});
   }
   blDebug('Candidate effects',rolled.map(x=>({effectUuid:x.effect.uuid,amount:x.amount})));
   if(!rolled.length){
@@ -180,7 +203,7 @@ async function blProcess(combat){
   await blSubscribersRun(actor,BL_PRE,eventBase,controller);
   if(!blEligible())throw Error('Bleed GM authority changed before native damage.');
   // Fail closed on a buff that was removed during the async pre-damage stage.
-  if(!blConfig(winner.effect))throw Error('Bleed Buff removed while processing.');
+  if(!blConfig(winner.effect))throw Error('Bleed source removed while processing.');
   const original=winner.amount,remaining=controller.amount;
   const hpBefore=blHealth(actor);
   if(remaining>0)await blDamage(actor,remaining);
@@ -192,6 +215,11 @@ async function blProcess(combat){
    originalAmount:original,appliedAmount:remaining
   });
   blDebug('Prevented '+(original-remaining),{key});
+  // Roll cards are posted only AFTER damage and the applied receipt are
+  // saved. A chat failure must never reapply damage or leave a false pending
+  // receipt. roll.toMessage uses the SAME evaluated Roll (Dice So Nice).
+  try{await blAnnounce(actor,winner.roll,original,remaining)}
+  catch(error){console.warn('[PF1AE][Bleed] Chat display failed; HP already applied',error)}
   blDebug('Applied '+remaining+' HP',{key});
   const after=Object.freeze({
    eventId:key,type:'bleed:applied',actorUuid:actor.uuid,effectUuid:winner.effect.uuid,
@@ -208,9 +236,9 @@ async function blProcess(combat){
  }finally{BL_RUN.delete(key)}
 }
 async function blConfigure({effect,type='hp',formula,stacking='highest'}={}){
- if(!blIsBuff(effect)||blSource(effect)?.documentName!=='Actor')
-  throw Error('Bleed configure requires an embedded PF1 Buff Item.');
- if(!game.user?.isGM&&!effect.testUserPermission?.(game.user,'OWNER'))
+ if(!blIsSource(effect)||blSource(effect)?.documentName!=='Actor')
+  throw Error('Bleed configure requires an embedded PF1 Buff or native Bleed ActiveEffect.');
+ if(!game.user?.isGM&&!blSource(effect)?.testUserPermission?.(game.user,'OWNER'))
   throw Error('Actor OWNER permission required.');
  if(type!=='hp'||stacking!=='highest')throw Error('Only HP Bleed with highest stacking is supported.');
  if(typeof formula!=='string'||!formula.trim()||formula.length>100)
@@ -218,6 +246,8 @@ async function blConfigure({effect,type='hp',formula,stacking='highest'}={}){
  // Verify syntax without rolling or mutating HP.
  if(typeof Roll!=='function')throw Error('Native Foundry Roll is unavailable.');
  try{new Roll(formula)}catch(e){throw Error('Invalid bleed formula: '+e.message)}
+ if(blIsNativeBleed(effect)&&effect.disabled===true)
+  throw Error('Cannot configure a disabled native Bleed condition.');
  await effect.setFlag(BL_NS,BL_FLAG,{enabled:true,type,formula,stacking});
  return effect.getFlag(BL_NS,BL_FLAG);
 }
@@ -246,7 +276,7 @@ function blTurnChangeHook(combat,prior,current){
 }
 function blDiagnostic(combat=game.combat){
  const actor=combat?.combatant?.actor;
- const entries=actor?blItems(actor).filter(blIsBuff).map(item=>({
+ const entries=actor?[...blItems(actor).filter(blIsBuff),...blEffects(actor).filter(blIsNativeBleed)].map(item=>({
   name:item.name,uuid:item.uuid,
   activeState:item.activeState,systemActive:item.system?.active,
   metadata:item.getFlag?.(BL_NS,BL_FLAG)??null,
