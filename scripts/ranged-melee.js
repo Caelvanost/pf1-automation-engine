@@ -7,6 +7,7 @@
 const RM_NS='pf1-automation-engine',RM_SETTING='autoRangedMeleePenalty';
 const RM_SCRIPT='PF1AE:rangedMelee:override';
 const RM_OVERRIDES=new WeakMap(),RM_COMPLETED=new WeakSet();
+const RM_COMMON=new WeakMap();
 const RM_PENDING=new Set();
 let RM_DIAGNOSTIC=null;
 const rmReport=(status,details={})=>{
@@ -26,7 +27,22 @@ const rmIdentity=use=>!!use&&typeof use==='object'&&
  (use.action.item?.uuid==null||use.action.item.uuid===use.item.uuid);
 const rmAttack=use=>['rwak','twak','rsak'].includes(use?.action?.actionType)&&
  use?.action?.hasAttack===true;
-const rmCleanup=use=>{RM_OVERRIDES.delete(use);RM_PENDING.delete(use);RM_COMPLETED.add(use)};
+// Remove only the EXACT part added by PF1AE, never a range/feat/native bonus.
+function rmRemoveCommon(use){
+ const record=RM_COMMON.get(use);
+ if(!record)return null;
+ const parts=use?.shared?.attackBonus;
+ if(Array.isArray(parts)){
+  const index=parts.indexOf(record.part);
+  if(index!==-1)parts.splice(index,1);
+ }
+ RM_COMMON.delete(use);
+ return record;
+}
+const rmCleanup=use=>{
+ rmRemoveCommon(use);
+ RM_OVERRIDES.delete(use);RM_PENDING.delete(use);RM_COMPLETED.add(use);
+};
 const rmItems=actor=>[...(actor?.items?.contents??actor?.items?.values?.()??[])];
 const rmCalls=item=>[...(item?.scriptCalls?.contents??item?.scriptCalls?.values?.()??[])];
 const rmValid=penalty=>Number.isSafeInteger(penalty)&&penalty>=-20&&penalty<=0;
@@ -161,6 +177,41 @@ function rmSelectTarget(use){
     rmTokenScene(target)!==scene.id)return {reason:'target or shooter not in current scene'};
  return {origin,target,scene};
 }
+// Same pre-roll path as range-automation.js: PF1 forwards the shared
+// attackBonus array into every native ChatAttack.addAttack(extraParts).
+// Only a verified single-target COMMON penalty is added at this hook.
+// Script Call overrides are discovered later when the native indexed
+// attack list exists; they apply a temporary per-index DIFFERENCE.
+function rmCreateUse(use){
+ if(!rmAuthorized(use))return;
+ RM_PENDING.add(use);
+ if(!rmEnabled()||!rmIdentity(use)||!rmAttack(use))return;
+ const shared=use.shared;
+ if(!Array.isArray(shared?.attackBonus))return;
+ const context=rmSelectTarget(use);
+ if(context.reason){
+  rmReport('manual',{reason:context.reason,stage:'pf1CreateActionUse'});
+  return;
+ }
+ const decision=rmJudge({origin:context.origin,target:context.target,
+  allTokens:canvas?.tokens?.placeables??[],grid:canvas.grid,
+  sceneUnit:context.scene.grid?.units});
+ if(decision.status!=='engaged'||!rmValid(decision.penalty)||
+    decision.penalty===0||rmNativeManual(use)){
+  rmReport(decision.status,{stage:'pf1CreateActionUse',
+   reason:decision.reason??null,penalty:decision.penalty??null,
+   injected:false});
+  return;
+ }
+ if(RM_COMMON.has(use))return;
+ const part=String(decision.penalty)+'[PF1AE Shooting into Melee]';
+ shared.attackBonus.push(part);
+ RM_COMMON.set(use,{part,penalty:decision.penalty,targetId:
+  context.target?.document?.uuid??context.target?.id,
+  actorUuid:use.actor.uuid});
+ rmReport('engaged',{stage:'pf1CreateActionUse',
+  penalty:decision.penalty,injected:true,target:context.target?.name});
+}
 function rmNativeManual(use){
  const form=use?.formData??use?.shared?.formData??{};
  const configs=[use?.shared?.useOptions??{},use?.shared?.config??{}];
@@ -222,16 +273,32 @@ async function rmNativeScripts(use){
 }
 async function rmBeforeRoll(use,wrapped,args){
  if(!rmEnabled()||!rmIdentity(use)||!rmAttack(use)||RM_COMPLETED.has(use)||
-    !Array.isArray(use.shared?.attacks))return wrapped(...args);
+    !Array.isArray(use.shared?.attacks)){
+  // If the setting was disabled after creation or a once-valid ActionUse
+  // became invalid, never leave a previously injected common modifier.
+  if(!rmEnabled()||!rmIdentity(use)||!rmAttack(use))rmRemoveCommon(use);
+  return wrapped(...args);
+ }
  const attacks=use.shared.attacks;
  const context=rmSelectTarget(use);
  let decision=context.reason?{status:'manual',reason:context.reason}:
   rmJudge({origin:context.origin,target:context.target,
    allTokens:canvas?.tokens?.placeables??[],grid:canvas.grid,
    sceneUnit:context.scene.grid?.units});
+ // A change of target, geometry or engagement between create and roll
+ // invalidates the early shared bonus. The late path handles the new
+ // evidence per index, without leaving a stale common -4.
+ let common=RM_COMMON.get(use)??null;
+ const targetId=context.target?.document?.uuid??context.target?.id;
+ if(common&&(
+  common.actorUuid!==use.actor.uuid||common.targetId!==targetId||
+  decision.status!=='engaged'||decision.penalty!==common.penalty)){
+  rmRemoveCommon(use);common=null;
+ }
  await rmNativeScripts(use);
  const overrides=RM_OVERRIDES.get(use)??new Map();
  if(rmNativeManual(use)){
+  rmRemoveCommon(use);
   rmReport('native-manual',{reason:'explicit native attack bonus or melee modifier'});
   rmCleanup(use);return wrapped(...args);
  }
@@ -252,21 +319,25 @@ async function rmBeforeRoll(use,wrapped,args){
   for(let index=0;index<attacks.length;index++){
    if(attacks[index].type==='manyshot')continue;
    const chosen=overrides.get(index);
-   // An override replaces an engagement penalty; it cannot invent
-   // engagement when the target is safe or the evidence is unknown.
    if(decision.status!=='engaged'&&decision.status!=='manual-choice')continue;
-   // An override affects ONLY the melee-engagement penalty; if there is
-   // no independently established engagement, do not add a penalty.
-   const penalty=chosen?chosen.penalty:decision.penalty;
-   if(penalty==null||penalty===0)continue;
+   const effective=chosen?chosen.penalty:decision.penalty;
+   if(effective==null)continue;
+   // With a common -4 already injected into shared.attackBonus,
+   // Precise Shot (effective 0) becomes a +4 per-index correction.
+   // Without one, the index receives the full -4/-2 as before.
+   const delta=effective-(common?.penalty??0);
+   if(!Number.isSafeInteger(delta)||delta===0)continue;
    const before=String(attacks[index].attackBonus??'').trim();
+   const label=common?'PF1AE Shooting into Melee Override':
+    'PF1AE Shooting into Melee';
    attacks[index].attackBonus=(before?before+' + ':'')+
-    '('+penalty+')[PF1AE Shooting into Melee]';
+    '('+delta+')['+label+']';
    changed.push(index);
   }
   rmReport(decision.status,{penalty:decision.penalty??null,
-   appliedIndices:changed,overrides:[...overrides.keys()],
-   target:context.target?.name??null,reason:decision.reason??null});
+   commonPenalty:common?.penalty??0,appliedIndices:changed,
+   overrides:[...overrides.keys()],target:context.target?.name??null,
+   reason:decision.reason??null,stage:'addAttacks'});
   return await wrapped(...args);
  }finally{
   attacks.forEach((a,i)=>{a.attackBonus=original[i]});
@@ -296,7 +367,13 @@ Hooks.once('init',()=>{
   hint:'Before rolling against one target, ask for 0 / -2 / -4 if engagement cannot be verified. Multi-target ambiguity is never guessed.',
   scope:'world',config:true,restricted:true,type:Boolean,default:true
  });
- Hooks.on('pf1CreateActionUse',use=>{if(rmAuthorized(use))RM_PENDING.add(use)});
+ Hooks.on('pf1CreateActionUse',use=>{
+  try{rmCreateUse(use)}
+  catch(error){rmRemoveCommon(use);
+   rmReport('exception',{stage:'pf1CreateActionUse',reason:String(error?.message??error)});
+   console.warn('[PF1AE][RangedMelee] Pre-roll preparation failed',error);
+  }
+ });
  Hooks.on('pf1PostActionUse',use=>rmCleanup(use));
 });
 Hooks.once('ready',()=>{
