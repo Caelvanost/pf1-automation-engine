@@ -32,6 +32,23 @@ const mbFormula=input=>{
  new Roll(formula);
  return formula;
 };
+const mbAEActor=effect=>{
+ const parent=effect?.parent??effect?.actor;
+ return parent?.documentName==='Actor'?parent:null;
+};
+const mbAEHasBleed=effect=>{
+ const statuses=effect?.statuses;
+ if(statuses?.has?.('bleed'))return true;
+ const sourceStatuses=effect?._source?.statuses;
+ return Array.isArray(sourceStatuses)&&sourceStatuses.includes('bleed');
+};
+const mbAEChange=(effect,changes,operation)=>{
+ if(operation==='create')return mbAEHasBleed(effect)?true:null;
+ if(operation==='delete')return mbAEHasBleed(effect)?false:null;
+ const statuses=changes?.statuses??changes?.['statuses'];
+ if(!Array.isArray(statuses))return null;
+ return statuses.includes('bleed');
+};
 const mbChanged=(changes)=>{
  const data=changes?.system?.conditions?.bleed ??
   changes?.['system.conditions.bleed'] ??
@@ -200,6 +217,28 @@ Hooks.once('init',()=>{
   mbPending(actor,state,'native');
   mbReconcile(actor);
  });
+ // PF1 v11 models its native conditions as ActiveEffects. The
+ // pf1ToggleActorCondition hook is emitted for these descendant changes,
+ // not necessarily for changes to actor.system.conditions.
+ for(const [name,operation] of [
+  ['createActiveEffect','create'],
+  ['deleteActiveEffect','delete'],
+  ['updateActiveEffect','update']
+ ]){
+  Hooks.on(name,(effect,changesOrOptions,optionsOrUserId,userIdMaybe)=>{
+   const actor=mbAEActor(effect);
+   if(!actor||!mbAuthorized(actor))return;
+   const changed=operation==='update'?changesOrOptions:null;
+   const options=operation==='update'?optionsOrUserId:changesOrOptions;
+   const userId=operation==='update'?userIdMaybe:optionsOrUserId;
+   if(userId!==game.user?.id||
+      options?.[MB_NS]?.skipManualBleed===true)return;
+   const state=mbAEChange(effect,changed,operation);
+   if(state===null)return;
+   mbPending(actor,state,'local');
+   mbReconcile(actor);
+  });
+ }
  Hooks.on('updateActor',(actor,changes,options,userId)=>{
   // Attribution check only for Bleed condition changes, not a generic
   // observer processing every Actor update.
