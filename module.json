@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine v1.27.0: generic persistent secure Chat Actions for Foundry PF1 multicli­ent play.",
-  "version": "1.27.0",
+  "description": "PF1 Automation Engine v1.28.0: approved Item bootstrap Script Calls automatically restore Chat Actions handlers on the elected GM without macros.",
+  "version": "1.28.0",
   "authors": [
     {
       "name": "Caelvanost"
@@ -50,6 +50,7 @@
     "scripts/item-default-action.js",
     "scripts/chat-actions.js",
     "scripts/bootstrap.js",
+    "scripts/chat-action-bootstrap.js",
     "scripts/range-automation.js",
     "scripts/reload-adapter.js"
   ],
@@ -70,5 +71,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.27.0/pf1-automation-engine-v1.27.0.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.28.0/pf1-automation-engine-v1.28.0.zip"
 }
