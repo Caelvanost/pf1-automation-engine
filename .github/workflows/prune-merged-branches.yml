@@ -1,0 +1,50 @@
+name: Prune merged development branches
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete only untouched, merged PR branches
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { data: info } = await github.rest.repos.get({ owner, repo });
+            const base = info.default_branch;
+            const branches = await github.paginate(
+              github.rest.repos.listBranches, { owner, repo, per_page: 100 }
+            );
+            for (const branch of branches) {
+              const name = branch.name;
+              if (name === base || branch.protected) continue;
+              if (!/^(feat|fix|docs|chore|test)\//.test(name)) continue;
+              const head = owner + ':' + name;
+              const closed = await github.paginate(
+                github.rest.pulls.list,
+                { owner, repo, state: 'closed', head, per_page: 100 }
+              );
+              const merged = closed.find(pr =>
+                pr.merged_at && pr.base.ref === base &&
+                pr.head.repo?.full_name === owner + '/' + repo &&
+                pr.head.sha === branch.commit.sha
+              );
+              if (!merged) continue;
+              const open = await github.paginate(
+                github.rest.pulls.list,
+                { owner, repo, state: 'open', head, per_page: 100 }
+              );
+              if (open.length) continue;
+              core.info('Deleting merged, unchanged branch: ' + name +
+                ' (PR #' + merged.number + ')');
+              await github.rest.git.deleteRef({
+                owner, repo, ref: 'heads/' + name
+              });
