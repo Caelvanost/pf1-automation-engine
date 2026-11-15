@@ -1,3 +1,13 @@
+## v1.28.0 — Déclaration automatique des gestionnaires Chat Actions sur le MJ élu
+
+- Découverte automatique des Script Calls natifs `toggle` nommés exactement `PF1AE:bootstrap` sur les Items des acteurs du monde et tokens synthétiques.
+- Un contexte `bootstrap.chatActions` expose `bootstrap.registerChatActionHandler(key, handler)`, sans macro, sans activation d'objet ni modification du document.
+- L'exécution du code sur le MJ élu est conditionnée à l'approbation exacte `scriptApprovals.check()` pour un acteur appartenant à un joueur, même si ce joueur est connecté. Le mode Table de confiance ne donne accès qu'au nom et à la catégorie approuvés et reste désactivé par défaut.
+- Une déclaration est identifiée par les UUID Actor/Item/Script Call et son code sauvegardé exact ; révocation, édition, suppression, changement de MJ, F5 et reconnexion invalident les handlers et les restaurent selon les permissions.
+- Revérification de l'approbation au clic, interdiction d'écraser la clé d'un autre gestionnaire, maintien des anciens messages Chat Actions.
+- Les boutons continuent d'être arbitrés par le MJ avec les protections existantes contre le double clic et les mutations partielles.
+- Documentation et exemple complet Utility Shot ; aucune règle de pistolier intégrée au moteur.
+
 ## v1.27.0 — Boutons persistants génériques dans le chat
 
 - Ajoute l'API publique `api.chatActions` : `create`, `registerHandler`, `click`, `getState`, `reset` (récupération MJ explicite).

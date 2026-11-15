@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.27.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.28.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -16,7 +16,19 @@ The stable manifest points to the versioned ZIP asset of the [latest published r
 
 **Manual alternative:** extract the complete release ZIP into `Data/modules/pf1-automation-engine/` (the `module.json` must be at that directory's root), then enable PF1 Automation Engine in a PF1 11.11 world. A connected GM is required to perform authoritative mutations. `genericDebug` enables diagnostics; `genericEnabled` controls generic execution.
 
-## Persistent Chat Actions (v1.27.0)
+## Nouvelle restauration automatique des gestionnaires (v1.28.0)
+
+Les Script Calls natifs `PF1AE:bootstrap` contenant un appel
+`registerChatActionHandler(...)` sont découverts et restaurés
+automatiquement sur le MJ élu, sans macro ni activation de l'objet. Les
+scripts appartenant à des joueurs requièrent une **approbation exacte du MJ**
+(ou l'activation explicite du mode Table de confiance), sans aucune
+transmission de JavaScript dans le chat ou les sockets.
+
+Voir [API de restauration Chat Actions](API-CHAT-ACTION-BOOTSTRAP.md) et
+[exemple complet Utility Shot](examples/utility-shot-stop-bleeding.md).
+
+## Persistent Chat Actions (v1.28.0)
 
 PF1AE supplies `game.modules.get("pf1-automation-engine").api.chatActions`. The
 [complete API and security guide](API-CHAT-ACTIONS.md) explains the

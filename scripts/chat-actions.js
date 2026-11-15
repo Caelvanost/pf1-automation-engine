@@ -66,6 +66,11 @@ function caRegisterHandler(key,handler,{sourceItemUuid}={}){
  if(!CA_IDENT.test(key)||typeof handler!=='function'||
     !caText(sourceItemUuid,500))
   throw Error('A handler function and its allowed sourceItemUuid are required.');
+ const existing=CA_HANDLERS.get(key);
+ if(existing)
+  throw Error(existing.sourceItemUuid!==sourceItemUuid
+   ?'Chat Action handler key already belongs to another Item.'
+   :'Chat Action handler is already registered.');
  CA_HANDLERS.set(key,{run:handler,sourceItemUuid});
  return ()=>{if(CA_HANDLERS.get(key)?.run===handler)CA_HANDLERS.delete(key);};
 }
@@ -187,8 +192,14 @@ async function caExecute(messageId,buttonId,tokenUuids,requester,carrierActor=nu
   if(!button||button.status!=='ready')throw Error('Chat button already resolved or pending.');
   const sourceActor=await fromUuid(state.sourceActorUuid);
   const sourceItem=await fromUuid(state.sourceItemUuid);
-  const creator=game.users.get(state.createdBy);
-  caValidateSource(sourceActor,sourceItem,creator);
+  // Old cards (v1.27.0) may predate createdBy, and creator permission
+  // can legitimately change after publication. The authoritative
+  // restriction is the exact source Item plus its live GM handler and
+  // CURRENT ownership of the selected target, not the card author.
+  if(sourceActor?.documentName!=='Actor'||
+     sourceItem?.documentName!=='Item'||
+     (sourceItem.actor??sourceItem.parent)?.uuid!==sourceActor.uuid)
+   throw Error('Chat Action source Item is missing or no longer belongs to its Actor.');
   const entry=CA_HANDLERS.get(button.handler);
   if(!entry||entry.sourceItemUuid!==sourceItem.uuid)
    throw Error('Approved GM handler not available for this source Item.');
