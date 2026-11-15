@@ -195,7 +195,7 @@ async function rmNativeScripts(use){
  }
 }
 async function rmBeforeRoll(use,wrapped,args){
- if(!rmEnabled()||!rmIdentity(use)||!rmAttack(use)||
+ if(!rmEnabled()||!rmIdentity(use)||!rmAttack(use)||RM_COMPLETED.has(use)||
     !Array.isArray(use.shared?.attacks))return wrapped(...args);
  const attacks=use.shared.attacks;
  const context=rmSelectTarget(use);
