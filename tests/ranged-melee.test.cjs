@@ -5,6 +5,7 @@ const SOURCE=fs.readFileSync(path.resolve(__dirname,'../scripts/ranged-melee.js'
 const NS='pf1-automation-engine';
 const user={id:'player',isGM:false,active:true,targets:new Set()};
 const gm={id:'gm',isGM:true,active:true};
+const manualChoices=[];
 const settings=new Map([['genericEnabled',true],['autoRangedMeleePenalty',true],
  ['genericDebug',false]]);
 let nativeCalls=0,scriptInvoked=0;
@@ -58,6 +59,7 @@ const mod={active:true,api:{
 game.modules.set(NS,mod);
 const ctx={console,Promise,Date,Map,Set,WeakMap,WeakSet,Number,Object,
  game,Hooks:{on,once(name,fn){if(name==='ready')ready.push(fn);else on(name,fn)}},
+ foundry:{applications:{api:{DialogV2:{wait:async()=>manualChoices.shift()??null}}}},
  canvas:{scene,grid,tokens:{placeables:objects}},pf1:{
   actionUse:{ActionUse},settings:{distance:{metric:false}}}};
 ctx.globalThis=ctx;vm.createContext(ctx);
@@ -139,6 +141,10 @@ function containsPenalty(parts,penalty){
  u=make();result=await u.addAttacks();
  assert.equal(result[0].some(p=>String(p).includes('Shooting into Melee')),false);
  assert.equal(API.lastDiagnostic().status,'manual');
+ manualChoices.push(-2);
+ u=make();result=await u.addAttacks();
+ assert.equal(containsPenalty(result[0],-2),true,'explicit manual −2 before native roll');
+ assert.equal(API.lastDiagnostic().status,'manual-choice');
  enemy.system.attributes.reach={total:5};
  f.system.attributes.reach={total:5};
  user.targets.clear();
