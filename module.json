@@ -1,8 +1,8 @@
 {
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
-  "description": "PF1 Automation Engine v1.28.0: approved Item bootstrap Script Calls automatically restore Chat Actions handlers on the elected GM without macros.",
-  "version": "1.28.0",
+  "description": "Moteur d'automatisation générique pour Pathfinder 1e : attaques, dégâts, sauvegardes, effets et durées, repos, portée, scripts persistants, actions par défaut et boutons de chat multijoueurs sécurisés.",
+  "version": "1.28.1",
   "authors": [
     {
       "name": "Caelvanost"
@@ -71,5 +71,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.28.0/pf1-automation-engine-v1.28.0.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.28.1/pf1-automation-engine-v1.28.1.zip"
 }
