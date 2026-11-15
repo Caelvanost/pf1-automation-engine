@@ -82,19 +82,19 @@ function caValidateHandlers(buttons,sourceItemUuid){
    throw Error('GM handler unavailable or not bound to the source Item: '+button.handler);
  }
 }
-function caData(actor,item,title,content,buttons){
+function caData(actor,item,title,content,buttons,requester){
  if(!caText(title,120)||typeof content!=='string'||content.length>4000)
   throw Error('Invalid Chat Action title or content.');
  const sourceItemUuid=item.uuid;
  const parsed=caButtons(buttons);
  caValidateHandlers(parsed,sourceItemUuid);
  return {version:1,sourceActorUuid:actor.uuid,sourceItemUuid,
-  buttons:parsed,title,createdAt:Date.now()};
+  buttons:parsed,title,createdBy:requester.id,createdAt:Date.now()};
 }
 async function caCreateGM(actor,item,title,content,buttons,requester){
  if(!caIsLeader())throw Error('An elected GM must create Chat Action messages.');
  caValidateSource(actor,item,requester);
- const state=caData(actor,item,title,content,buttons);
+ const state=caData(actor,item,title,content,buttons,requester);
  const safe='<div class="pf1ae-chat-card"><strong>'+
   caEscape(title)+'</strong><p>'+caEscape(content)+'</p></div>';
  return ChatMessage.create({content:safe,
@@ -161,6 +161,7 @@ async function caTokens(uuids,carrierActor,requester,button){
  if(!Array.isArray(uuids)||uuids.length<1||uuids.length>10||
     (button.exactOne&&uuids.length!==1))throw Error('Invalid target count.');
  const tokens=[];
+ if(new Set(uuids).size!==uuids.length)throw Error('Duplicate target token IDs.');
  for(const uuid of uuids){
   if(!caText(uuid,500))throw Error('Invalid target token UUID.');
   const token=await fromUuid(uuid);
@@ -186,7 +187,8 @@ async function caExecute(messageId,buttonId,tokenUuids,requester,carrierActor=nu
   if(!button||button.status!=='ready')throw Error('Chat button already resolved or pending.');
   const sourceActor=await fromUuid(state.sourceActorUuid);
   const sourceItem=await fromUuid(state.sourceItemUuid);
-  caValidateSource(sourceActor,sourceItem,game.users.get(message.user?.id??message.user)??game.user);
+  const creator=game.users.get(state.createdBy);
+  caValidateSource(sourceActor,sourceItem,creator);
   const entry=CA_HANDLERS.get(button.handler);
   if(!entry||entry.sourceItemUuid!==sourceItem.uuid)
    throw Error('Approved GM handler not available for this source Item.');
@@ -268,7 +270,7 @@ function caRender(message,html){
   icon.className=/^fa-(solid|regular) fa-[a-z0-9-]{1,60}$/.test(button.icon)
    ?button.icon:'fa-solid fa-hand-pointer';
   icon.setAttribute('aria-hidden','true');
-  element.append(icon,document.createTextNode(' '+button.label+
+  element.append(icon,document.createTextNode(' '+String(button.label??'')+
    (button.status==='used'?' ✓':button.status==='pending'?' …':'')));
   element.addEventListener('click',async event=>{
    event.preventDefault();event.stopPropagation();
