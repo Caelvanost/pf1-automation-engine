@@ -6,6 +6,7 @@
 - Allow native toggle Item Script Calls named PF1AE:rangedMelee:override to prepare overrides automatically for their own character. GM execution of player-owned native code continues to require exact Script Call approval; never transmit JavaScript over sockets.
 - No class/feat-specific logic in the module. Complete Precise Shot feat Script Call and live test checklist in docs/RANGED-MELEE.md.
 - Keep PF1FR weapon defense, Deadeye, ammo, Grit and existing range increment calculations independent. New world setting to enable or disable this one rule.
+- When one target is selected but engagement data is uncertain, an optional pre-roll DialogV2 requests an explicit 0, −2, −4 or unchanged decision. No guessed modifier for multiple targets.
 - Add maintained regression tests for single/full attacks, multiple simultaneous native uses, per-index overrides, unknown engagement, size exceptions, metric/imperial and manual native modifiers.
 
 ## v1.32.0 — Native Bleed status, visible dice and chat result
