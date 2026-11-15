@@ -1,6 +1,6 @@
 # PF1AE — Saignement (Bleed), première version : PV
 
-**Compatibilité cible :** Foundry VTT 13.351, Pathfinder 1e 11.11, PF1 Automation Engine 1.31.1.
+**Compatibilité cible :** Foundry VTT 13.351, Pathfinder 1e 11.11, PF1 Automation Engine 1.32.0.
 
 Ce service constitue un moteur **générique**, sans règle codée pour une classe, un archétype ou un don. Le comportement de **Scarification du Balafré enragé** est fourni uniquement sous forme d'un Script Call complet, à placer sur l'objet du personnage.
 
@@ -333,3 +333,56 @@ const api=game.modules.get("pf1-automation-engine")?.api?.bleed;
 console.log(api?.diagnostic(game.combat));
 console.table(api?.receipts()?.filter(r=>r.status==="pending")??[]);
 ```
+
+## Saignement manuel directement sur l'ActiveEffect natif (v1.32.0)
+
+La condition native PF1 `bleed` est maintenant **la seule source mécanique
+du saignement créé par la fenêtre DialogV2**. La formule se trouve dans :
+
+```js
+actor.effects.find(e=>e.statuses.has("bleed"))
+  .getFlag("pf1-automation-engine","bleed")
+// { enabled:true, type:"hp", formula:"1d4", stacking:"highest" }
+```
+
+Le flag `manualBleed.generated` est également associé à cet ActiveEffect.
+Le moteur générique accepte des Buffs PF1 de saignement pour les capacités
+et sorts, mais la saisie manuelle **ne crée plus de Buff secondaire**.
+L'icône native conserve la formule affichée. Les anciens Buffs générés
+automatiquement sont migrés lorsqu'un MJ ouvre le monde avec une condition
+Bleed active : le flag est copié vers le statut, puis seuls les anciens
+Buffs générés sont supprimés. Les autres Buffs sont conservés.
+
+### Jets visibles et chat
+
+Chaque formule est évaluée une seule fois par tour et par effet.
+La plus forte valeur s'applique (règle `highest`). Le jet du saignement
+retenu est publié dans le chat avec le **même objet Roll évalué**, grâce à
+`Roll.toMessage()`, afin que Dice So Nice puisse afficher l'animation si
+son module est activé. Aucun nouveau jet n'est effectué pour l'affichage.
+
+Le message indique : montant obtenu, réduction/annulation appliquée par les
+Script Calls comme Scarification, et dégâts PV réellement appliqués.
+Une valeur fixe, telle que `3`, crée une carte textuelle sans animation.
+
+**Sécurité :** le résultat du chat n'est publié qu'après les dégâts et
+l'enregistrement persistant du reçu `applied`. Un échec de création du
+message de chat ne doit jamais déclencher une seconde application de dégâts.
+
+### Vérification en jeu
+
+1. Sur un personnage sans Bleed, activer la condition native et saisir
+   `1d4` : une seule icône Bleed, avec `1d4`, est visible, et aucun nouveau
+   Buff `Saignement — 1d4` n'est créé.
+2. Sur le MJ, examiner les flags de l'ActiveEffect `bleed`.
+3. Avancer au début du tour de ce personnage : le jet `1d4` doit
+   apparaître dans le chat et s'animer via Dice So Nice si activé.
+4. Confirmer que les PV diminuent une seule fois de la valeur après réduction
+   et que la carte affiche le même résultat.
+5. Tester un saignement fixe `3` : carte de chat, sans animation de dé.
+6. Tester Scarification et vérifier les montants « prevented » et « applied ».
+7. Désactiver la condition : plus de saignement manuel.
+8. Vérifier après F5 et sur un token non lié, et contrôler que les Buffs de
+   saignement issus de capacités sont toujours traités normalement.
+9. Vérifier la migration d'un Buff manuel v1.31 avec la condition native
+   active : il disparaît après le transfert des flags.
