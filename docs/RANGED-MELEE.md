@@ -1,4 +1,4 @@
-# PF1AE — Shooting into Melee v1.33.0
+# PF1AE — Shooting into Melee v1.33.1
 
 Foundry VTT 13.351, Pathfinder 1e 11.11, and optional PF1 Firearms & Reload.
 
@@ -14,7 +14,9 @@ The automation does not identify feats, classes or traits. Cover, concealment, r
 
 PF1 11.11 ActionUse.addAttacks loops over shared.attacks. For each attack it calls ChatAttack.addAttack with extraParts containing shared.attackBonus and the **indexed** atk.attackBonus. PF1's pf1PreActionUse hook is called **after** the ChatAttack rolls have been generated, so it is too late.
 
-PF1AE wraps native ActionUse.addAttacks, adds a temporary **per-index** attack bonus on each attack's in-memory object before the roll, and restores its original bonus in finally. It uses pf1CreateActionUse for identity tracking and pf1PostActionUse for cleanup. No document modification or post-roll arithmetic occurs.
+For a **verified single-target** ranged use, PF1AE now uses exactly the **same extension point as range penalties**: `pf1CreateActionUse`, adding `-4[PF1AE Shooting into Melee]` (or `-2`) to `shared.attackBonus` before the native attack dialog and dice. The original native `ActionUse.addAttacks` loop consumes that shared part for each roll.
+
+The existing `ActionUse.addAttacks` bridge is retained only for late manual dialogue decisions, changes in target/geometry, and **indexed exceptions**. An indexed override is applied as a *difference from the common bonus*; for example, Precise Shot's penalty 0 adds a +4 correction to an attack inheriting the common −4. This preserves per-attack decisions without changing any Actor or Item documents. All temporary index bonuses are restored in `finally`; only the exact PF1AE melee shared part is removed after use, never a range/feat/native part. `pf1PostActionUse` also cleans abandoned tracked uses.
 
 ## Automatic detection: conservative policy
 
@@ -22,7 +24,7 @@ The engine examines one explicit target from the attacker's native user.targets,
 
 It applies -4 or -2 only if this provides positive evidence of a melee threat between an opposed target and a friendly combatant **within 10 feet**. If a relation, reach, geometry or attack target is uncertain, it reports status "manual" and does **not** invent a penalty. For **exactly one selected target**, an optional native Foundry DialogV2 asks for an explicit pre-roll choice (0, −2, −4 or no modification). Multiple targets are never assigned a guessed common penalty. Neutral tokens, complex allegiances, grapple, vertical geometry, special reach dead zones and third-party movement/range rules can require GM adjudication.
 
-If the native attack dialog already specifies a melee penalty or a generic attack-bonus entry, PF1AE leaves native data alone to prevent doubling. A full attack against one explicitly targeted creature can apply the modifier independently to each generated index. If individual attacks change targets without a verified per-index mapping, the game master should handle those attacks manually. PF1AE does not guess a per-index target.
+If the native attack dialog already specifies a melee penalty or a generic attack-bonus entry, PF1AE leaves native data alone to prevent doubling. A full attack against one explicitly targeted creature receives the common modifier on all its native attacks. If a specific attack needs an approved exception, its correction is applied by attack index. If individual attacks change targets without a verified per-index mapping, the game master should handle those attacks manually. PF1AE does not guess a per-index target.
 
 World settings: **PF1AE: Automatic shooting into melee penalty** (enabled by default, independent of range automation) and **PF1AE: Ask when melee engagement is uncertain** (enabled by default). These prompts require a single selected target; a missing DialogV2 leaves the attack unchanged.
 
@@ -85,7 +87,7 @@ if (
 }
 ~~~
 
-The engine invokes this code only on its originating actor and can execute it on the elected GM for a player-owned actor **only after the existing exact Script Call approval check**. Trusted Table Mode does not automatically grant this new Script Call any privilege; the setting is never enabled for the user. Code is never transmitted via sockets.
+The engine invokes this code only on its originating actor and can execute it on the elected GM for a player-owned actor **only after the existing exact Script Call approval check**. The shared engagement penalty can already be present when this Script Call runs; `rangedMelee.override({penalty:0})` automatically neutralizes that specific attack through a matching correction. Trusted Table Mode does not automatically grant this new Script Call any privilege; the setting is never enabled for the user. Code is never transmitted via sockets.
 
 No ammunition, Grit, actor statistics or weapon settings are changed.
 
@@ -112,3 +114,7 @@ Possible results include: engaged, not-engaged, manual, manual-choice, native-ma
 11. Inspect lastDiagnostic() on uncertainty; verify metric (1.5m square) and imperial (5ft square) scenes.
 
 Automated tests validate the isolated ActionUse path; actual Foundry/PF1FR live verification remains necessary. If the native system is unable to associate a reliable target to an individual generated attack, PF1AE declines to infer one.
+
+### v1.33.1 — Vérification du chemin commun
+
+Sur un tir vers une cible engagée, un bonus `-4[PF1AE Shooting into Melee]` doit être présent dans `shared.attackBonus` **dès `pf1CreateActionUse`**, à côté d'un éventuel bonus de portée indépendant. Avec Tir de précision, la formule de chaque attaque peut montrer le −4 commun et un +4 de correction : **leur somme est 0**. Après la résolution, aucun bonus temporaire de mêlée ne doit rester sur l'ActionUse. Un changement de cible ou un bonus manuel tardif doit invalider le −4 préparé.

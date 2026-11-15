@@ -85,11 +85,29 @@ const make=(count=1,actorDoc=shooter,itemDoc=weapon,actionDoc=action,origin=sour
  const u=new ActionUse(actorDoc,itemDoc,actionDoc,origin,count);begin(u);return u;
 };
 function containsPenalty(parts,penalty){
- return parts.some(x=>String(x).includes('('+penalty+')[PF1AE Shooting into Melee]'));
+ return parts.some(x=>{
+  const text=String(x);
+  return text.includes('('+penalty+')[PF1AE Shooting into Melee]')||
+   text.includes(penalty+'[PF1AE Shooting into Melee]');
+ });
+}
+function effectiveMeleePenalty(parts){
+ return parts.reduce((total,x)=>{
+  const text=String(x);
+  if(!text.includes('[PF1AE Shooting into Melee'))return total;
+  const parsed=Number(text.match(/\(?([+-]?\d+)\)?\[PF1AE Shooting into Melee/)?.[1]);
+  return total+(Number.isFinite(parsed)?parsed:0);
+ },0);
 }
 (async()=>{
- let u=make(),result=await u.addAttacks();
+ let u=make();
+ assert.equal(u.shared.attackBonus.some(x=>String(x).includes('-4[PF1AE Shooting into Melee]')),true,
+  'pre-roll common penalty is injected at pf1CreateActionUse (like range)');
+ let result=await u.addAttacks();
  assert.equal(containsPenalty(result[0],-4),true,'engaged target gets -4 before roll');
+ assert.equal(effectiveMeleePenalty(result[0]),-4);
+ assert.equal(u.shared.attackBonus.length,1,'common penalty removed after roll');
+ assert.equal(u.shared.attackBonus[0],'1[Point Blank Shot]','other shared bonuses preserved');
  assert.equal(u.shared.attacks[0].attackBonus,'0','attack instance restored after roll');
  assert.equal(API.lastDiagnostic().status,'engaged');
  assert.equal((await u.addAttacks())[0].some(p=>String(p).includes('Shooting into Melee')),false,
@@ -169,7 +187,10 @@ function containsPenalty(parts,penalty){
  preciseFeat.scriptCalls.contents=[call];shooter.items.contents.push(preciseFeat);
  u=make(2);result=await u.addAttacks();
  assert.equal(scriptInvoked,1);
- assert.equal(result.every(parts=>!parts.some(p=>String(p).includes('Shooting into Melee'))),true);
+ assert.equal(result.every(parts=>effectiveMeleePenalty(parts)===0),true,
+  'index +4 corrections cancel the shared -4 for Precise Shot');
+ assert.equal(result.every(parts=>parts.some(x=>String(x).includes('(+4)[PF1AE Shooting into Melee Override]'))),true);
+ assert.equal(u.shared.attackBonus.length,1,'Precise Shot does not leave a shared modifier');
  assert.equal(u.shared.attacks.every((a,i)=>a.attackBonus===String(-5*i)),true);
  // Partial override, duplicate and ownership checks.
  shooter.items.contents.pop();
@@ -177,12 +198,38 @@ function containsPenalty(parts,penalty){
  assert.equal(API.prepareAttackOverride({actionUse:u,attackIndex:1,penalty:-2}),true);
  assert.throws(()=>API.prepareAttackOverride({actionUse:u,attackIndex:1,penalty:0}),/Duplicate/);
  result=await u.addAttacks();
- assert.equal(containsPenalty(result[0],-4),true);
- assert.equal(containsPenalty(result[1],-2),true);
+ assert.equal(effectiveMeleePenalty(result[0]),-4);
+ assert.equal(effectiveMeleePenalty(result[1]),-2,
+  'partial override adjusts just the indexed attack while common -4 remains');
  assert.throws(()=>API.prepareAttackOverride({actionUse:u,attackIndex:0,penalty:0}),/completed/);
  u=make();assert.equal(API.prepareForCurrentUse({
   item:weapon,action,attackIndex:0,penalty:0}),true);
- await u.addAttacks();
+ result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),0);
+ // The common modifier added during use creation must be removed when
+ // native user-entered bonuses take priority in the later action dialog.
+ u=make();
+ assert.equal(u.shared.attackBonus.length,2);
+ u.formData={'attack-bonus':'-4[Manually entered]'};
+ result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),0);
+ assert.equal(u.shared.attackBonus.length,1);
+ // Target changes after the pre-roll hook: invalidate the early common
+ // penalty; no stale penalty must leak into the new native roll.
+ u=make();
+ assert.equal(u.shared.attackBonus.length,2);
+ target.document.disposition=1;
+ result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),0);
+ assert.equal(u.shared.attackBonus.length,1);
+ target.document.disposition=-1;
+ // Coexists with range automation: that engine also uses shared.attackBonus,
+ // and the cleanup must preserve its existing independently managed part.
+ u=make();u.shared.attackBonus.push('-2[Range penalty]');
+ result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),-4);
+ assert.equal(result[0].includes('-2[Range penalty]'),true);
+ assert.equal(u.shared.attackBonus.includes('-2[Range penalty]'),true);
  const bad=make(1,actor('unowned','med',5,false),{
   uuid:'Actor.unowned.Item.bow',documentName:'Item',
   actor:null},action,source);

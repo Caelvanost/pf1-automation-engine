@@ -1,3 +1,11 @@
+## v1.33.1 — Reuse native range-style pre-roll bonus for shooting into melee
+
+- Move the automatic, proven single-target shooting-into-melee penalty to `pf1CreateActionUse` and `shared.attackBonus`, the same native pre-roll path as PF1AE range increments. No document mutation or post-roll math.
+- Retain a narrow `ActionUse.addAttacks` bridge only for delayed manual decisions, geometry/target changes, and feat-specific per-attack overrides.
+- When a common −4 is present, a Precise Shot per-index override to 0 supplies a temporary +4 **correction**, not another standalone negative/positive penalty; other attacks preserve their common −4. Restore exact per-index values and remove only PF1AE's shared part after resolution.
+- If the target changes, the native attack dialog provides its own manual bonus, or the rule is disabled, discard the stale shared modifier before rolling. Preserve range increment and other independently registered bonuses.
+- Extend regression tests for creation-hook injection, partial/full attack overrides, coexistence with ranged increments, retargeting, duplicate prevention and native manual precedence. No change to PF1FR defense, ammo, grit or bleed mechanics.
+
 ## v1.33.0 — Shooting into melee: pre-roll penalty and temporary overrides
 
 - Add a generic per-attack PF1 ranged-into-melee penalty resolved at native ActionUse.addAttacks, before ChatAttack.addAttack evaluates dice; restore the original attack data after the native use.
