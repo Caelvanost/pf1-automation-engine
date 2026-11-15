@@ -96,7 +96,13 @@ async function toggle(user,actor,state,options={}){
  const changes={system:{conditions:{bleed:state}}};
  await signal(client,'preUpdateActor',actor,changes,options,user.id);
  actor.system.conditions.bleed=state;
+ // PF1 11.11 conditions are ActiveEffects: the author is present
+ // on create/delete AE hooks, while the condition hook is broadcast.
+ const nativeEffect={parent:actor,documentName:'ActiveEffect',
+  statuses:new Set(['bleed']),_source:{statuses:['bleed']}};
  for(const c of clients)await signal(c,'pf1ToggleActorCondition',actor,'bleed',state);
+ await signal(client,state?'createActiveEffect':'deleteActiveEffect',
+  nativeEffect,options,user.id);
  for(const c of clients)await signal(c,'updateActor',actor,changes,options,user.id);
 }
 const flush=()=>new Promise(resolve=>setTimeout(resolve,5));
@@ -122,7 +128,10 @@ const dialogValue=value=>()=>value;
  // Native Bleed condition is visible while manual Buff is active.
  assert.equal(a.system.conditions.bleed,true);
  // Reload/reconnect is a new client without a fresh condition toggle.
- const refresh=client(users[0]);await flush();
+ const refresh=client(users[0]);
+ // Simulate the old browser being disconnected and its Hooks disposed.
+ clients.splice(clients.indexOf(gm),1);
+ await flush();
  assert.equal(prompts.length,1,'F5/ready must not reopen a dialog');
  // Removing native Bleed only deactivates generated manual Buffs.
  const external=item(a,'Bleed from ability',{active:true,
