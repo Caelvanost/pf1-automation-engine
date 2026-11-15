@@ -62,6 +62,7 @@ const ctx={console,Promise,Date,Map,Set,WeakMap,WeakSet,Number,Object,
   actionUse:{ActionUse},settings:{distance:{metric:false}}}};
 ctx.globalThis=ctx;vm.createContext(ctx);
 vm.runInContext(SOURCE,ctx,{filename:'ranged-melee.js'});
+for(const fn of hooks.get('init')??[])fn();
 for(const fn of ready)fn();
 const API=mod.api.rangedMelee;
 const f=actor('friend','med');
