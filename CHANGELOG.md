@@ -1,3 +1,8 @@
+## v1.28.1 — Description courte du module
+
+- Remplace la description centrée sur les Chat Actions par une présentation synthétique des fonctionnalités actuellement présentes : attaques et dégâts, sauvegardes, effets et durées, repos, portée, scripts persistants, actions par défaut et boutons multijoueurs sécurisés.
+- Aucun changement fonctionnel ; le système générique de saignement envisagé n'est pas annoncé comme déjà implémenté.
+
 ## v1.28.0 — Déclaration automatique des gestionnaires Chat Actions sur le MJ élu
 
 - Découverte automatique des Script Calls natifs `toggle` nommés exactement `PF1AE:bootstrap` sur les Items des acteurs du monde et tokens synthétiques.
