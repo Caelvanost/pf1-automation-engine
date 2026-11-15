@@ -1,3 +1,14 @@
+## v1.29.0 — Generic HP Bleed infrastructure
+
+- Adds an opt-in HP Bleed metadata flag on native PF1 Buffs, with API `api.bleed.configure/get/isBleed/list/process/receipts`.
+- At the beginning of an affected combatant's turn, the elected GM rolls all eligible HP bleed formulas using Foundry Roll, selects the highest result, and applies the remaining damage through native PF1 `ActorPF.applyDamage` rather than writing HP directly.
+- Approved native `postUse` Script Calls `PF1AE:bleed:before` can apply a bounded `event.reduce(n)` or `event.negate()` once per Script Call; unapproved player-owned scripts are never run with GM privileges.
+- Emits informative `PF1AE:bleed:applied` Script Calls and `pf1aeBleedApplied` Hooks, with original/prevented/applied amounts and HP snapshots.
+- Stores persistent world turn receipts `pending/applied` *before* mutations to avoid duplicate damage after F5, multiple GMs, duplicate updates or Combat Tracker rewinds. A failed pre-damage handler leaves a `pending` receipt requiring GM review, not automatic retry.
+- Supports active Buffs on linked and synthetic Actor documents. Existing native Buff enable/disable and separate duration management determine eligibility.
+- Does not embed class/archetype/feat rules in the module. Includes a copy-paste Scarification Script Call and a Foundry verification protocol in `docs/BLEED.md`.
+- HP Bleed only; ability damage/drain and stacking overrides are deferred, not silently implemented.
+
 ## v1.28.2 — English module description
 
 - Translate the short Foundry module description into English while retaining its module-wide feature coverage.
