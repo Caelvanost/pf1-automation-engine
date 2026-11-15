@@ -150,6 +150,39 @@ async function mbRemove(actor){
   if(typeof legacy.delete==='function')await legacy.delete();
  }
 }
+async function mbMigrate(actor){
+ if(!mbAuthorized(actor))return {migrated:false};
+ const native=mbNative(actor);
+ if(!native)return {migrated:false};
+ const existing=native.getFlag?.(MB_NS,'bleed');
+ const legacy=mbManual(actor).find(item=>
+  item.getFlag?.(MB_NS,'bleed')?.enabled===true);
+ if(!legacy)return {migrated:false};
+ // Preserve a newer native configuration if one already exists.
+ if(!existing?.enabled){
+  const old=legacy.getFlag(MB_NS,'bleed');
+  await game.modules.get(MB_NS)?.api?.bleed?.configure({
+   effect:native,type:'hp',formula:old.formula,stacking:'highest'
+  });
+  await native.setFlag(MB_NS,MB_FLAG,{generated:true});
+ }
+ for(const item of mbManual(actor)){
+  if(mbActive(item))await mbDeactivate(item);
+  if(typeof item.delete==='function')await item.delete();
+ }
+ return {migrated:true};
+}
+async function mbMigrateAll(){
+ if(!game.user?.isGM)return;
+ const actors=new Map();
+ const add=a=>{if(a?.documentName==='Actor'&&a.uuid)actors.set(a.uuid,a)};
+ for(const actor of game.actors?.contents??[])add(actor);
+ for(const scene of game.scenes?.contents??[])
+  for(const token of scene.tokens?.contents??[])add(token.actor??token.object?.actor);
+ for(const actor of actors.values())
+  try{await mbMigrate(actor)}
+  catch(error){console.warn('[PF1AE][ManualBleed] Migration deferred',actor.uuid,error)}
+}
 async function mbHandle(actor,state){
  const key=mbKey(actor);
  if(!key||MB_INFLIGHT.has(key)||!mbEnabled()||!mbAuthorized(actor)||
@@ -242,6 +275,8 @@ Hooks.once('ready',()=>{
   list:mbManual,
   configure:mbCreate,
   native:mbNative,
+  migrate:mbMigrate,
   deactivate:mbRemove
  });
+ void mbMigrateAll();
 });
