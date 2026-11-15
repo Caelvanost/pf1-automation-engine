@@ -331,7 +331,7 @@ async function rmBeforeRoll(use,wrapped,args){
    const label=common?'PF1AE Shooting into Melee Override':
     'PF1AE Shooting into Melee';
    attacks[index].attackBonus=(before?before+' + ':'')+
-    '('+delta+')['+label+']';
+    '('+(delta>0?'+':'')+delta+')['+label+']';
    changed.push(index);
   }
   rmReport(decision.status,{penalty:decision.penalty??null,
