@@ -221,7 +221,9 @@ async function rmBeforeRoll(use,wrapped,args){
   for(let index=0;index<attacks.length;index++){
    if(attacks[index].type==='manyshot')continue;
    const chosen=overrides.get(index);
-   if(decision.status==='manual'&&!chosen)continue;
+   // An override replaces an engagement penalty; it cannot invent
+   // engagement when the target is safe or the evidence is unknown.
+   if(decision.status!=='engaged')continue;
    // An override affects ONLY the melee-engagement penalty; if there is
    // no independently established engagement, do not add a penalty.
    const penalty=chosen?chosen.penalty:decision.penalty;
