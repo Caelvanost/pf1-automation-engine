@@ -1,3 +1,10 @@
+## v1.31.1 — Bleed integration with PF1 Automate Damage
+
+- Fix crash in third-party PF1 Automate Damage 2.1b's `ActorPF.applyDamage` libWrapper: its wrapper unconditionally reads `config._pf1AutomateDamageDialog`, but Bleed previously omitted the second `options` parameter.
+- Bleed now always passes an options object to native PF1 `ActorPF.applyDamage(amount, options)`. If `pf1-automate-damage` is enabled, it sets the integration's existing dialog-origin marker so periodic Bleed damage bypasses chat-card/selected-token interception and applies to the actual bleeding Actor.
+- Added a regression that reproduces the exact `undefined config` crash and verifies one application, correct actor targeting and plain native options when the third-party integration is disabled.
+- Existing `pending` receipts are **not automatically reset or retried**: a previous failed transaction may have partially mutated the Actor. The GM must verify the exact turn/HP before any manual reconciliation.
+
 ## v1.31.0 — One Bleed icon with its formula
 
 - Generated `manualBleed` Buffs automatically set the native PF1 `system.hideFromToken` flag, keeping their mechanics active while suppressing the redundant neutral Buff marker.
