@@ -197,6 +197,31 @@ async function hit(c){return api.process(c)}
  const last=emitted.filter(x=>x.name==='pf1aeBleedApplied').at(-1).ev;
  assert.equal(last.actorUuid,c.uuid);
  assert.equal(last.combatantId,cc.combatant.id);
+ // Run the ACTUAL documented Scarification Script Call in a sandbox for
+ // each PF1 barbarian milestone, not a separately reimplemented formula.
+ const docs=fs.readFileSync(path.resolve(__dirname,'../docs/BLEED.md'),'utf8');
+ const scarCode=docs.match(/## Exemple complet[\s\S]*?```js\s*([\s\S]*?)```/)?.[1];
+ assert.ok(scarCode,'documented Scarification Script Call must exist');
+ for(const [level,expected] of [[3,1],[6,2],[9,3],[12,4],[15,6]]){
+  let saved=6;
+  const self={uuid:'Actor.croute',items:[{type:'class',name:'Barbare',
+   system:{levels:level}}]};
+  const ev={type:'bleed:before',bleedType:'hp',actorUuid:self.uuid,
+   reduce(value){saved=Math.max(0,saved-value)},
+   negate(){saved=0}};
+  vm.runInNewContext(scarCode,{actor:self,event:ev,console},
+   {filename:'scarification-example.js'});
+  assert.equal(6-saved,expected,'Scarification level '+level);
+ }
+ // A class with an unrelated localized name is not silently treated
+ // as barbarian; absence of a uniquely identified class fails safely.
+ let badReduction=0;
+ vm.runInNewContext(scarCode,{actor:{uuid:'Actor.croute',
+  items:[{type:'class',name:'Mystery Class',system:{levels:15}}]},
+  event:{type:'bleed:before',bleedType:'hp',actorUuid:'Actor.croute',
+   reduce(){badReduction++},negate(){badReduction++}},console},
+  {filename:'scarification-unidentified-class.js'});
+ assert.equal(badReduction,0);
  console.log('PASS Bleed: fixed/ranged rolls, highest, partial/full/double reductions,');
  console.log(' GM approvals, multi-actor and synthetic actors, manual turn/rewind/F5,');
  console.log(' disabled/expired buff, temp HP, 2 GMs, dedup receipts, applied event.');
