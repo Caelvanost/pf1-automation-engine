@@ -1,3 +1,13 @@
+## v1.27.0 — Boutons persistants génériques dans le chat
+
+- Ajoute l'API publique `api.chatActions` : `create`, `registerHandler`, `click`, `getState`, `reset` (récupération MJ explicite).
+- Les boutons sont reconstruits depuis les flags de ChatMessage via `renderChatMessageHTML` sur tous les clients, y compris après F5, reconnexion et changement de scène.
+- Les joueurs soumettent des demandes via des mises à jour d'acteur authentifiées par Foundry ; le MJ élu revalide OWNER/GM, sélection controlled/targeted et provenance, sans accorder de confiance à des identifiants d'utilisateur transmis par socket.
+- Les cartes et leur état partagé sont créés et modifiés par le MJ élu. Réservation persistante `pending`, déduplication locale, état `used` après succès, retour à `ready` pour un refus métier explicite ; une exception conserve le blocage jusqu'à révision manuelle.
+- Les gestionnaires ne sont enregistrés que côté MJ, liés à un UUID précis d'objet source ; aucun code JavaScript n'est contenu dans la carte ou transmis par le réseau.
+- Ajoute documentation, exemple Utility Shot — Stop Bleeding et tests couvrant permissions, concurrence, F5, cible et échec sécurisé.
+- Ce système est une extension générique : aucune règle de classe ou de capacité n'est codée dans PF1AE.
+
 ## v1.26.8 — Ordre de démarrage Bootstrap / Script Approvals
 
 - Retarde la restauration persistante des scripts jusqu'à la disponibilité de l'API d'approbation MJ `scriptApprovals.check()`.
