@@ -16,11 +16,14 @@ trust any user ID in flags or socket payloads. The elected active GM (lowest
 ID) performs the authoritative operation, verifies all requested permissions,
 and updates the message's shared flags.
 
-The GM must have explicitly registered the handler **on the GM client**.
-Bootstrap scripts run on their elected owning client. To make a handler
-available on the GM after F5, put its `PF1AE:bootstrap` Script Call on a
-**GM-owned Actor/Item** (or an individually approved, GM-executed fallback).
-A bootstrap running solely on a player client cannot grant a GM handler.
+With **PF1AE v1.28.0**, the module automatically discovers native
+`PF1AE:bootstrap` Item Script Calls that contain a
+`registerChatActionHandler(...)` declaration and securely installs their
+handlers on the elected GM after startup, F5, and GM changes.
+Player-editable Script Calls require exact-content GM approval through the
+existing Script Approvals service (or the explicitly enabled Trusted Table
+Mode). No manual macro or object activation is needed. See
+[Automatic Chat Action Bootstrap](API-CHAT-ACTION-BOOTSTRAP.md).
 
 **Do not enable Trusted Table Mode or approve untrusted code just to remove an
 error.** The configured GM handler may mutate Actor documents only after
@@ -61,8 +64,9 @@ update, then the GM creates the message. An active GM is required.
 
 ### registerHandler(key, fn, {sourceItemUuid})
 
-Register only on the GM client, from a trusted module or a GM-owned/bootstrap
-script that is restored at startup:
+Low-level API for trusted modules (GM only). Ordinary Item Script Calls
+should **not** use this directly: use the automatically restored
+`bootstrap.registerChatActionHandler(key, handler)` instead.
 
 ```js
 const unregister=chatActions.registerHandler(
@@ -133,7 +137,8 @@ but PF1AE's generic core contains no references to Bleed or Utility Shot.
 ## Utility Shot example
 
 See [Utility Shot — Stop Bleeding](examples/utility-shot-stop-bleeding.md).
-It demonstrates a GM-owned `PF1AE:bootstrap` handler and a separate
+It demonstrates an approved player-item `PF1AE:bootstrap` declaration
+automatically restored on the elected GM and a separate
 `PF1AE:attack:resolved` call that publishes a button after a native attack.
 This example does not override PF1FR ammunition handling. The script already
 used by Zéphir to prepare Utility Shot can remain unchanged; integrate the
