@@ -1,6 +1,6 @@
 # PF1AE — Saignement (Bleed), première version : PV
 
-**Compatibilité cible :** Foundry VTT 13.351, Pathfinder 1e 11.11, PF1 Automation Engine 1.31.0.
+**Compatibilité cible :** Foundry VTT 13.351, Pathfinder 1e 11.11, PF1 Automation Engine 1.31.1.
 
 Ce service constitue un moteur **générique**, sans règle codée pour une classe, un archétype ou un don. Le comportement de **Scarification du Balafré enragé** est fourni uniquement sous forme d'un Script Call complet, à placer sur l'objet du personnage.
 
@@ -317,3 +317,19 @@ peut ne pas apparaître plutôt que de recouvrir une autre condition.
    qui possède également un autre Buff issu d'une capacité.
 7. Mettre à jour depuis un ancien Buff manuel `v1.30.1` :
    il doit automatiquement passer en « Hide from token ».
+
+## Compatibilité PF1 Automate Damage (v1.31.1)
+
+Si la console indiquait `Cannot read properties of undefined (reading '_pf1AutomateDamageDialog')` depuis `scripts/main.js:36`, il s'agissait du wrapper `ActorPF.applyDamage` installé par **PF1 Automate Damage** (module `pf1-automate-damage`), et non d'un échec de détection du début de tour. Ce module tiers attend un deuxième argument `config` obligatoire.
+
+PF1AE passe maintenant systématiquement `actor.applyDamage(amount, options)`; lorsque l'autre module est actif, `options._pf1AutomateDamageDialog=true` laisse exécuter le moteur PF1 sur l'acteur exact du combattant, sans rediriger un saignement périodique vers les tokens sélectionnés pour les attaques. Il n'y a **aucune écriture directe de PV**.
+
+### Attention : reçu `pending` antérieur
+
+Le tour qui a produit l'erreur reste répertorié `pending` dans `api.bleed.receipts()` ; c'est intentionnel pour empêcher la répétition de dégâts potentiellement déjà appliqués. **Ne pas effacer aveuglément ces reçus**. Après la mise à jour, tester avec un **nouveau round**. Si le tour d'origine doit être régularisé, le MJ vérifie les PV et les autres effets du personnage avant toute correction manuelle.
+
+```js
+const api=game.modules.get("pf1-automation-engine")?.api?.bleed;
+console.log(api?.diagnostic(game.combat));
+console.table(api?.receipts()?.filter(r=>r.status==="pending")??[]);
+```

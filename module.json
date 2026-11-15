@@ -2,7 +2,7 @@
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
   "description": "A modular automation engine for Pathfinder 1e: attacks, damage, saving throws, bleeding, effects and durations, rests, range, persistent scripts, default actions, and secure multiplayer chat buttons.",
-  "version": "1.31.0",
+  "version": "1.31.1",
   "authors": [
     {
       "name": "Caelvanost"
@@ -74,5 +74,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.31.0/pf1-automation-engine-v1.31.0.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.31.1/pf1-automation-engine-v1.31.1.zip"
 }

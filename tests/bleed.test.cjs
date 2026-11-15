@@ -242,6 +242,52 @@ async function hit(c){return api.process(c)}
  turnBuff.activeState=false;
  const inactiveDiag=g1.mod.api.bleed.diagnostic(turnCombat);
  assert.equal(inactiveDiag.status,'no active configured HP Bleed Buff');
+ // Regression against PF1 Automate Damage 2.1b's published libWrapper:
+ // it reads config._pf1AutomateDamageDialog without optional chaining.
+ // Our Bleed call must never invoke the wrapper with undefined config,
+ // and must bypass selected-token/card targeting for periodic damage.
+ const integration=createActor('automate-damage-compat');
+ const integrationBuff=buff(integration,'bleed-periodic','2');
+ await cfg(integrationBuff,'2');
+ const nativeApply=integration.applyDamage.bind(integration);
+ const observed=[];
+ integration.applyDamage=async function(value,config){
+  observed.push({value,config});
+  // Same property access as PF1 Automate Damage scripts/main.js:36.
+  if(config._pf1AutomateDamageDialog)return nativeApply(value);
+  throw Error('Selected-token/card damage interception must not run');
+ };
+ const compatCombat=combat(integration,{id:'automate-damage-case'});
+ const activeGM=makeClient(users[0]);
+ activeGM.game.modules.set('pf1-automate-damage',{active:true});
+ const nativeResult=await activeGM.mod.api.bleed.process(compatCombat);
+ assert.equal(nativeResult.applied,true,'wrapped PF1 Actor applies damage');
+ assert.equal(integration.applied.length,1);
+ assert.equal(observed[0].value,2);
+ assert.equal(observed[0].config._pf1AutomateDamageDialog,true,
+  'PF1 Automate Damage wrapper is bypassed safely for direct Bleed');
+ assert.equal(integration.system.attributes.hp.value,28);
+ const noAddon=createActor('vanilla-native-damage');
+ const noAddonBuff=buff(noAddon,'bleed-no-addon','1');
+ await cfg(noAddonBuff,'1');
+ let suppliedOptions=null;
+ const noAddonNative=noAddon.applyDamage.bind(noAddon);
+ noAddon.applyDamage=async(value,config)=>{
+  suppliedOptions=config;
+  return noAddonNative(value);
+ };
+ const noAddonCombat=combat(noAddon,{id:'no-addon-case'});
+ const noAddonResult=await activeGM.mod.api.bleed.process(noAddonCombat);
+ assert.equal(noAddonResult.applied,true);
+ assert.equal(typeof suppliedOptions,'object');
+ assert.equal(suppliedOptions._pf1AutomateDamageDialog,true,
+  'only enabled integration uses the wrapper bypass marker');
+ activeGM.game.modules.get('pf1-automate-damage').active=false;
+ noAddonCombat.round=2;
+ const unaffected=await activeGM.mod.api.bleed.process(noAddonCombat);
+ assert.equal(unaffected.applied,true);
+ assert.equal(suppliedOptions._pf1AutomateDamageDialog,undefined,
+  'native PF1 path receives plain options when integration disabled');
  // Run the ACTUAL documented Scarification Script Call in a sandbox for
  // each PF1 barbarian milestone, not a separately reimplemented formula.
  const docs=fs.readFileSync(path.resolve(__dirname,'../docs/BLEED.md'),'utf8');
