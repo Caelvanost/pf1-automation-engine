@@ -130,7 +130,9 @@ function rmJudge({origin,target,allTokens,grid,sceneUnit}={}){
   if(!rmInCombat(ally)||!rmInCombat(target))continue;
   const dist=rmDistance(ally,target,grid);
   if(dist==null){ambiguity=true;continue;}
-  const safeDistance=unit==='m'?3:10;
+  // An ally at 10 ft or farther cannot trigger this penalty, even
+  // if it has exceptional reach. Do not require their threat data.
+  if(dist>=(unit==='m'?3:10)-1e-6)continue;
   const aThreat=rmThreatens(ally,target,unit,grid);
   const tThreat=rmThreatens(target,ally,unit,grid);
   // PF1 engagement needs EITHER creature to threaten the other.
@@ -140,7 +142,6 @@ function rmJudge({origin,target,allTokens,grid,sceneUnit}={}){
    if(aThreat===null||tThreat===null)ambiguity=true;
    continue;
   }
-  if(dist>=safeDistance-1e-6)continue;
   const allySize=rmSize(ally.actor);
   if(allySize==null){ambiguity=true;continue;}
   const delta=targetSize-allySize;
