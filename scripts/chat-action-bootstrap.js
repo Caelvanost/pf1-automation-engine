@@ -81,6 +81,8 @@ function cabCleanupAll(){for(const id of [...CAB_ACTIVE.keys()])cabCleanup(id)}
 function cabLive(record){
  const {actor,item,call,fingerprint}=record;
  if(!cabElected()||(item.actor??item.parent)?.uuid!==actor.uuid||
+    !cabActors().some(a=>a.uuid===actor.uuid)||
+    ![...(actor.items?.contents??actor.items?.values?.()??[])].some(i=>i.uuid===item.uuid)||
     !cabCalls(item).includes(call)||cabSerial(call)!==fingerprint)return false;
  return cabApproval(actor,item,call).approved===true;
 }
@@ -176,9 +178,17 @@ Hooks.once('ready',()=>{
  for(const hook of ['createItem','updateItem','deleteItem',
   'createActor','updateActor','deleteActor',
   'createToken','updateToken','deleteToken',
-  'canvasReady','updateUser','updateSetting']){
-  Hooks.on(hook,()=>{
-   // Queue and coalesce naturally; a live check guards against stale code.
+  'canvasReady','updateUser','userConnected','userDisconnected',
+  'updateSetting']){
+  Hooks.on(hook,(_document,changes)=>{
+   if(hook==='updateActor'&&changes&&
+      !('ownership' in changes)&&!('items' in changes)&&
+      !('system' in changes))return;
+   if(hook==='updateSetting'){
+    const key=_document?.key??'';
+    if(key&&!['scriptFallbackApprovals','trustedTableMode','genericEnabled']
+      .some(k=>key.endsWith('.'+k)))return;
+   }
    void cabScan().catch(e=>console.error('[PF1AE][ChatActionBootstrap] Scan failed',e));
   });
  }
