@@ -133,8 +133,13 @@ function rmJudge({origin,target,allTokens,grid,sceneUnit}={}){
   const safeDistance=unit==='m'?3:10;
   const aThreat=rmThreatens(ally,target,unit,grid);
   const tThreat=rmThreatens(target,ally,unit,grid);
-  if(aThreat===null||tThreat===null){ambiguity=true;continue;}
-  if(!aThreat&&!tThreat)continue;
+  // PF1 engagement needs EITHER creature to threaten the other.
+  // A verified true suffices even when the other creature's capability
+  // is unknown (for example an unarmed ally facing an armed target).
+  if(aThreat!==true&&tThreat!==true){
+   if(aThreat===null||tThreat===null)ambiguity=true;
+   continue;
+  }
   if(dist>=safeDistance-1e-6)continue;
   const allySize=rmSize(ally.actor);
   if(allySize==null){ambiguity=true;continue;}
