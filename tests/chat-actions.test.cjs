@@ -201,6 +201,17 @@ async function reject(p,pattern){await assert.rejects(p,pattern)}
  world.target.statuses.add('bleed');
  assert.equal((await apiP.click(targetMsg.id,'target')).ok,true);
  assert.equal(effects,5);
+ // An older v1.27.0 Chat Actions card remains valid even without
+ // createdBy and after its original publisher loses their former role.
+ const legacy=await create();
+ const legacyState=state(legacy);
+ delete legacyState.createdBy;
+ await legacy.setFlag(NS,'chatActions',legacyState);
+ world.target.statuses.add('bleed');
+ player.select(world.target);
+ assert.equal((await apiP.click(legacy.id,'stop')).ok,true);
+ assert.equal(state(legacy).buttons[0].status,'used');
+ assert.equal(effects,6,'legacy card resolved via currently authorized GM handler');
  // Missing GM handlers: fail closed, no card created.
  await reject(apiP.create({...props,buttons:[{...props.buttons[0],
   id:'unknown',handlerKey:'unregistered'}]}),/handler unavailable/i);
