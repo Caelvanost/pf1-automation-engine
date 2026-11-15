@@ -48,6 +48,8 @@ function item(a,name,{flags={},active=true}={}){
    if('system.active' in change){
     this.system.active=change['system.active'];this.activeState=change['system.active'];
    }
+   if('system.hideFromToken' in change)
+    this.system.hideFromToken=change['system.hideFromToken'];
   },
   async setActive(value){this.system.active=value;this.activeState=value;},
   async delete(){a.items.contents=a.items.contents.filter(x=>x!==this);},
@@ -124,6 +126,8 @@ const dialogValue=value=>()=>value;
  assert.equal(generated[0].getFlag(NS,'bleed').formula,'3');
  assert.equal(generated[0].getFlag(NS,'manualBleed').generated,true);
  assert.equal(generated[0].system.active,true);
+ assert.equal(generated[0].system.hideFromToken,true,
+  'generated manual Buff must not show a second token icon');
  assert.equal(formEvaluations,0,'no roll during form confirmation');
  // Native Bleed condition is visible while manual Buff is active.
  assert.equal(a.system.conditions.bleed,true);
@@ -144,6 +148,8 @@ const dialogValue=value=>()=>value;
  await toggle(users[0],a,true);await flush();
  assert.equal(generated.length,1,'manual Buff reused');
  assert.equal(generated[0].getFlag(NS,'bleed').formula,'1d4');
+ assert.equal(generated[0].system.hideFromToken,true,
+  'reused manual Buff also hides its redundant icon');
  // Cancelling creates no Buff and removes the condition without recursion.
  await toggle(users[0],a,false);await flush();
  const previous=prompts.length;
