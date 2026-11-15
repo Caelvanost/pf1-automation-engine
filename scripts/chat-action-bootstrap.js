@@ -28,12 +28,23 @@ const cabSerial=call=>{
   return null;
  return JSON.stringify({id:cabId(call),category:call.category,name:call.name,source});
 };
+// Preserve legacy Bootstrap behavior: never execute ordinary hook-listener
+// bootstrap Script Calls a second time on the GM. The saved native script
+// must explicitly declare the Chat Actions registration API.
+const cabDeclaresHandler=call=>{
+ const source=call?._source??(typeof call?.toObject==='function'?call.toObject():null);
+ if(!source||typeof source!=='object')return false;
+ const code=['script','command','code','value','content']
+  .map(field=>source[field]).filter(value=>typeof value==='string').join('\n');
+ return /(?:^|[^a-zA-Z0-9_])registerChatActionHandler\\s*\\(/.test(code);
+};
 const cabOwnedByPlayer=actor=>[...game.users].some(u=>!u.isGM&&
  actor.testUserPermission?.(u,'OWNER')===true);
 function cabApproval(actor,item,call){
  if(!cabElected())return {approved:false,reason:'Not elected GM'};
  if((item.actor??item.parent)?.uuid!==actor.uuid||
-    call.category!=='toggle'||call.name!==CAB_NAME||!cabSerial(call))
+    call.category!=='toggle'||call.name!==CAB_NAME||
+    !cabDeclaresHandler(call)||!cabSerial(call))
   return {approved:false,reason:'Invalid native bootstrap declaration'};
  if(!cabOwnedByPlayer(actor))return {approved:true};
  const check=game.modules.get(CAB_NS)?.api?.scriptApprovals?.check;
@@ -63,7 +74,7 @@ function cabDeclarations(){
     if(call?.category!== 'toggle'||call.name!==CAB_NAME||
        typeof call.execute!=='function'||!cabId(call))continue;
     const fingerprint=cabSerial(call);
-    if(!fingerprint)continue;
+    if(!fingerprint||!cabDeclaresHandler(call))continue;
     const id=JSON.stringify([actor.uuid,item.uuid,cabId(call)]);
     records.push({id,actor,item,call,fingerprint});
    }
