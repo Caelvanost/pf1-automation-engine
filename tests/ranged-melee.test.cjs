@@ -134,10 +134,12 @@ function containsPenalty(parts,penalty){
  f.system.attributes.reach.total=5;enemy.system.attributes.reach.total=5;
  // Unknown reach, unarmed threat, neutral sides and missing targets fail closed.
  delete enemy.system.attributes.reach;
+ delete f.system.attributes.reach;
  u=make();result=await u.addAttacks();
  assert.equal(result[0].some(p=>String(p).includes('Shooting into Melee')),false);
  assert.equal(API.lastDiagnostic().status,'manual');
  enemy.system.attributes.reach={total:5};
+ f.system.attributes.reach={total:5};
  user.targets.clear();
  u=make();result=await u.addAttacks();
  assert.equal(API.lastDiagnostic().status,'manual');
