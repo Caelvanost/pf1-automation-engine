@@ -8,11 +8,12 @@ const NS='pf1-automation-engine';
 const users=[{id:'gm-a',isGM:true,active:true},{id:'gm-b',isGM:true,active:true},{id:'player',isGM:false,active:true}];
 users.get=id=>users.find(u=>u.id===id);
 const rows=new Map([['genericEnabled',true],['genericDebug',false],['bleedTurnReceipts',[]]]);
-const actors=[],combatants=[],emitted=[];
+const actors=[],combatants=[],emitted=[],chatMessages=[];
+let rollEvaluations=0;
 let sequence=0;
 function createActor(name,{playerOwned=false,synth=false}={}){
  const actor={uuid:(synth?'Scene.scene.Token.t.Actor.':'Actor.')+name,documentName:'Actor',
-  name,system:{attributes:{hp:{value:30,max:30,temp:0}}},items:{contents:[]},
+  name,system:{attributes:{hp:{value:30,max:30,temp:0}}},items:{contents:[]},effects:{contents:[]},
   applied:[],
   testUserPermission(user,perm){return perm==='OWNER'&&playerOwned&&user.id==='player'},
   async applyDamage(value){
@@ -34,6 +35,16 @@ function buff(actor,name,formula,active=true){
  actor.items.contents.push(item);
  return item;
 }
+function nativeBleed(actor,formula){
+ const effect={uuid:actor.uuid+'.ActiveEffect.bleed',documentName:'ActiveEffect',
+  parent:actor,statuses:new Set(['bleed']),disabled:false,flags:{},
+  getFlag(ns,key){return this.flags[ns]?.[key]},
+  async setFlag(ns,key,value){this.flags[ns]??={};
+   this.flags[ns][key]=structuredClone(value);return this;}
+ };
+ actor.effects.contents.push(effect);
+ return effect;
+}
 function script(actor,id,name,fn){
  const item=buff(actor,'ability-'+id,'0');
  item.system.active=false;
@@ -49,8 +60,12 @@ const mockRoll=class Roll {
   if(typeof formula!=='string'||!/^\d+(?:d\d+)?$/.test(formula))
    throw Error('Unsupported test formula');
   this.formula=formula;
+  this.dice=formula.includes('d')?[{}]:[];
  }
+ async toMessage(data){chatMessages.push({kind:'dice',formula:this.formula,
+  total:this.total,data,wasEvaluated:true});return {}}
  async evaluate(){
+  rollEvaluations++;
   this.total=this.formula.includes('d')?
    (dice[this.formula]?.shift()??1):Number(this.formula);
   return this;
@@ -70,6 +85,8 @@ function makeClient(user){
  const hooksApi={once(name,fn){on(once,name,fn)},on(name,fn){on(hooks,name,fn)},
   callAll(name,ev){emitted.push({name,ev})}};
  Object.assign(ctx,{game,Hooks:hooksApi,console,
+  ChatMessage:{getSpeaker:({actor})=>({actor:actor.uuid}),
+   async create(data){chatMessages.push({kind:'fixed',data});return {};}},
   foundry:{utils:{deepClone:structuredClone}},Roll:mockRoll,Promise,Date,
   Object,Map,Set});
  ctx.globalThis=ctx;
@@ -288,6 +305,32 @@ async function hit(c){return api.process(c)}
  assert.equal(unaffected.applied,true);
  assert.equal(suppliedOptions._pf1AutomateDamageDialog,undefined,
   'native PF1 path receives plain options when integration disabled');
+ // Manual Bleed stored directly on the native ActiveEffect:
+ // the formula is rolled once and announced through the SAME Roll object
+ // (Dice So Nice consumes the toMessage event without a second evaluation).
+ const nativeActor=createActor('native-bleed');
+ const status=nativeBleed(nativeActor,'1d4');
+ await api.configure({effect:status,formula:'1d4'});
+ status.flags[NS].manualBleed={generated:true};
+ const nativeCombat=combat(nativeActor,{id:'native-bleed-case'});
+ const rollsBefore=rollEvaluations;
+ const n=await hit(nativeCombat);
+ assert.equal(n.amount,1,'native Bleed status applies HP damage');
+ assert.equal(rollEvaluations,rollsBefore+1,'native status evaluated exactly once');
+ const card=chatMessages.at(-1);
+ assert.equal(card.kind,'dice','formula with dice posts a real roll message');
+ assert.equal(card.formula,'1d4');
+ assert.equal(card.wasEvaluated,true);
+ assert.match(card.data.flavor,/Bleed/);
+ assert.match(card.data.flavor,/HP damage/);
+ assert.equal(nativeActor.applied.length,1);
+ // Fixed amounts post a chat result without Dice So Nice animation.
+ const fixedActor=createActor('native-fixed');
+ const fixedStatus=nativeBleed(fixedActor,'3');
+ await api.configure({effect:fixedStatus,formula:'3'});
+ await hit(combat(fixedActor,{id:'native-fixed-case'}));
+ assert.equal(chatMessages.at(-1).kind,'fixed');
+ assert.match(chatMessages.at(-1).data.content,/HP damage: <strong>3<\/strong>/);
  // Run the ACTUAL documented Scarification Script Call in a sandbox for
  // each PF1 barbarian milestone, not a separately reimplemented formula.
  const docs=fs.readFileSync(path.resolve(__dirname,'../docs/BLEED.md'),'utf8');
