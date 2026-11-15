@@ -1,3 +1,13 @@
+## v1.33.0 — Shooting into melee: pre-roll penalty and temporary overrides
+
+- Add a generic per-attack PF1 ranged-into-melee penalty resolved at native ActionUse.addAttacks, before ChatAttack.addAttack evaluates dice; restore the original attack data after the native use.
+- Pathfinder rules: −4 into melee, −2 if the target is two sizes larger, 0 if at least three; 10-foot separation exception. Only apply when target, faction, grid distance, size and reach are sufficiently verified; otherwise require manual resolution.
+- Add public api.rangedMelee.prepareAttackOverride(), prepareForCurrentUse(), cancelPreparedAttackOverride(), judge() and lastDiagnostic(). Exact native ActionUse/actor/item/index association, duplicate refusal and transient cleanup.
+- Allow native toggle Item Script Calls named PF1AE:rangedMelee:override to prepare overrides automatically for their own character. GM execution of player-owned native code continues to require exact Script Call approval; never transmit JavaScript over sockets.
+- No class/feat-specific logic in the module. Complete Precise Shot feat Script Call and live test checklist in docs/RANGED-MELEE.md.
+- Keep PF1FR weapon defense, Deadeye, ammo, Grit and existing range increment calculations independent. New world setting to enable or disable this one rule.
+- Add maintained regression tests for single/full attacks, multiple simultaneous native uses, per-index overrides, unknown engagement, size exceptions, metric/imperial and manual native modifiers.
+
 ## v1.32.0 — Native Bleed status, visible dice and chat result
 
 - The DialogV2 manual Bleed workflow now saves the formula and `manualBleed.generated` metadata **on the existing native Bleed ActiveEffect**. It no longer creates a second Buff/item, eliminating its redundant neutral icon in effects panels, not only on the token.
