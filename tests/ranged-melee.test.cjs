@@ -95,7 +95,8 @@ function effectiveMeleePenalty(parts){
  return parts.reduce((total,x)=>{
   const text=String(x);
   if(!text.includes('[PF1AE Shooting into Melee'))return total;
-  return total+(Number(text.match(/[-+]?\\d+(?=\\)?\\[PF1AE Shooting into Melee)/)?.[0])||0);
+  const parsed=Number(text.match(/\(?([+-]?\d+)\)?\[PF1AE Shooting into Melee/)?.[1]);
+  return total+(Number.isFinite(parsed)?parsed:0);
  },0);
 }
 (async()=>{
