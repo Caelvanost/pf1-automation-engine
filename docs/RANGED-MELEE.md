@@ -68,7 +68,7 @@ This dedicated native Script Call is discovered and invoked **automatically** on
 if (
   typeof rangedMelee !== "undefined" &&
   rangedMelee?.actionUse &&
-  rangedMelee.actorUuid === actor?.uuid
+  rangedMelee.actorUuid === rangedMelee.actionUse.actor?.uuid
 ) {
   const nativeUse = rangedMelee.actionUse;
   const attacks = nativeUse.shared?.attacks ?? [];
