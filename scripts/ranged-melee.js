@@ -242,7 +242,7 @@ function rmInstall(){
  }
  const original=proto.addAttacks;
  if(original.pf1aeRangedMeleeWrapped)return;
- const handler=async function(...args)=>rmBeforeRoll(this,original.bind(this),args);
+ const handler=async function(...args){return rmBeforeRoll(this,original.bind(this),args)};
  handler.pf1aeRangedMeleeWrapped=true;
  proto.addAttacks=handler;
 }
