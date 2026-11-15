@@ -1,6 +1,6 @@
 # PF1AE — Saignement (Bleed), première version : PV
 
-**Compatibilité cible :** Foundry VTT 13.351, Pathfinder 1e 11.11, PF1 Automation Engine 1.29.0.
+**Compatibilité cible :** Foundry VTT 13.351, Pathfinder 1e 11.11, PF1 Automation Engine 1.30.0.
 
 Ce service constitue un moteur **générique**, sans règle codée pour une classe, un archétype ou un don. Le comportement de **Scarification du Balafré enragé** est fourni uniquement sous forme d'un Script Call complet, à placer sur l'objet du personnage.
 
@@ -177,3 +177,72 @@ Le Script Call doit être approuvé par le MJ via le service PF1AE `scriptApprov
 - [ ] Activer temporairement les logs `genericDebug` pour examiner la sélection du plus haut effet et le reçu `pending/applied`.
 
 Ce protocole reste nécessaire : les tests Node ne prouvent pas à eux seuls la compatibilité avec toutes les variantes de fiches et de combats PF1 11.11.
+
+## Interface automatique : condition native Bleed (v1.30.0)
+
+En activant manuellement la condition native PF1 `bleed` depuis sa fiche/token,
+**le client ayant lancé cette modification** affiche la fenêtre `🩸 Saignement`.
+On entre une valeur ou formule (par défaut `1`, par exemple `3`,
+`1d4`, `1d6+2`, `2d6+1`), puis on choisit **Appliquer** ou **Annuler**.
+
+- La formule est contrôlée syntaxiquement avec `Roll.validate()` **sans jet**.
+- **Appliquer** : crée/réutilise un Buff PF1 `Saignement — formule` portant
+  `flags["pf1-automation-engine"].manualBleed.generated === true`.
+  Il est configuré par `api.bleed.configure()`, puis activé avec l'API PF1.
+- **Annuler** ou fermer : aucun Buff créé ; retour de la condition native à
+  `false` sans ouverture d'une autre fenêtre.
+- **Retrait manuel** de la condition : désactive seulement le Buff identifié
+  `manualBleed.generated`. Les Buffs de saignement d'attaques, sorts ou autres
+  capacités ne sont jamais supprimés par cette interface.
+- Une seule fenêtre est ouverte pour l'utilisateur **auteur de l'opération**.
+  PF1 v11.11 expose `pf1ToggleActorCondition(actor,condition,state)` sans
+  `userId`, ce qui impose de le corréler aux hooks de mise à jour d'Actor
+  fournis par Foundry. Une modification distante ou un F5 ne doit pas ouvrir
+  de fenêtre.
+- Un Buff provenant d'une autre capacité ne doit pas être confondu avec
+  le Buff manuel. Celui-ci est la source des dégâts ; la condition native
+  n'est que sa représentation visuelle.
+
+**Limite de détection :** PF1 ne fournit pas dans son hook de condition
+l'intention explicite « utilisateur a cliqué dans l'interface ». Une
+macro externe qui active la condition en utilisant exactement le même chemin
+natif et les mêmes options non marquées qu'un clic manuel peut également
+être considérée comme une action locale. Les automatisations internes de
+PF1AE évitent la récursion. Pour garantir une exclusion explicite lors
+d'intégrations tierces, les appels de mise à jour d'Actor peuvent utiliser
+l'option `{ "pf1-automation-engine": { skipManualBleed: true } }` lorsque
+le mécanisme PF1 la transmet.
+
+En cas d'échec pendant la création du Buff, le moteur essaie de retirer
+le Buff nouvellement créé et de désactiver la condition native. Un Buff
+existant marqué `manualBleed` est réutilisé ; aucun Buff étranger ne
+peut être modifié.
+
+### Table de confiance
+
+En activant **volontairement** `trustedTableMode`, les Script Calls
+`postUse` officiels `PF1AE:bleed:before` et
+`PF1AE:bleed:applied` figurent désormais dans `SA_AUTO_NAMES`.
+Lorsque ce réglage est désactivé, une approbation exacte par le MJ
+reste obligatoire.
+
+### Vérification en jeu de la fenêtre
+
+1. Sur un acteur lié possédé par le MJ, activer la condition native `bleed`.
+2. Vérifier **une seule** fenêtre `🩸 Saignement`, valeur préremplie `1`.
+3. Entrer `3`, valider : Buff PF1 `Saignement — 3`, actif et marqué
+   `manualBleed.generated`.
+4. Retirer la condition : seul ce Buff doit être désactivé.
+5. Refaire avec `1d4` puis `2d6+1` ; aucune formule ne doit être lancée
+   lors de sa validation. Le moteur v1.29 réalise les jets au début des tours.
+6. Tester une formule invalide ; la fenêtre réapparaît avec un message d'erreur.
+7. Annuler ; condition désactivée, aucun nouveau Buff créé.
+8. Tester un personnage joueur propriétaire et un token non lié.
+9. Connecter deux MJ et un joueur : seul l'auteur de l'activation voit la fenêtre.
+10. Vérifier F5, reconnexion, et réactivation rapide : pas de fenêtre à la
+    synchronisation et pas de boucle de désactivation.
+11. Ajouter un autre Buff Bleed de sort et retirer la condition manuelle :
+    le Buff de sort reste actif.
+12. Tester `PF1AE:bleed:before` et `PF1AE:bleed:applied` avec le mode Table
+    de confiance activé puis désactivé et les approbations exactes.
+
