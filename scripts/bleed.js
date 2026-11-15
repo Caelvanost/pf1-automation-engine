@@ -80,7 +80,15 @@ const blDamage=async (actor,amount)=>{
  // and other actor-specific hit point variants. Do not manually update HP.
  if(typeof actor.applyDamage!=='function')
   throw Error('Native PF1 Actor.applyDamage unavailable; bleed not applied.');
- const result=await actor.applyDamage(amount);
+ // Always provide an options object. PF1 Automate Damage v2.1 wraps
+ // ActorPF.applyDamage and immediately reads config._pf1AutomateDamageDialog;
+ // omitting config crashes before native PF1 can update HP.
+ // Its own dialog-path marker bypasses its selected-token/card interception,
+ // ensuring this periodic bleed hits the specified actor only.
+ const options={};
+ if(game.modules.get('pf1-automate-damage')?.active===true)
+  options._pf1AutomateDamageDialog=true;
+ const result=await actor.applyDamage(amount,options);
  if(result===false)throw Error('Native PF1 damage was cancelled.');
  return true;
 };
