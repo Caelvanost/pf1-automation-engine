@@ -67,8 +67,10 @@ function caRegisterHandler(key,handler,{sourceItemUuid}={}){
     !caText(sourceItemUuid,500))
   throw Error('A handler function and its allowed sourceItemUuid are required.');
  const existing=CA_HANDLERS.get(key);
- if(existing&&existing.sourceItemUuid!==sourceItemUuid)
-  throw Error('Chat Action handler key already belongs to another Item.');
+ if(existing)
+  throw Error(existing.sourceItemUuid!==sourceItemUuid
+   ?'Chat Action handler key already belongs to another Item.'
+   :'Chat Action handler is already registered.');
  CA_HANDLERS.set(key,{run:handler,sourceItemUuid});
  return ()=>{if(CA_HANDLERS.get(key)?.run===handler)CA_HANDLERS.delete(key);};
 }
