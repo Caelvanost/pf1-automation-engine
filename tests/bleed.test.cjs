@@ -175,7 +175,8 @@ async function hit(c){return api.process(c)}
  assert.equal((await hit(cc)).skipped,'no configured HP Bleed buffs');
  cBuff.activeState=true;
  cBuff.system.active=false;cc.round=3;
- assert.equal((await hit(cc)).skipped,'no configured HP Bleed buffs');
+ assert.equal((await hit(cc)).amount,2,
+  'native activeState is authoritative despite stale system.active');
  cBuff.system.active=true;
  cc.round=4;assert.equal((await hit(cc)).amount,2,'reactivation on new round');
  // Existing Native duration service controls activeState; disabled on expiry.
@@ -197,6 +198,50 @@ async function hit(c){return api.process(c)}
  const last=emitted.filter(x=>x.name==='pf1aeBleedApplied').at(-1).ev;
  assert.equal(last.actorUuid,c.uuid);
  assert.equal(last.combatantId,cc.combatant.id);
+ // Foundry 13 reliably notifies turn changes after Combat document
+ // updates using combatTurnChange (all clients). The elected GM processes
+ // the newly active combatant once, even when updateCombat also fires.
+ const turnActor=createActor('turn-event');
+ const turnBuff=buff(turnActor,'turn-bleed','2');
+ await cfg(turnBuff,'2');
+ const turnCombat=combat(turnActor,{round:1,id:'combat-turn-event'});
+ users[0].active=true;users[1].active=true;
+ const g1=makeClient(users[0]),g2=makeClient(users[1]);
+ const trigger=async(client,event,...args)=>{
+  for(const fn of client.hooks.get(event)??[])fn(...args);
+ };
+ const settle=async()=>new Promise(resolve=>setTimeout(resolve,30));
+ await trigger(g2,'combatTurnChange',turnCombat,
+  {round:0,combatantId:null},
+  {round:1,combatantId:turnCombat.combatant.id});
+ await settle();
+ assert.equal(turnActor.applied.length,0,'unelected GM ignores turn event');
+ await trigger(g1,'combatTurnChange',turnCombat,
+  {round:0,combatantId:null},
+  {round:1,combatantId:turnCombat.combatant.id});
+ await trigger(g1,'updateCombat',turnCombat,{round:1,turn:0});
+ await settle();
+ assert.equal(turnActor.applied.length,1,'turn hook applies damage exactly once');
+ assert.equal(turnActor.applied[0],2);
+ const diag=g1.mod.api.bleed.diagnostic(turnCombat);
+ assert.equal(diag.status,'turn receipt already exists');
+ assert.equal(diag.buffs.length,1);
+ assert.equal(diag.receipt.status,'applied');
+ turnCombat.round=2;
+ await trigger(g1,'combatTurnChange',turnCombat,
+  {round:1,combatantId:turnCombat.combatant.id},
+  {round:2,combatantId:turnCombat.combatant.id});
+ await settle();
+ assert.equal(turnActor.applied.length,2,
+  'another round triggers another native HP damage application');
+ await trigger(g1,'combatTurnChange',turnCombat,
+  {round:2,combatantId:turnCombat.combatant.id},
+  {round:2,combatantId:turnCombat.combatant.id});
+ await settle();
+ assert.equal(turnActor.applied.length,2,'unchanged turn is ignored');
+ turnBuff.activeState=false;
+ const inactiveDiag=g1.mod.api.bleed.diagnostic(turnCombat);
+ assert.equal(inactiveDiag.status,'no active configured HP Bleed Buff');
  // Run the ACTUAL documented Scarification Script Call in a sandbox for
  // each PF1 barbarian milestone, not a separately reimplemented formula.
  const docs=fs.readFileSync(path.resolve(__dirname,'../docs/BLEED.md'),'utf8');

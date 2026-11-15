@@ -1,3 +1,10 @@
+## v1.30.1 — Bleed did not apply at the start of a turn
+
+- Listen to Foundry v13 `combatTurnChange` after Combat updates, in addition to `updateCombat`, processing only on the elected GM. Existing persistent turn receipts prevent duplicate damage when both hooks fire.
+- Respect PF1 Buff `activeState` as the authoritative activation getter even if a stale `system.active` disagrees.
+- Add `api.bleed.diagnostic(game.combat)` with actor/Buff eligibility, active combatant, GM authority and pending/applied receipt inspection to diagnose existing-world configurations safely.
+- Extend the maintained Bleed regression suite with real turn hook simulation, multiple GMs, stale state, deduplication and diagnostics. No direct HP mutations and no change to Scarification rules.
+
 ## v1.30.0 — Manual native Bleed condition DialogV2
 
 - When a user manually enables the native PF1 `bleed` condition, their originating client opens a `DialogV2` for an HP Bleed formula (default `1`). The native `pf1ToggleActorCondition` hook is paired with a local authenticated Actor update to prevent opening the dialog on every connected client.

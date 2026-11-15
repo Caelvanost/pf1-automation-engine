@@ -31,7 +31,10 @@ const blConfig=effect=>{
  if(!data||data.enabled!==true||data.type!=='hp'||
     typeof data.formula!=='string'||!data.formula.trim()||
     data.formula.length>100||data.stacking!=='highest')return null;
- if(effect.activeState===false||effect.system?.active===false)return null;
+ // PF1 ItemBuffPF.activeState is the authoritative native activation
+ // accessor. A stale/absent system.active must not veto an active Buff.
+ if(effect.activeState===false||
+   (effect.activeState==null&&effect.system?.active===false))return null;
  // Built-in PF1 item time tracking remains authoritative: an inactive Buff
  // is not a candidate; existing PF1AE duration service may deactivate it.
  return {enabled:true,type:'hp',formula:data.formula,stacking:'highest'};
@@ -210,16 +213,58 @@ async function blConfigure({effect,type='hp',formula,stacking='highest'}={}){
  await effect.setFlag(BL_NS,BL_FLAG,{enabled:true,type,formula,stacking});
  return effect.getFlag(BL_NS,BL_FLAG);
 }
+function blScheduleTurn(combat,source){
+ if(!blEligible()||!combat?.started)return;
+ // The persistent [combat, combatant, round] receipt is the authoritative
+ // deduplication gate for concurrent updateCombat/turn-change hooks.
+ void blQueue(async()=>{
+  blDebug('Turn event received',{source,combatId:combat.id,round:combat.round,
+   turn:combat.turn,combatantId:combat.combatant?.id,
+   actorUuid:combat.combatant?.actor?.uuid});
+  const result=await blProcess(combat);
+  blDebug('Turn outcome',{source,result});
+ }).catch(error=>console.error('[PF1AE][Bleed] Combat hook failed',source,error));
+}
 function blTurnHook(combat,change){
- if(!blEnabled()||(!Object.hasOwn(change??{},'round')&&!Object.hasOwn(change??{},'turn')))return;
- // Queue serializes all combat turn transitions for a single elected GM.
- void blQueue(()=>blProcess(combat)).catch(error=>
-  console.error('[PF1AE][Bleed] Combat hook failed',error));
+ if(!Object.hasOwn(change??{},'round')&&!Object.hasOwn(change??{},'turn'))return;
+ blScheduleTurn(combat,'updateCombat');
+}
+function blTurnChangeHook(combat,prior,current){
+ // Foundry V13 emits this on all clients AFTER the Combat is updated.
+ // Do not process on players or on a second GM.
+ if(prior?.round===current?.round&&
+    prior?.combatantId===current?.combatantId)return;
+ blScheduleTurn(combat,'combatTurnChange');
+}
+function blDiagnostic(combat=game.combat){
+ const actor=combat?.combatant?.actor;
+ const entries=actor?blItems(actor).filter(blIsBuff).map(item=>({
+  name:item.name,uuid:item.uuid,
+  activeState:item.activeState,systemActive:item.system?.active,
+  metadata:item.getFlag?.(BL_NS,BL_FLAG)??null,
+  eligible:blConfig(item)!==null
+ })):[];
+ const key=combat?.combatant&&Number.isInteger(combat.round)
+  ?blReceipt(combat,combat.combatant):null;
+ const receipt=key?blRows().find(x=>x.key===key)??null:null;
+ return {
+  moduleEnabled:blEnabled(),isElectedGM:blLeader(),
+  combatId:combat?.id??null,started:combat?.started??false,
+  round:combat?.round??null,turn:combat?.turn??null,
+  combatantId:combat?.combatant?.id??null,
+  actorUuid:actor?.uuid??null,actorType:actor?.documentName??null,
+  hp:blHealth(actor),buffs:entries,receipt,
+  status:!blEnabled()?'module disabled':!blLeader()?'not elected GM':
+   !combat?.started?'combat not started':!actor?'no combatant Actor':
+   entries.some(x=>x.eligible)?(receipt?'turn receipt already exists':'ready for turn change'):
+   'no active configured HP Bleed Buff'
+ };
 }
 Hooks.once('init',()=>{
  game.settings.register(BL_NS,BL_LEDGER,{scope:'world',config:false,type:Array,
   default:[]});
  Hooks.on('updateCombat',blTurnHook);
+ Hooks.on('combatTurnChange',blTurnChangeHook);
 });
 Hooks.once('ready',()=>{
  const mod=game.modules.get(BL_NS);if(!mod)return;
@@ -230,6 +275,7 @@ Hooks.once('ready',()=>{
   isBleed:effect=>blConfig(effect)!==null,
   list:actor=>blList(actor),
   process:combat=>blQueue(()=>blProcess(combat)),
-  receipts:()=>foundry.utils.deepClone(blRows())
+  receipts:()=>foundry.utils.deepClone(blRows()),
+  diagnostic:blDiagnostic
  });
 });

@@ -1,6 +1,6 @@
 # PF1AE — Saignement (Bleed), première version : PV
 
-**Compatibilité cible :** Foundry VTT 13.351, Pathfinder 1e 11.11, PF1 Automation Engine 1.30.0.
+**Compatibilité cible :** Foundry VTT 13.351, Pathfinder 1e 11.11, PF1 Automation Engine 1.30.1.
 
 Ce service constitue un moteur **générique**, sans règle codée pour une classe, un archétype ou un don. Le comportement de **Scarification du Balafré enragé** est fourni uniquement sous forme d'un Script Call complet, à placer sur l'objet du personnage.
 
@@ -246,3 +246,34 @@ reste obligatoire.
 12. Tester `PF1AE:bleed:before` et `PF1AE:bleed:applied` avec le mode Table
     de confiance activé puis désactivé et les approbations exactes.
 
+
+## Diagnostic début de tour (v1.30.1)
+
+À partir de la v1.30.1, le moteur se connecte également au hook Foundry 13
+`combatTurnChange`, déclenché **après** le changement de tour, avec relecture
+de l'acteur courant et protection contre les doubles exécutions par le reçu
+persistant `[combatId,combatantId,round]`. `updateCombat` est conservé.
+
+Sur le client **MJ élu**, après avoir sélectionné un combattant dans
+le Combat Tracker, exécuter :
+
+```js
+const api = game.modules.get("pf1-automation-engine")?.api?.bleed;
+console.log("Bleed diagnostic", api?.diagnostic(game.combat));
+console.table(api?.diagnostic(game.combat)?.buffs ?? []);
+```
+
+Le champ `status` distingue notamment le module désactivé, un mauvais
+MJ, un combat non démarré, une absence de Buff éligible, ou un reçu
+`pending/applied` déjà présent. **Ne pas relancer un reçu pending**
+automatiquement : il peut correspondre à une application de dégâts
+partiellement achevée. Une fiche ayant uniquement la condition native Bleed
+sans Buff configuré ne subit pas de dégâts automatiques.
+
+`activeState` est la source native PF1 d'activation du Buff : un
+`system.active` ancien ou incohérent ne doit pas désactiver le
+moteur malgré un `activeState=true`.
+
+Après mise à jour, avancer **sur un nouveau round** pour tester un Buff
+existant : les reçus des tours déjà résolus ne sont pas supprimés
+ni rejoués.
