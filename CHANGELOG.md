@@ -1,3 +1,13 @@
+## v1.32.0 — Native Bleed status, visible dice and chat result
+
+- The DialogV2 manual Bleed workflow now saves the formula and `manualBleed.generated` metadata **on the existing native Bleed ActiveEffect**. It no longer creates a second Buff/item, eliminating its redundant neutral icon in effects panels, not only on the token.
+- The HP Bleed engine supports both native Bleed ActiveEffects and existing configured PF1 Buffs, retaining highest-roll stacking, approved reductions, native damage application, and persistent one-application-per-turn receipts.
+- Evaluated Bleed dice use the SAME Foundry `Roll` for `toMessage()`, making the result visible and available to Dice So Nice without rerolling. Fixed values receive a compact chat card. Both show original, prevented and applied HP damage.
+- Chat publication occurs only after native damage and the persisted applied receipt, so a chat-display failure cannot reapply HP on reconnect.
+- Automatically migrates older `manualBleed.generated` Buffs to native Bleed metadata and removes only those generated Buffs after successful transfer, preserving Buffs from abilities and spells.
+- Token label reads the formula from native Bleed flags and retains backwards-compatible Buff fallback.
+- Extended regression tests for native flags, migration-safe visual behavior and evaluated-roll chat publication.
+
 ## v1.31.1 — Bleed integration with PF1 Automate Damage
 
 - Fix crash in third-party PF1 Automate Damage 2.1b's `ActorPF.applyDamage` libWrapper: its wrapper unconditionally reads `config._pf1AutomateDamageDialog`, but Bleed previously omitted the second `options` parameter.

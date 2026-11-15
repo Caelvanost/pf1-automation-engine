@@ -85,9 +85,20 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  token.effects.children=[otherIcon];
  await token.drawEffects();
  assert.equal(otherIcon.children.length,0);
+ // The native ActiveEffect wins over any legacy Buff formula.
+ a.effects={contents:[{documentName:'ActiveEffect',statuses:new Set(['bleed']),
+  disabled:false,
+  getFlag(ns,key){return key==='bleed'?{formula:'2d4+1'}:null}
+ }]};
+ assert.equal(api.bleedDisplay.formula(a),'2d4+1');
+ a.effects.contents[0].disabled=true;
+ assert.equal(api.bleedDisplay.formula(a),'2d6+1',
+  'disabled native condition does not replace legacy fallback');
+ a.effects.contents[0].disabled=false;
  // A spell-generated Buff is not treated as manual even if it has Bleed flags.
  a.items.contents=[unrelated];
- assert.equal(api.bleedDisplay.formula(a),null);
+ assert.equal(api.bleedDisplay.formula(a),'2d4+1',
+  'native Bleed flags remain sufficient with no Item Buff');
  console.log('PASS bleed-display: native Bleed icon formula overlay, single marker,');
  console.log(' redraw/update/reconnect-safe, migration, and other Buff isolation.');
 })().catch(error=>{console.error(error);process.exitCode=1});

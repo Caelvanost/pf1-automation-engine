@@ -23,7 +23,7 @@ const Roll=class Roll{
 function actor(name,owner,{synth=false}={}){
  const a={uuid:(synth?'Scene.scene.Token.token.Actor.':'Actor.')+name,
   documentName:'Actor',name,system:{conditions:{bleed:false}},
-  items:{contents:[]},testUserPermission(user,permission){
+  items:{contents:[]},effects:{contents:[]},testUserPermission(user,permission){
    return permission==='OWNER'&&user.id===owner;
   },async createEmbeddedDocuments(kind,raw){
    assert.equal(kind,'Item');
@@ -36,6 +36,16 @@ function actor(name,owner,{synth=false}={}){
    return toggle(initiator,a,state);
   }};
  return a;
+}
+function native(a){
+ const effect={parent:a,documentName:'ActiveEffect',statuses:new Set(['bleed']),
+  _source:{statuses:['bleed']},disabled:false,flags:{},
+  getFlag(ns,key){return structuredClone(this.flags[ns]?.[key]??null)},
+  async setFlag(ns,key,value){
+   this.flags[ns]??={};this.flags[ns][key]=structuredClone(value);return this;
+  }
+ };
+ return effect;
 }
 let initiator=null;
 function item(a,name,{flags={},active=true}={}){
@@ -101,8 +111,10 @@ async function toggle(user,actor,state,options={}){
  actor.system.conditions.bleed=state;
  // PF1 11.11 conditions are ActiveEffects: the author is present
  // on create/delete AE hooks, while the condition hook is broadcast.
- const nativeEffect={parent:actor,documentName:'ActiveEffect',
-  statuses:new Set(['bleed']),_source:{statuses:['bleed']}};
+ if(state)actor.effects.contents=[native(actor)];
+ const nativeEffect=actor.effects.contents[0]??native(actor);
+ if(!state)actor.effects.contents=[];
+
  for(const c of clients)await signal(c,'pf1ToggleActorCondition',actor,'bleed',state);
  await signal(client,state?'createActiveEffect':'deleteActiveEffect',
   nativeEffect,options,user.id);
@@ -122,13 +134,9 @@ const dialogValue=value=>()=>value;
  assert.equal(prompts.length,1,'one DialogV2 on initiating GM');
  assert.equal(prompts[0].config.window.title,'🩸 Saignement');
  assert.equal(prompts[0].config.content.includes('value="1"'),true);
- assert.equal(generated.length,1);
- assert.equal(generated[0].name,'Saignement — 3');
- assert.equal(generated[0].getFlag(NS,'bleed').formula,'3');
- assert.equal(generated[0].getFlag(NS,'manualBleed').generated,true);
- assert.equal(generated[0].system.active,true);
- assert.equal(generated[0].system.hideFromToken,true,
-  'generated manual Buff must not show a second token icon');
+ assert.equal(generated.length,0,'native Bleed must not create a neutral Buff');
+ assert.equal(a.effects.contents[0].getFlag(NS,'bleed').formula,'3');
+ assert.equal(a.effects.contents[0].getFlag(NS,'manualBleed').generated,true);
  assert.equal(formEvaluations,0,'no roll during form confirmation');
  // Native Bleed condition is visible while manual Buff is active.
  assert.equal(a.system.conditions.bleed,true);
@@ -142,15 +150,13 @@ const dialogValue=value=>()=>value;
  const external=item(a,'Bleed from ability',{active:true,
   flags:{[NS]:{bleed:{enabled:true,type:'hp',formula:'1d4',stacking:'highest'}}}});
  await toggle(users[0],a,false);await flush();
- assert.equal(generated[0].system.active,false);
+ assert.equal(a.effects.contents.length,0,'native Bleed removed');
  assert.equal(external.system.active,true,'other Bleed Buff remains untouched');
- // Opening while an inactive old manual Buff exists reuses it.
+ // Re-activation creates a new native Bleed AE with a new formula.
  dialogs.push(dialogValue('1d4'));
  await toggle(users[0],a,true);await flush();
- assert.equal(generated.length,1,'manual Buff reused');
- assert.equal(generated[0].getFlag(NS,'bleed').formula,'1d4');
- assert.equal(generated[0].system.hideFromToken,true,
-  'reused manual Buff also hides its redundant icon');
+ assert.equal(generated.length,0,'re-activation still creates no neutral Buff');
+ assert.equal(a.effects.contents[0].getFlag(NS,'bleed').formula,'1d4');
  // Cancelling creates no Buff and removes the condition without recursion.
  await toggle(users[0],a,false);await flush();
  const previous=prompts.length;
@@ -158,8 +164,8 @@ const dialogValue=value=>()=>value;
  await toggle(users[0],a,true);await flush();
  assert.equal(prompts.length,previous+1);
  assert.equal(a.system.conditions.bleed,false);
- assert.equal(generated.length,1);
- assert.equal(api.list(a).length,1);
+ assert.equal(generated.length,0);
+ assert.equal(api.list(a).length,0);
  // Invalid formula shows an error and reopens, then Cancel safely.
  dialogs.push(dialogValue('1d4+'),dialogValue(null));
  const count=prompts.length;
@@ -167,14 +173,14 @@ const dialogValue=value=>()=>value;
  assert.equal(prompts.length,count+2);
  assert.equal(notices.some(x=>/invalide/i.test(x)),true);
  assert.equal(a.system.conditions.bleed,false);
- assert.equal(generated.length,1);
+ assert.equal(generated.length,0);
  // Player is the only prompt recipient for their own Actor.
  const before=prompts.length;
  dialogs.push(dialogValue('2d6+1'));
  await toggle(users[2],a,true);await flush();
  assert.equal(prompts.length,before+1);
  assert.equal(prompts.at(-1).user,'player');
- assert.equal(generated[0].getFlag(NS,'bleed').formula,'2d6+1');
+ assert.equal(a.effects.contents[0].getFlag(NS,'bleed').formula,'2d6+1');
  await toggle(users[2],a,false);await flush();
  // Non-owner cannot open a form via a forged native broadcast.
  await signal(stranger,'pf1ToggleActorCondition',a,'bleed',true);
@@ -183,16 +189,36 @@ const dialogValue=value=>()=>value;
  // Synthetic Actor UUID is retained, unrelated to a world Actor UUID.
  dialogs.push(dialogValue('1d6+2'));
  await toggle(users[2],b,true);await flush();
- assert.equal(api.list(b).length,1);
- assert.equal(api.list(b)[0].actor.uuid,b.uuid);
+ assert.equal(api.native(b).getFlag(NS,'bleed').formula,'1d6+2');
+ assert.equal(api.native(b).parent.uuid,b.uuid);
  // Neither world load nor restored effects emit condition transitions.
  await signal(gm,'updateActor',b,{flags:{fake:'effect'}},{},users[0].id);
  await flush();
  assert.equal(prompts.length,before+2);
+ // Migrate the exact old generated Buff, but never a spell/ability Buff.
+ a.effects.contents=[native(a)];
+ const oldBuff=item(a,'Saignement — 1d4',{active:true,
+  flags:{[NS]:{
+   manualBleed:{generated:true},
+   bleed:{enabled:true,type:'hp',formula:'1d4',stacking:'highest'}
+  }}
+ });
+ const kept=item(a,'Spell Bleed',{active:true,
+  flags:{[NS]:{bleed:{enabled:true,type:'hp',formula:'2',stacking:'highest'}}}
+ });
+ const migration=await api.migrate(a);
+ assert.equal(migration.migrated,true);
+ assert.equal(a.effects.contents[0].getFlag(NS,'bleed').formula,'1d4');
+ assert.equal(a.effects.contents[0].getFlag(NS,'manualBleed').generated,true);
+ assert.equal(a.items.contents.includes(oldBuff),false,
+  'legacy generated Buff removed after safe transfer');
+ assert.equal(a.items.contents.includes(kept),true,
+  'unrelated spell Buff preserved');
+ assert.equal(kept.activeState,true);
  // The original v1.29 Bleed engine is still the sole turn damage resolver:
  // only the API's configure method is used here, never Roll.evaluate().
  assert.equal(formEvaluations,0);
  console.log('PASS manual Bleed DialogV2: GM, player, two GMs, synthetic actors,');
  console.log(' syntax-only formulas, cancel, invalid/reopen, generated-only cleanup,');
- console.log(' no recursion, no duplicate Buff, no F5 dialog, no dice roll on input.');
+ console.log(' no recursion, no generated Buff, no F5 dialog, no dice roll on input.');
 })().catch(e=>{console.error(e);process.exitCode=1});

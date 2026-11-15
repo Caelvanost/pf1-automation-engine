@@ -13,8 +13,11 @@ const bvLive=item=>item.activeState===true||
  (item.activeState==null&&item.system?.active===true);
 const bvFormula=actor=>{
  if(!actor)return null;
+ const native=[...(actor?.effects?.contents??actor?.effects?.values?.()??[])]
+  .find(e=>e?.statuses?.has?.('bleed')===true&&e.disabled!==true);
+ const nativeValue=native?.getFlag?.(BV_NS,'bleed')?.formula;
  const item=bvManual(actor).find(bvLive);
- const value=item?.getFlag?.(BV_NS,'bleed')?.formula;
+ const value=nativeValue??item?.getFlag?.(BV_NS,'bleed')?.formula;
  return typeof value==='string'&&value.length>0&&value.length<=100?value:null;
 };
 const bvIconSources=actor=>{
@@ -144,6 +147,10 @@ Hooks.once('ready',()=>{
  bvInstall();
  Hooks.on('drawToken',token=>bvPaint(token));
  Hooks.on('refreshToken',token=>bvPaint(token));
+ Hooks.on('updateActiveEffect',effect=>{
+  if(effect?.statuses?.has?.('bleed')!==true)return;
+  for(const token of bvTokens(effect.parent??effect.actor))bvPaint(token);
+ });
  Hooks.on('updateItem',item=>{
   if(item?.getFlag?.(BV_NS,BV_MANUAL)?.generated!==true)return;
   for(const token of bvTokens(item.actor??item.parent))

@@ -23,6 +23,9 @@ const mbKey=actor=>actor?.uuid??null;
 const mbItems=actor=>[...(actor?.items?.contents??actor?.items?.values?.()??[])];
 const mbManual=actor=>mbItems(actor).filter(i=>i?.type==='buff'&&
  i.getFlag?.(MB_NS,MB_FLAG)?.generated===true);
+const mbNative=actor=>[...(actor?.effects?.contents??actor?.effects?.values?.()??[])]
+ .find(effect=>effect?.documentName==='ActiveEffect'&&
+   effect.statuses?.has?.('bleed')===true&&effect.disabled!==true)??null;
 const mbActive=item=>item?.activeState===true||item?.system?.active===true;
 const mbFormula=input=>{
  const formula=typeof input==='string'?input.trim():'';
@@ -121,52 +124,64 @@ async function mbCreate(actor,formula){
  const api=game.modules.get(MB_NS)?.api?.bleed;
  if(typeof api?.configure!=='function')throw Error('PF1AE Bleed API unavailable.');
  if(!mbAuthorized(actor))throw Error('Actor OWNER permission is required.');
- const existing=mbManual(actor);
- const keep=existing.find(i=>!mbActive(i))??existing[0]??null;
- // Configure first, activate only on successful metadata validation;
- // never touch a Bleed Buff without manualBleed.generated=true.
- let item=keep,created=false;
- try{
-  if(!item){
-   if(typeof actor.createEmbeddedDocuments!=='function')
-    throw Error('Actor cannot create an embedded PF1 Buff.');
-   const documents=await actor.createEmbeddedDocuments('Item',[{
-    name:'Saignement — '+formula,type:'buff',
-    // Native PF1 Buff setting: keep its mechanics but do not display
-    // a second, generic buff icon next to the Bleed status icon.
-    system:{active:false,hideFromToken:true},
-    flags:{[MB_NS]:{[MB_FLAG]:{generated:true}}}
-   }]);
-   item=documents?.[0];
-   if(!item)throw Error('Could not create PF1 Bleed Buff.');
-   created=true;
-  }else{
-   await item.update({name:'Saignement — '+formula,
-    'system.hideFromToken':true});
-  }
-  await api.configure({effect:item,type:'hp',formula,stacking:'highest'});
-  await item.setFlag(MB_NS,MB_FLAG,{generated:true});
-  await mbActivate(item);
-  // Only remove duplicate generated buffs (never affect unrelated buffs).
-  for(const duplicate of existing.filter(i=>i.id!==item.id))
-   await mbDeactivate(duplicate);
-  return item;
- }catch(error){
-  if(created&&item){
-   try{await item.delete()}catch(cleanError){
-    console.error('[PF1AE][ManualBleed] Rollback failed',cleanError)
-   }
-  }
-  throw error;
+ const native=mbNative(actor);
+ if(!native)throw Error('Native PF1 Bleed ActiveEffect not found.');
+ // The native condition is the only mechanical source and only visible
+ // status. Do not create an Item Buff (the extra neutral HUD icon).
+ const configured=await api.configure({
+  effect:native,type:'hp',formula,stacking:'highest'
+ });
+ await native.setFlag(MB_NS,MB_FLAG,{generated:true});
+ // Migrate ONLY old generated manual Buffs. Never touch a spell/ability Buff.
+ // Deactivate first; then delete legacy Items so they cannot linger in an
+ // active-effects sidebar despite hideFromToken=true.
+ for(const legacy of mbManual(actor)){
+  if(mbActive(legacy))await mbDeactivate(legacy);
+  if(typeof legacy.delete==='function')await legacy.delete();
  }
+ return configured;
 }
 async function mbRemove(actor){
  if(!mbAuthorized(actor))return;
- for(const buff of mbManual(actor)){
-  // Avoid deleting historic Buff documents with duration/effect links.
-  // Deactivation keeps PF1AE duration references intact.
-  if(mbActive(buff))await mbDeactivate(buff);
+ // PF1 removes/disables the native status itself. Its flags go with it.
+ // Existing generated v1.31 Buffs still get cleaned on manual removal.
+ for(const legacy of mbManual(actor)){
+  if(mbActive(legacy))await mbDeactivate(legacy);
+  if(typeof legacy.delete==='function')await legacy.delete();
  }
+}
+async function mbMigrate(actor){
+ if(!mbAuthorized(actor))return {migrated:false};
+ const native=mbNative(actor);
+ if(!native)return {migrated:false};
+ const existing=native.getFlag?.(MB_NS,'bleed');
+ const legacy=mbManual(actor).find(item=>
+  item.getFlag?.(MB_NS,'bleed')?.enabled===true);
+ if(!legacy)return {migrated:false};
+ // Preserve a newer native configuration if one already exists.
+ if(!existing?.enabled){
+  const old=legacy.getFlag(MB_NS,'bleed');
+  await game.modules.get(MB_NS)?.api?.bleed?.configure({
+   effect:native,type:'hp',formula:old.formula,stacking:'highest'
+  });
+  await native.setFlag(MB_NS,MB_FLAG,{generated:true});
+ }
+ for(const item of mbManual(actor)){
+  if(mbActive(item))await mbDeactivate(item);
+  if(typeof item.delete==='function')await item.delete();
+ }
+ return {migrated:true};
+}
+async function mbMigrateAll(){
+ if(!game.user?.isGM)return;
+ const actors=new Map();
+ const add=a=>{if(a?.documentName==='Actor'&&a.uuid)actors.set(a.uuid,a)};
+ for(const actor of game.actors?.contents??[])add(actor);
+ for(const scene of game.scenes?.contents??[])
+  for(const token of scene.tokens?.contents??[])add(token.actor??token.object?.actor);
+ for(const actor of actors.values())
+  try{await mbMigrate(actor)}
+  catch(error){console.warn('[PF1AE][ManualBleed] Migration deferred',actor.uuid,error)}
 }
 async function mbHandle(actor,state){
  const key=mbKey(actor);
@@ -175,7 +190,7 @@ async function mbHandle(actor,state){
  MB_INFLIGHT.add(key);
  try{
   if(!state){await mbRemove(actor);return}
-  if(mbManual(actor).some(mbActive))return;
+  if(mbNative(actor)?.getFlag?.(MB_NS,MB_FLAG)?.generated===true)return;
   const formula=await mbPrompt();
   if(formula===null){
    await mbSetCondition(actor,false);
@@ -259,6 +274,9 @@ Hooks.once('ready',()=>{
   validate:mbFormula,
   list:mbManual,
   configure:mbCreate,
+  native:mbNative,
+  migrate:mbMigrate,
   deactivate:mbRemove
  });
+ void mbMigrateAll();
 });
