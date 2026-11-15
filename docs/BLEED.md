@@ -1,6 +1,6 @@
 # PF1AE — Saignement (Bleed), première version : PV
 
-**Compatibilité cible :** Foundry VTT 13.351, Pathfinder 1e 11.11, PF1 Automation Engine 1.30.1.
+**Compatibilité cible :** Foundry VTT 13.351, Pathfinder 1e 11.11, PF1 Automation Engine 1.31.0.
 
 Ce service constitue un moteur **générique**, sans règle codée pour une classe, un archétype ou un don. Le comportement de **Scarification du Balafré enragé** est fourni uniquement sous forme d'un Script Call complet, à placer sur l'objet du personnage.
 
@@ -277,3 +277,43 @@ moteur malgré un `activeState=true`.
 Après mise à jour, avancer **sur un nouveau round** pour tester un Buff
 existant : les reçus des tours déjà résolus ne sont pas supprimés
 ni rejoués.
+
+## Affichage : une seule icône Bleed avec la valeur (v1.31.0)
+
+Lorsqu'un Buff créé automatiquement par la fenêtre Bleed est actif,
+il conserve toutes ses règles mécaniques et ses métadonnées :
+`flags["pf1-automation-engine"].manualBleed.generated === true`.
+Mais PF1AE lui applique désormais le réglage **natif PF1**
+`system.hideFromToken: true` (« Hide from token »).
+
+Ainsi, le token affiche uniquement **l'icône de condition native Bleed**,
+avec la **formule** (`1`, `1d4`, `2d6+1`, etc.) superposée
+grâce à un texte PIXI local, sans créer d'autre état. La valeur
+correspond à la formule enregistrée, **pas au résultat du dernier tour**.
+Le comportement de dégâts reste entièrement celui de `api.bleed`.
+
+Les Buffs plus anciens ayant `manualBleed.generated: true` sont corrigés
+automatiquement au démarrage du MJ, y compris pour les acteurs de tokens
+non liés. Les autres Buffs de capacités et de sorts ne sont pas modifiés.
+
+**Limite :** l'étiquette s'affiche sur l'icône du token lorsqu'elle peut être
+identifiée sans ambiguïté dans les sprites des effets de Foundry v13. Elle
+ne remplace pas les contrôles de condition du HUD ou les badges de modules
+tiers. Si un thème ou module remplace complètement le rendu des icônes, elle
+peut ne pas apparaître plutôt que de recouvrir une autre condition.
+
+### Test d'affichage
+
+1. Activer Bleed manuellement, saisir `1d4` et valider.
+2. Vérifier que **seule** l'icône Bleed est présente sur le token, avec
+   `1d4` superposé. Il ne doit pas y avoir d'icône Buff neutre.
+3. Vérifier sur la fiche que le Buff `Saignement — 1d4` existe, est actif,
+   possède le flag `manualBleed` et son option « Hide from token » cochée.
+4. Avancer de plusieurs tours : la formule reste `1d4` sur l'icône ;
+   le résultat des dégâts change selon les dés.
+5. Désactiver puis réactiver le saignement avec `2d6+1` : la même icône
+   native doit afficher la nouvelle formule, sans deuxième marqueur.
+6. Tester sur deux clients, après F5, sur un token non lié et sur un personnage
+   qui possède également un autre Buff issu d'une capacité.
+7. Mettre à jour depuis un ancien Buff manuel `v1.30.1` :
+   il doit automatiquement passer en « Hide from token ».
