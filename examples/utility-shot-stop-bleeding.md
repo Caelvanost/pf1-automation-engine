@@ -34,7 +34,7 @@ if(!api?.bootstrap||!api?.chatActions){
   throw Error("PF1AE Bootstrap / Chat Actions unavailable.");
 }
 
-if(bootstrap?.restoring){
+if(typeof bootstrap!=='undefined'&&bootstrap?.restoring){
   if(!game.user.isGM)throw Error("This bootstrap must run on a GM client.");
   const zephyr=[...game.actors.contents].find(a=>a.name==="Zéphir");
   const utilityShot=zephyr?.items?.find(i=>i.name==="Utility Shot");
@@ -63,9 +63,9 @@ if(bootstrap?.restoring){
   return;
 }
 
-if(state===true){
+if(typeof state!=='undefined'&&state===true){
   await api.bootstrap.register({actor,item,key:"zephyr-utility-chat"});
-}else if(state===false){
+}else if(typeof state!=='undefined'&&state===false){
   await api.bootstrap.unregister({actor,item,key:"zephyr-utility-chat"});
 }
 ~~~
@@ -83,9 +83,9 @@ Ne pas créer deux Script Calls de ce nom sur un même Item : PF1AE refuse
 les souscriptions ambiguës.
 
 ~~~js
-const actorPF=actor??item?.actor;
+const actorPF=typeof actor!=='undefined'?actor:(typeof item!=='undefined'?item?.actor:null);
 const api=game.modules.get("pf1-automation-engine")?.api;
-if(actorPF&&api?.chatActions&&event?.type==="attack:resolved"){
+if(actorPF&&api?.chatActions&&typeof event!=="undefined"&&event?.type==="attack:resolved"){
   const pending=actorPF.getFlag("world","utilityShotPending");
   const choice=typeof pending==="string"?pending:
     pending?.choice??pending?.option??pending?.mode??pending?.type??null;
