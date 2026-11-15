@@ -16,6 +16,18 @@ The stable manifest points to the versioned ZIP asset of the [latest published r
 
 **Manual alternative:** extract the complete release ZIP into `Data/modules/pf1-automation-engine/` (the `module.json` must be at that directory's root), then enable PF1 Automation Engine in a PF1 11.11 world. A connected GM is required to perform authoritative mutations. `genericDebug` enables diagnostics; `genericEnabled` controls generic execution.
 
+## Nouvelle restauration automatique des gestionnaires (v1.28.0)
+
+Les Script Calls natifs `PF1AE:bootstrap` contenant un appel
+`registerChatActionHandler(...)` sont découverts et restaurés
+automatiquement sur le MJ élu, sans macro ni activation de l'objet. Les
+scripts appartenant à des joueurs requièrent une **approbation exacte du MJ**
+(ou l'activation explicite du mode Table de confiance), sans aucune
+transmission de JavaScript dans le chat ou les sockets.
+
+Voir [API de restauration Chat Actions](API-CHAT-ACTION-BOOTSTRAP.md) et
+[exemple complet Utility Shot](examples/utility-shot-stop-bleeding.md).
+
 ## Persistent Chat Actions (v1.28.0)
 
 PF1AE supplies `game.modules.get("pf1-automation-engine").api.chatActions`. The
