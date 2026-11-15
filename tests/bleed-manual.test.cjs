@@ -27,7 +27,8 @@ function actor(name,owner,{synth=false}={}){
    return permission==='OWNER'&&user.id===owner;
   },async createEmbeddedDocuments(kind,raw){
    assert.equal(kind,'Item');
-   const created=raw.map(data=>item(a,data.name,{flags:data.flags,active:false}));
+   const created=raw.map(data=>{const buff=item(a,data.name,{flags:data.flags,active:false});
+    Object.assign(buff.system,data.system??{});return buff;});
    generated.push(...created);
    return created;
   },async setCondition(key,state){
