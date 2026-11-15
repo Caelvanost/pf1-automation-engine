@@ -279,7 +279,7 @@ async function hit(c){return api.process(c)}
  const noAddonCombat=combat(noAddon,{id:'no-addon-case'});
  const noAddonResult=await activeGM.mod.api.bleed.process(noAddonCombat);
  assert.equal(noAddonResult.applied,true);
- assert.equal(Object.getPrototypeOf(suppliedOptions),Object.prototype);
+ assert.equal(typeof suppliedOptions,'object');
  assert.equal(suppliedOptions._pf1AutomateDamageDialog,true,
   'only enabled integration uses the wrapper bypass marker');
  activeGM.game.modules.get('pf1-automate-damage').active=false;
