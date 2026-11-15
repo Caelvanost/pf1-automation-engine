@@ -1,3 +1,8 @@
+## v1.28.2 — English module description
+
+- Translate the short Foundry module description into English while retaining its module-wide feature coverage.
+- No functional changes; Bleed automation is not described as an existing feature.
+
 ## v1.28.1 — Description courte du module
 
 - Remplace la description centrée sur les Chat Actions par une présentation synthétique des fonctionnalités actuellement présentes : attaques et dégâts, sauvegardes, effets et durées, repos, portée, scripts persistants, actions par défaut et boutons multijoueurs sécurisés.
