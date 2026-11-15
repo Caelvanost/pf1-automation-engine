@@ -100,6 +100,7 @@ async function blSubscribersRun(actor,name,base,controller){
   let used=false;
   const control=Object.freeze({
    ...base,
+   get amount(){return controller.amount},
    reduce(value){
     if(name!==BL_PRE)throw Error('Bleed applied event is read-only.');
     if(used)throw Error('This Script Call has already adjusted the bleed event.');
