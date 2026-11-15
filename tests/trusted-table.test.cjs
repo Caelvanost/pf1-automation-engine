@@ -150,5 +150,28 @@ const restore=async()=>{await Promise.all([...clients.values()].map(c=>c.mod.api
  await clients.get('gm1').ctx.game.settings.set(NS,'trustedTableMode',false);
  await wait();await restore();
  assert.equal(count('p1'),1,'secure registration survives mode switching');
+ // PF1AE Bleed Script Calls are only automatically trusted while
+ // the GM explicitly enables Trusted Table Mode; exact approval is
+ // required in secure mode.
+ const beforeBleed=nativeCall('bleed-before','PF1AE:bleed:before','postUse');
+ const afterBleed=nativeCall('bleed-applied','PF1AE:bleed:applied','postUse');
+ const bleedItem=item(hero,'bleed-approval-check',[beforeBleed,afterBleed]);
+ const api=clients.get('gm1').mod.api.scriptApprovals;
+ assert.equal(api.check(hero,bleedItem,beforeBleed).approved,false);
+ assert.equal(api.check(hero,bleedItem,afterBleed).approved,false);
+ await clients.get('gm1').ctx.game.settings.set(NS,'trustedTableMode',true);
+ assert.equal(api.check(hero,bleedItem,beforeBleed).approved,true);
+ assert.equal(api.check(hero,bleedItem,afterBleed).approved,true);
+ await clients.get('gm1').ctx.game.settings.set(NS,'trustedTableMode',false);
+ assert.equal(api.check(hero,bleedItem,beforeBleed).approved,false);
+ assert.equal(api.check(hero,bleedItem,afterBleed).approved,false);
+ await api.approve({actor:hero,item:bleedItem,scriptId:beforeBleed.id});
+ assert.equal(api.check(hero,bleedItem,beforeBleed).approved,true);
+ assert.equal(api.check(hero,bleedItem,afterBleed).approved,false,
+  'exact approval does not cover another Bleed callback');
+ beforeBleed._source.script='modified code';
+ assert.equal(api.check(hero,bleedItem,beforeBleed).approved,false,
+  'editing the approved callback invalidates its fingerprint');
+ hero.items.delete(bleedItem.id);docs.delete(bleedItem.uuid);
  console.log('PASS trusted-table: opt-in, multi-call, synthetic, live edit, add/delete, two GMs, owner handoff, secure mode, no duplicates');
 })().catch(err=>{console.error(err);process.exitCode=1});
