@@ -75,7 +75,6 @@ function rmDistance(a,b,grid){
  }
  return Number.isFinite(best)?best:null;
 }
-const rmSizeKey=['fine','diminutive','tiny','sm','small','med','medium','lg','large','huge','grg','gargantuan','col','colossal'];
 function rmSize(actor){
  const data=actor?.system?.traits?.size;
  const order={fine:0,diminutive:1,tiny:2,sm:3,small:3,med:4,medium:4,lg:5,large:5,huge:6,grg:7,gargantuan:7,col:8,colossal:8};
@@ -95,8 +94,8 @@ function rmCanThreaten(actor){
  if(['dead','unconscious','paralyzed','stunned','helpless','petrified']
   .some(x=>statuses?.has?.(x)))return false;
  const weapons=rmItems(actor).filter(i=>
-  i.type==='weapon'&&i.system?.equipped!==false&&
-  (i.system?.subType==='natural'||i.system?.subType==='unarmed'||
+  i.type==='weapon'&&i.system?.equipped===true&&
+  (i.system?.subType==='natural'||
    i.actions?.contents?.some(a=>['mwak','msak'].includes(a.actionType))||
    i.system?.actions?.some(a=>['mwak','msak'].includes(a.actionType))));
  // Unknown melee threat is NOT proof of no engagement.
@@ -113,7 +112,9 @@ function rmThreatens(from,to,unit,grid){
  const distance=rmDistance(from,to,grid);
  if(distance==null)return null;
  // PF1's table convention: 5 ft = 1.5 m.
- const limit=unit==='m'?n*0.3:n;
+ const pf1Metric=globalThis.pf1?.settings?.distance?.metric===true;
+ const limit=unit===(pf1Metric?'m':'ft')?n:
+  pf1Metric?n/0.3:n*0.3;
  return distance<=limit+1e-6;
 }
 function rmJudge({origin,target,allTokens,grid,sceneUnit}={}){
