@@ -1,3 +1,11 @@
+## v1.31.0 — One Bleed icon with its formula
+
+- Generated `manualBleed` Buffs automatically set the native PF1 `system.hideFromToken` flag, keeping their mechanics active while suppressing the redundant neutral Buff marker.
+- Decorates **only** the native Bleed status icon on tokens with the saved formula (`3`, `1d4`, `2d6+1`), never the last random roll result.
+- Reuses the native status icon; no second condition or ActiveEffect is created. Token redraws update the formula in place without accumulating labels. Other statuses and ability/spell-generated Buffs remain untouched.
+- During GM startup, automatically hides older `manualBleed.generated` Buffs that predate this setting, including linked and scene-local synthetic Actors.
+- Adds dedicated graphical regression tests and reuses native PF1 Buff/condition lifecycle; HP damage processing and security remain unchanged.
+
 ## v1.30.1 — Bleed did not apply at the start of a turn
 
 - Listen to Foundry v13 `combatTurnChange` after Combat updates, in addition to `updateCombat`, processing only on the elected GM. Existing persistent turn receipts prevent duplicate damage when both hooks fire.

@@ -1,10 +1,12 @@
 # PF1 Automation Engine
 
-**Version 1.30.1 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.31.0 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
-## Generic Bleed automation (v1.30.1)
+## Generic Bleed automation (v1.31.0)
+
+**Single Bleed icon on tokens (v1.31.0):** A generated manual Bleed Buff now uses PF1's native `system.hideFromToken: true` setting, so its neutral Buff icon is not displayed. On the native Bleed condition icon, PF1AE adds a local PIXI label with the **saved formula** (such as `1d4`), not the current die roll. Other Buffs and conditions are unchanged. Existing generated Buffs are migrated for GM-owned worlds when a GM opens the world. See [Bleed documentation](docs/BLEED.md).
 
 PF1AE now supports **HP Bleed** declared on active native PF1 Buff Items via the `flags["pf1-automation-engine"].bleed` metadata. The elected GM processes the highest rolled HP Bleed at the beginning of the affected combatant's turn, routes reductions through individually approved `PF1AE:bleed:before` Item Script Calls, and applies remaining damage via native `ActorPF.applyDamage`. Persistent one-shot receipts prevent duplicate damage on F5, replay or Combat Tracker rewinds. See [Bleed documentation](docs/BLEED.md) for scope, limitations and a full Scarlet/Scarification Script Call example. Ability Bleed and Bleed stacking overrides are not yet implemented.
 

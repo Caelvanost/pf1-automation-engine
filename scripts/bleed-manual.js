@@ -132,14 +132,17 @@ async function mbCreate(actor,formula){
     throw Error('Actor cannot create an embedded PF1 Buff.');
    const documents=await actor.createEmbeddedDocuments('Item',[{
     name:'Saignement — '+formula,type:'buff',
-    system:{active:false},
+    // Native PF1 Buff setting: keep its mechanics but do not display
+    // a second, generic buff icon next to the Bleed status icon.
+    system:{active:false,hideFromToken:true},
     flags:{[MB_NS]:{[MB_FLAG]:{generated:true}}}
    }]);
    item=documents?.[0];
    if(!item)throw Error('Could not create PF1 Bleed Buff.');
    created=true;
   }else{
-   await item.update({name:'Saignement — '+formula});
+   await item.update({name:'Saignement — '+formula,
+    'system.hideFromToken':true});
   }
   await api.configure({effect:item,type:'hp',formula,stacking:'highest'});
   await item.setFlag(MB_NS,MB_FLAG,{generated:true});
