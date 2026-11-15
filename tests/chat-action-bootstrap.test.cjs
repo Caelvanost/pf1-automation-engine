@@ -14,7 +14,7 @@ const users=[
 users.get=id=>users.find(u=>u.id===id);
 const actor={uuid:'Actor.zephyr',documentName:'Actor',
  testUserPermission(user,level){return level==='OWNER'&&user.id==='player'}};
-let source='approved source',executions=0,removed=0;
+let source='bootstrap.registerChatActionHandler("utility-shot.stop-bleeding", handler)',executions=0,removed=0;
 const call={id:'call-chat',category:'toggle',name:'PF1AE:bootstrap',
  _source:{id:'call-chat',category:'toggle',name:'PF1AE:bootstrap',script:source},
  async execute(shared,extra){
@@ -111,7 +111,7 @@ const scan=async()=>Promise.all(clients.map(c=>api(c).scan()));
  // The script source changes before the update hook; even a stale closure
  // must reject the click without executing any player-edited code.
  const attempts=executions;
- call._source.script='modified without reapproval';
+ call._source.script='bootstrap.registerChatActionHandler("utility-shot.stop-bleeding", changedHandler)';
  const stale=await before({actor:{bleed:true}});
  assert.equal(stale.ok,false,'changed declaration invalidated at click-time');
  assert.equal(executions,attempts);
@@ -168,6 +168,15 @@ const scan=async()=>Promise.all(clients.map(c=>api(c).scan()));
  await scan();assert.equal(a.handlers.size,0,'other toggle names are not executed');
  item.scriptCalls.contents=[call];
  await scan();assert.equal(a.handlers.size,1);
+ // A pre-existing ordinary Bootstrap Script Call must not execute a
+ // second time on the GM merely because Trusted Table Mode is enabled.
+ const legacy={id:'legacy-toggle',category:'toggle',name:'PF1AE:bootstrap',
+  _source:{script:'bootstrap.listen("someHook", fn)'},
+  async execute(){throw Error('Legacy Bootstrap should not be re-executed on GM');}};
+ item.scriptCalls.contents.push(legacy);
+ await scan();
+ assert.equal(a.handlers.size,1,'legacy listener-only bootstrap ignored');
+ item.scriptCalls.contents.pop();
  // Module disabled: no handlers remain active, even in trusted mode.
  a.mod.active=false;
  await api(a).scan();
