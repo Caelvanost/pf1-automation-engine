@@ -36,7 +36,7 @@ const cabDeclaresHandler=call=>{
  if(!source||typeof source!=='object')return false;
  const code=['script','command','code','value','content']
   .map(field=>source[field]).filter(value=>typeof value==='string').join('\n');
- return /(?:^|[^a-zA-Z0-9_])registerChatActionHandler\\s*\\(/.test(code);
+ return /(?:^|[^a-zA-Z0-9_])registerChatActionHandler\s*\(/.test(code);
 };
 const cabOwnedByPlayer=actor=>[...game.users].some(u=>!u.isGM&&
  actor.testUserPermission?.(u,'OWNER')===true);
