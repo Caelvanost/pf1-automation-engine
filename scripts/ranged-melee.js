@@ -94,7 +94,25 @@ function rmDistance(a,b,grid){
 function rmSize(actor){
  const data=actor?.system?.traits?.size;
  const order={fine:0,diminutive:1,tiny:2,sm:3,small:3,med:4,medium:4,lg:5,large:5,huge:6,grg:7,gargantuan:7,col:8,colossal:8};
- return typeof data==='string'&&Object.hasOwn(order,data.toLowerCase())?order[data.toLowerCase()]:null;
+ // PF1 v11.11 exposes size as {base:"med",value:4}; the numeric
+ // value is the prepared size (including temporary size changes).
+ // Preserve support for older string-valued fixtures and integrations.
+ if(typeof data==='string'){
+  const key=data.toLowerCase();
+  return Object.hasOwn(order,key)?order[key]:null;
+ }
+ if(!data||typeof data!=='object')return null;
+ if(Number.isInteger(data.value)&&data.value>=0&&data.value<=8)
+  return data.value;
+ if(typeof data.value==='string'){
+  const key=data.value.toLowerCase();
+  if(Object.hasOwn(order,key))return order[key];
+ }
+ if(typeof data.base==='string'){
+  const key=data.base.toLowerCase();
+  if(Object.hasOwn(order,key))return order[key];
+ }
+ return null;
 }
 const rmFaction=token=>{
  const x=(token.document??token)?.disposition;
