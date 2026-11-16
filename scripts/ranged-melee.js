@@ -418,7 +418,7 @@ async function rmBeforeRoll(use,wrapped,args){
   RM_PHASE.set(use,'rolling');
   return await wrapped(...args);
  }
- if(decision.status='manual'&&context.target&&overrides.size===0&&
+ if(decision.status==='manual'&&context.target&&overrides.size===0&&
     game.settings.get(RM_NS,'manualRangedMeleePrompt')===true){
   try{
    const selected=await rmManualPrompt(context.target);
