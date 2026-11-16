@@ -40,6 +40,10 @@
       "RangedMeleePrompt": {
         "Name": "Demander si l’engagement au corps à corps est incertain",
         "Hint": "Avant un tir sur une seule cible, propose 0 / −2 / −4 si l’engagement ne peut pas être vérifié. Aucune supposition en cas de cibles multiples."
+      },
+      "TacticalPositioning": {
+        "Name": "Détection du positionnement tactique",
+        "Hint": "Permet aux Script Calls de vérifier la prise en tenaille selon la géométrie, l’allonge et la menace. Diagnostic uniquement : aucun bonus automatique aux jets."
       }
     },
     "Range": {
