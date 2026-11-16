@@ -75,7 +75,7 @@ function makeClient(user){
  const once=new Map(),hooks=new Map(),mod={active:true,api:{}};
  const ctx={};
  const on=(kind,name,fn)=>{(kind.get(name)??kind.set(name,[]).get(name)).push(fn)};
- const game={user,users,modules:new Map([[NS,mod]]),
+ const game={user,users,i18n:{lang:'en'},modules:new Map([[NS,mod]]),
   settings:{get(_ns,k){return structuredClone(rows.get(k))},
    register(_ns,k,{default:value}){if(!rows.has(k))rows.set(k,structuredClone(value))},
    async set(_ns,k,value){rows.set(k,structuredClone(value));return value}}};
@@ -321,8 +321,8 @@ async function hit(c){return api.process(c)}
  assert.equal(card.kind,'dice','formula with dice posts a real roll message');
  assert.equal(card.formula,'1d4');
  assert.equal(card.wasEvaluated,true);
- assert.match(card.data.flavor,/Bleed/);
- assert.match(card.data.flavor,/HP damage/);
+ assert.match(card.data.flavor,/native-bleed.*takes.*1.*points of bleed damage!/);
+ assert.doesNotMatch(card.data.flavor,/Rolled:|Prevented:|HP damage:/);
  assert.equal(nativeActor.applied.length,1);
  // Fixed amounts post a chat result without Dice So Nice animation.
  const fixedActor=createActor('native-fixed');
@@ -330,7 +330,22 @@ async function hit(c){return api.process(c)}
  await api.configure({effect:fixedStatus,formula:'3'});
  await hit(combat(fixedActor,{id:'native-fixed-case'}));
  assert.equal(chatMessages.at(-1).kind,'fixed');
- assert.match(chatMessages.at(-1).data.content,/HP damage: <strong>3<\/strong>/);
+ assert.match(chatMessages.at(-1).data.content,/native-fixed.*takes.*3.*points of bleed damage!/);
+ assert.doesNotMatch(chatMessages.at(-1).data.content,/Rolled:|Prevented:|HP damage:/);
+ // Announce using the actual elected GM's language; other locales use English.
+ gm.game.i18n.lang='fr';
+ const frenchActor=createActor('Croûte');
+ const frenchStatus=nativeBleed(frenchActor,'2');
+ await api.configure({effect:frenchStatus,formula:'2'});
+ await hit(combat(frenchActor,{id:'bleed-french'}));
+ assert.match(chatMessages.at(-1).data.content,/Croûte.*subit.*2.*points de saignement !/);
+ gm.game.i18n.lang='de';
+ const germanActor=createActor('Sailor');
+ const germanStatus=nativeBleed(germanActor,'2');
+ await api.configure({effect:germanStatus,formula:'2'});
+ await hit(combat(germanActor,{id:'bleed-english-fallback'}));
+ assert.match(chatMessages.at(-1).data.content,/Sailor.*takes.*2.*points of bleed damage!/);
+ gm.game.i18n.lang='en';
  // Run the ACTUAL documented Scarification Script Call in a sandbox for
  // each PF1 barbarian milestone, not a separately reimplemented formula.
  const docs=fs.readFileSync(path.resolve(__dirname,'../docs/BLEED.md'),'utf8');
