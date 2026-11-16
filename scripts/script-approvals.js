@@ -116,20 +116,20 @@ function saDiscover(){
     const key=saKey(actor.uuid,item.uuid,id);
     if(seen.has(key))continue;
     seen.add(key);
-    let supported=false,approved=false,reason='';
+    let supported=false,approved=false,reason='',fingerprint=null;
     try{
      if(typeof call.execute!=='function')throw Error('Native executable Script Call unavailable');
      const resolved=saFind(actor,item,id);
      if(resolved!==call)throw Error('Native Script Call identity mismatch');
-     saFingerprint(call);
+     fingerprint=saFingerprint(call);
      supported=true;
      const record=saRows().find(x=>x.key===key);
      approved=!!record&&record.category===call.category&&
-      record.name===call.name&&record.fingerprint===saFingerprint(call);
+      record.name===call.name&&record.fingerprint===fingerprint;
     }catch(error){reason=String(error?.message??error)}
     result.push({actorUuid:actor.uuid,itemUuid:item.uuid,scriptId:id,key,
      actorName:actor.name??actor.uuid,itemName:item.name??item.uuid,
-     name:call.name??'',category:call.category??'',supported,approved,reason});
+     name:call.name??'',category:call.category??'',supported,approved,reason,fingerprint});
    }
   }
  }
@@ -182,7 +182,8 @@ function saRegisterMenu(){
     if(desired){
      // The underlying native source must still be identical to the display snapshot.
      const current=saDiscover().find(x=>x.key===entry.key);
-     if(!current?.supported)throw Error('Script Call changed; reopen approvals.');
+     if(!current?.supported||current.fingerprint!==entry.fingerprint)
+      throw Error('Script Call changed; reopen approvals.');
      if(!current.approved)await saApprove(entry);
     }else if(saRows().some(row=>row.key===entry.key)){
      await saRevoke(entry);
