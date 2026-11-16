@@ -1,3 +1,11 @@
+## v1.33.10 — Native Bleed thumbnail hover label
+
+- Correct the native effect miniature hover tooltip: `Saignement - 1d4` for French and `Bleed - 1d4` for all other locales.
+- Use Foundry's `data-tooltip-text` instead of relying on `title` and `aria-label`; also update nested effect-icon anchors used by PF1 layouts.
+- Recalculate the hover text after formula changes and remove stale overrides when Bleed is no longer configured.
+- Preserve the original native condition, formula, damage processing and icon.
+- Extend regression checks for localized hover tooltips.
+
 ## v1.33.9 — Localized native Bleed effect names
 
 - The native Bleed ActiveEffect name now includes its configured formula when set: `Saignement - 1d4` in French or `Bleed - 1d4` otherwise.
