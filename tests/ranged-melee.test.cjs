@@ -413,7 +413,7 @@ function effectiveMeleePenalty(parts){
  // displaying any artificial correction terms.
  const oldTotals=[-4+(4),-5-4+(2),-10-4+0];
  const newTotals=result.map(parts=>parts.reduce((sum,part)=>
-  sum+(String(part).match(/[+-]?\\d+/g)??[])
+  sum+(String(part).match(/[+-]?\d+/g)??[])
    .reduce((acc,value)=>acc+Number(value),0),0));
  assert.deepEqual(newTotals,oldTotals.map(n=>n+1),
   'effective totals are unchanged, including Point Blank Shot');
