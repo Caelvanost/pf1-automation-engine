@@ -178,7 +178,6 @@ const diagonal=token('diagonal',2,2,1);
  user.targets=new Set([center]);
  use=makeUse();
  right.actor.items.contents=[];
- precheckHook(use);
  // Alternative eligible allies (northwest+diagonal) still exist in world,
  // so isolate the explicit list via temporary off-scene dispositions.
  for(const t of tokens)if(![left,center,right].includes(t))
