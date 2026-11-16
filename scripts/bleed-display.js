@@ -158,6 +158,12 @@ function bvHud(hud,element){
   // Foundry V13 TooltipManager reads data-tooltip-text, not title or
   // aria-label. Preserve the native data-tooltip key and avoid HTML.
   control.setAttribute?.('data-tooltip-text',localized);
+  // Some PF1 skins put the hover anchor on the icon nested in the
+  // status control. Override that exact icon's tooltip as well.
+  for(const icon of control.querySelectorAll?.('[data-tooltip], [data-tooltip-text]')??[]){
+   if(icon.classList?.contains?.('pf1ae-bleed-hud-value'))continue;
+   icon.setAttribute?.('data-tooltip-text',localized);
+  }
   if(existing){existing.textContent=formula;continue;}
   if(typeof document?.createElement!=='function')continue;
   const badge=document.createElement('span');
