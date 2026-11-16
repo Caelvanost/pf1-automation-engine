@@ -135,6 +135,34 @@ function effectiveMeleePenalty(parts){
  const results=await Promise.all([a1.addAttacks(),a2.addAttacks()]);
  assert.equal(containsPenalty(results[0][0],-4),true);
  assert.equal(containsPenalty(results[1][0],-4),true);
+ // PF1 v11.11 real Actor system.traits.size shape observed in world:
+ // {base:'med',value:4}, not the old string 'med'. Prepared value wins.
+ const oldAllySize=f.system.traits.size;
+ const oldTargetSize=enemy.system.traits.size;
+ f.system.traits.size={base:'med',value:4};
+ enemy.system.traits.size={base:'med',value:4};
+ u=make();result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),-4,
+  'native PF1 object size must be resolved, not manual target size unknown');
+ assert.equal(API.lastDiagnostic().status,'engaged');
+ enemy.system.traits.size={base:'med',value:6};
+ u=make();result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),-2,
+  'prepared native size value 6 is two categories larger');
+ enemy.system.traits.size={base:'med',value:7};
+ u=make();result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),0,
+  'prepared size change takes priority over base med');
+ enemy.system.traits.size={base:'lg'};
+ u=make();result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),-4,
+  'fallback to native base if prepared value is missing');
+ enemy.system.traits.size={base:'unknown',value:'bad'};
+ u=make();result=await u.addAttacks();
+ assert.equal(API.lastDiagnostic().status,'manual',
+  'unknown values still fail closed instead of assuming Medium');
+ f.system.traits.size=oldAllySize;
+ enemy.system.traits.size=oldTargetSize;
  // Size exemptions.
  enemy.system.traits.size='lg';u=make();result=await u.addAttacks();
  assert.equal(containsPenalty(result[0],-4),true,'one category larger still -4');
