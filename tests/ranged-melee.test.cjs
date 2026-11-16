@@ -276,6 +276,8 @@ function effectiveMeleePenalty(parts){
  assert.equal(scriptInvoked,beforeGM,'GM refuses modified approved Script Call');
  assert.equal(effectiveMeleePenalty(result[0]),-4);
  game.user=user;
+ // Partial override, duplicate and ownership checks.
+ shooter.items.contents.pop();
  // Regression: PF1 has already populated attackCount in rollData during
  // PREPARATION, before ActionUse.addAttacks() or any d20 roll.
  u=make(2);
@@ -324,8 +326,7 @@ function effectiveMeleePenalty(parts){
  await Promise.all([u.addAttacks(),separate.addAttacks()]);
  assert.equal(effectiveMeleePenalty(u.results[0]),-4);
  assert.equal(effectiveMeleePenalty(separate.results[0]),-4);
- // Partial override, duplicate and ownership checks.
- shooter.items.contents.pop();
+
  u=make(2);
  assert.equal(API.prepareAttackOverride({actionUse:u,attackIndex:1,penalty:-2}),true);
  assert.throws(()=>API.prepareAttackOverride({actionUse:u,attackIndex:1,penalty:0}),/Duplicate/);
