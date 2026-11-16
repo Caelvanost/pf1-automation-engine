@@ -1,3 +1,11 @@
+## v1.33.6 — Trusted Table Mode permits exact ranged-melee override Script Calls
+
+- Add **only** `PF1AE:rangedMelee:override` to the trusted-table allowlist for native `toggle` Script Calls, beside `PF1AE:bootstrap`. This fixes elected-GM fallback refusals for Precise Shot on a player-owned Actor.
+- Preserve exact Actor/Item/native Script Call identity checks, category matching and the existing opt-in setting; no blanket trust for arbitrary Script Calls.
+- Preserve secure mode: explicit per-call approval remains necessary, and changing approved source invalidates the approval.
+- Add regression tests for both modes, substituted Actor/Item/Call identity, category restrictions, modified source and full GM-side attack resolution: the authorized Precise Shot override cancels the −4 penalty, whereas unauthorized code leaves it intact.
+- No changes to the existing Precise Shot Script Call, attack mechanics, or melee detection logic.
+
 ## v1.33.5 — Localized shooting-into-melee roll label
 
 - Rename only the native attack-roll modifier tag: `Shooting into melee` when the Foundry client language is English or anything other than French, and `Tir dans le tas` for French (including `fr-FR`).
