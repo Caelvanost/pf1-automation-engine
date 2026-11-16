@@ -1,3 +1,14 @@
+## v1.33.15 — Generic tactical positioning and native Flanking precheck
+
+- Add a **class-neutral, feat-neutral** tactical positioning service with `api.tacticalPositioning.checkFlanking({attacker,target,allies?})`.
+- Analyze PF1e square-grid opposite-side/corner geometry, occupied spaces for Large creatures, PF1 prepared melee reach, actor melee threat, allegiance, elevation and conservative unknown cases. Return a structured `flanking`/`not-flanking`/`uncertain` diagnostic without changing attack math.
+- At `pf1CreateActionUse`, **preselect the existing native PF1 Flanking checkbox** (`shared.useOptions.flanking=true`) for a verified single-target melee attack. The attack dialog remains user-editable; **the native system alone applies +2**, and PF1AE never injects its own second bonus.
+- Native Flanking preselection setting in French/English, enabled by default and independently disableable. Uncertain, non-melee or multi-target actions remain unchanged.
+- No specific feat or class automation is introduced: exceptions continue to belong exclusively in Item Script Calls.
+- Include geometry, reach, uncertainties and native checkbox integration regression tests, plus installation ZIP content checks.
+
+See [Tactical positioning API and limitations](docs/TACTICAL-POSITIONING.md).
+
 ## v1.33.14 — Clean effective shooting-into-melee roll parts
 
 - Native ranged attack rolls now display the **final per-attack melee penalty** only: `-4[Tir dans le tas]`, `-2[Tir dans le tas]`, or no melee penalty for `penalty:0` (English: `Shooting into melee`).
