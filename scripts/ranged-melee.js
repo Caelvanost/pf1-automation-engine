@@ -7,6 +7,9 @@
 const RM_NS='pf1-automation-engine',RM_SETTING='autoRangedMeleePenalty';
 const RM_SCRIPT='PF1AE:rangedMelee:override';
 const RM_OVERRIDES=new WeakMap(),RM_COMPLETED=new WeakSet();
+// Explicit per-ActionUse lifecycle: native rollData.attackCount only counts
+// PREPARED attacks. It is not evidence that a d20 was evaluated.
+const RM_PHASE=new WeakMap();
 const RM_COMMON=new WeakMap();
 const RM_PENDING=new Set();
 const rmPenaltyLabel=()=>String(game.i18n?.lang??'en').toLowerCase().split(/[-_]/)[0]==='fr'
@@ -44,17 +47,34 @@ function rmRemoveCommon(use){
 const rmCleanup=use=>{
  rmRemoveCommon(use);
  RM_OVERRIDES.delete(use);RM_PENDING.delete(use);RM_COMPLETED.add(use);
+ RM_PHASE.set(use,'completed');
 };
 const rmItems=actor=>[...(actor?.items?.contents??actor?.items?.values?.()??[])];
 const rmCalls=item=>[...(item?.scriptCalls?.contents??item?.scriptCalls?.values?.()??[])];
 const rmValid=penalty=>Number.isSafeInteger(penalty)&&penalty>=-20&&penalty<=0;
+// PF1 may create placeholder ChatAttack records before evaluating d20s.
+// A populated array alone is not proof of a started roll. A native
+// D20RollPF object on a card, or a posted message, is a fail-closed signal.
+function rmNativeRollStarted(use){
+ if(use?.shared?.message!=null)return true;
+ const cards=use?.shared?.chatAttacks;
+ return Array.isArray(cards)&&cards.some(card=>
+  card?.attack!=null||card?.critConfirm!=null||
+  card?.rolls?.attack!=null);
+}
 function rmPrepare({actionUse,attackIndex=0,penalty,reason='external-script'}={}){
  if(!rmIdentity(actionUse)||!rmAttack(actionUse))
   throw Error('A permitted native ranged attack ActionUse is required.');
  if(!Number.isSafeInteger(attackIndex)||attackIndex<0||attackIndex>99||!rmValid(penalty))
   throw Error('Invalid attack index or ranged melee penalty.');
- if(RM_COMPLETED.has(actionUse)||actionUse?.shared?.chatAttacks?.length||
-    actionUse?.shared?.rollData?.attackCount!=null)
+ // Only a registered use before native addAttacks() reaches its roll stage
+ // may accept a new override. Native PF1 prepares rollData.attackCount
+ // before calling addAttacks(): it MUST NOT be used as a roll indicator.
+ // chatAttacks entries are created/filled by native ChatAttack.addAttack.
+ const phase=RM_PHASE.get(actionUse);
+ if(RM_COMPLETED.has(actionUse)||
+    (phase!=='created'&&phase!=='preparing')||
+    rmNativeRollStarted(actionUse))
   throw Error('Attack already rolled or completed.');
  const records=RM_OVERRIDES.get(actionUse)??new Map();
  if(records.has(attackIndex))throw Error('Duplicate ranged melee override for this attack.');
@@ -262,6 +282,7 @@ function rmSelectTarget(use){
 function rmCreateUse(use){
  if(!rmAuthorized(use))return;
  RM_PENDING.add(use);
+ if(!RM_PHASE.has(use))RM_PHASE.set(use,'created');
  if(!rmEnabled()||!rmIdentity(use)||!rmAttack(use))return;
  const shared=use.shared;
  if(!Array.isArray(shared?.attackBonus))return;
@@ -349,13 +370,30 @@ async function rmNativeScripts(use){
  }
 }
 async function rmBeforeRoll(use,wrapped,args){
- if(!rmEnabled()||!rmIdentity(use)||!rmAttack(use)||RM_COMPLETED.has(use)||
-    !Array.isArray(use.shared?.attacks)){
-  // If the setting was disabled after creation or a once-valid ActionUse
-  // became invalid, never leave a previously injected common modifier.
+ const phase=RM_PHASE.get(use);
+ // A completed ActionUse may be invoked natively again, but never reuse
+ // PF1AE overrides. A concurrent invocation on the SAME use must not
+ // start another native d20 sequence while scripts are still preparing.
+ if(phase==='preparing'||phase==='rolling')
+  throw Error('Attack already rolling or being prepared.');
+ if(phase==='completed'||RM_COMPLETED.has(use))
+  return wrapped(...args);
+ if(!rmEnabled()||!rmIdentity(use)||!rmAttack(use)||
+    !Array.isArray(use.shared?.attacks)||phase!=='created'){
   if(!rmEnabled()||!rmIdentity(use)||!rmAttack(use))rmRemoveCommon(use);
+  // A registered use remains closed even when the setting was disabled
+  // before the roll, or when native attack preparation was cancelled.
+  if(phase==='created'){
+   RM_PHASE.set(use,'rolling');
+   try{return await wrapped(...args)}
+   finally{rmCleanup(use)}
+  }
   return wrapped(...args);
  }
+ // Set phase synchronously before any await. This prevents a second
+ // addAttacks() invocation from racing during an async Script Call.
+ RM_PHASE.set(use,'preparing');
+ try{
  const attacks=use.shared.attacks;
  const context=rmSelectTarget(use);
  let decision=context.reason?{status:'manual',reason:context.reason}:
@@ -377,7 +415,8 @@ async function rmBeforeRoll(use,wrapped,args){
  if(rmNativeManual(use)){
   rmRemoveCommon(use);
   rmReport('native-manual',{reason:'explicit native attack bonus or melee modifier'});
-  rmCleanup(use);return wrapped(...args);
+  RM_PHASE.set(use,'rolling');
+  return await wrapped(...args);
  }
  if(decision.status==='manual'&&context.target&&overrides.size===0&&
     game.settings.get(RM_NS,'manualRangedMeleePrompt')===true){
@@ -415,9 +454,14 @@ async function rmBeforeRoll(use,wrapped,args){
    overrides:[...overrides.keys()],target:context.target?.name??null,
    reason:decision.reason??null,uncertain:decision.uncertain??[],
    stage:'addAttacks'});
+  RM_PHASE.set(use,'rolling');
   return await wrapped(...args);
  }finally{
   attacks.forEach((a,i)=>{a.attackBonus=original[i]});
+ }
+ }finally{
+  // Covers cancellation or failure at ANY preparation stage, including
+  // async Script Calls and prompts before native dice execution begins.
   rmCleanup(use);
  }
 }
