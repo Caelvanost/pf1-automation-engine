@@ -1,4 +1,4 @@
-# PF1AE — Shooting into Melee v1.33.1
+# PF1AE — Shooting into Melee v1.33.2
 
 Foundry VTT 13.351, Pathfinder 1e 11.11, and optional PF1 Firearms & Reload.
 
@@ -118,3 +118,15 @@ Automated tests validate the isolated ActionUse path; actual Foundry/PF1FR live 
 ### v1.33.1 — Vérification du chemin commun
 
 Sur un tir vers une cible engagée, un bonus `-4[PF1AE Shooting into Melee]` doit être présent dans `shared.attackBonus` **dès `pf1CreateActionUse`**, à côté d'un éventuel bonus de portée indépendant. Avec Tir de précision, la formule de chaque attaque peut montrer le −4 commun et un +4 de correction : **leur somme est 0**. Après la résolution, aucun bonus temporaire de mêlée ne doit rester sur l'ActionUse. Un changement de cible ou un bonus manuel tardif doit invalider le −4 préparé.
+
+### v1.33.2 — Taille native PF1 11.11
+
+Les acteurs Pathfinder 1e 11.11 exposent la taille sous la forme `system.traits.size = {base: "med", value: 4}`. Le moteur utilise en priorité la taille **calculée** `value` (y compris sous un effet changeant de taille), et `base` seulement en repli. Les anciens champs de taille sous forme de chaîne restent acceptés. Un champ inconnu continue de produire un diagnostic `manual` plutôt qu'une supposition.
+
+Pour contrôler la taille de la cible sélectionnée :
+
+```js
+console.log([...game.user.targets][0]?.actor?.system?.traits?.size)
+```
+
+La Harpy de l'exemple utilisateur est `{base:"med", value:4}` et doit désormais être reconnue comme Moyenne. Cette correction ne préjuge pas de l'allonge et de la menace, vérifiées ensuite indépendamment.
