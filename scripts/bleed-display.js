@@ -200,6 +200,31 @@ async function bvRestoreHiding(){
   }
  }
 }
+
+/** Bring existing native Bleed condition names up to date on world load.
+ * Only the elected active GM writes, avoiding conflicting client locales.
+ */
+async function bvRestoreNames(){
+ if(!bvEnabled()||game.user?.isGM!==true)return;
+ const leader=[...(game.users??[])].filter(u=>u.active&&u.isGM)
+  .sort((a,b)=>a.id.localeCompare(b.id))[0];
+ if(leader&&leader.id!==game.user.id)return;
+ const actors=new Map();
+ const add=actor=>{if(actor?.documentName==='Actor'&&actor.uuid)
+  actors.set(actor.uuid,actor);};
+ for(const actor of game.actors?.contents??[])add(actor);
+ for(const scene of game.scenes?.contents??[])
+  for(const token of scene.tokens?.contents??[])add(token.actor??token.object?.actor);
+ for(const actor of actors.values()){
+  const effect=bvNative(actor),name=bvLabel(actor);
+  if(!effect||!name||typeof effect.update!=='function'||effect.name===name)continue;
+  // Never rename an unrelated unconfigured native bleed status.
+  if(effect.getFlag?.(BV_NS,'bleed')?.enabled!==true)continue;
+  try{await effect.update({name});}
+  catch(error){console.warn('[PF1AE][BleedDisplay] Cannot update native effect name',effect.uuid,error);}
+ }
+}
+
 function bvInstall(){
  const klass=CONFIG.Token?.objectClass??globalThis.Token;
  const prototype=klass?.prototype;
@@ -251,6 +276,7 @@ Hooks.once('ready',()=>{
     console.warn('[PF1AE][BleedDisplay] Could not hide generated Buff',error));
  });
  void bvRestoreHiding();
+ void bvRestoreNames();
  const mod=game.modules.get(BV_NS);mod.api??={};
  mod.api.bleedDisplay=Object.freeze({
   formula:bvFormula,
@@ -258,6 +284,7 @@ Hooks.once('ready',()=>{
   sheet:(app,element)=>bvSheet(app,element),
   refresh:token=>bvPaint(token),
   hud:(hud,element)=>bvHud(hud,element),
-  hideGenerated:()=>bvRestoreHiding()
+  hideGenerated:()=>bvRestoreHiding(),
+  refreshNames:()=>bvRestoreNames()
  });
 });
