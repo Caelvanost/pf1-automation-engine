@@ -52,6 +52,16 @@ const rmCleanup=use=>{
 const rmItems=actor=>[...(actor?.items?.contents??actor?.items?.values?.()??[])];
 const rmCalls=item=>[...(item?.scriptCalls?.contents??item?.scriptCalls?.values?.()??[])];
 const rmValid=penalty=>Number.isSafeInteger(penalty)&&penalty>=-20&&penalty<=0;
+// PF1 may create placeholder ChatAttack records before evaluating d20s.
+// A populated array alone is not proof of a started roll. A native
+// D20RollPF object on a card, or a posted message, is a fail-closed signal.
+function rmNativeRollStarted(use){
+ if(use?.shared?.message!=null)return true;
+ const cards=use?.shared?.chatAttacks;
+ return Array.isArray(cards)&&cards.some(card=>
+  card?.attack!=null||card?.critConfirm!=null||
+  card?.rolls?.attack!=null);
+}
 function rmPrepare({actionUse,attackIndex=0,penalty,reason='external-script'}={}){
  if(!rmIdentity(actionUse)||!rmAttack(actionUse))
   throw Error('A permitted native ranged attack ActionUse is required.');
@@ -64,8 +74,7 @@ function rmPrepare({actionUse,attackIndex=0,penalty,reason='external-script'}={}
  const phase=RM_PHASE.get(actionUse);
  if(RM_COMPLETED.has(actionUse)||
     (phase!=='created'&&phase!=='preparing')||
-    (actionUse?.shared?.chatAttacks?.length??0)>0||
-    actionUse?.shared?.message!=null)
+    rmNativeRollStarted(actionUse))
   throw Error('Attack already rolled or completed.');
  const records=RM_OVERRIDES.get(actionUse)??new Map();
  if(records.has(attackIndex))throw Error('Duplicate ranged melee override for this attack.');
