@@ -89,8 +89,8 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  assert.equal(otherIcon.children.length,0);
  // The native ActiveEffect wins over any legacy Buff formula.
  a.effects={contents:[{documentName:'ActiveEffect',statuses:new Set(['bleed']),
-  disabled:false,
-  getFlag(ns,key){return key==='bleed'?{formula:'2d4+1'}:null}
+  disabled:false,flags:{[NS]:{bleed:{formula:'2d4+1'}}},
+  getFlag(ns,key){return this.flags[ns]?.[key]??null}
  }]};
  assert.equal(api.bleedDisplay.formula(a),'2d4+1');
  a.effects.contents[0].disabled=true;
