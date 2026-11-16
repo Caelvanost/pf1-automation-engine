@@ -34,7 +34,8 @@ const unrelated=other(a);
 a.items.contents.push(manual,unrelated);
 const bleedSrc='systems/pf1/icons/conditions/bleed.webp';
 const sprite=(src)=>({texture:{source:{resource:{url:src}}},
- width:32,height:32,children:[],addChild(child){this.children.push(child)}});
+ width:32,height:32,children:[],addChild(child){this.children.push(child)},
+ removeChild(child){this.children=this.children.filter(x=>x!==child)}});
 const bleedIcon=sprite(bleedSrc),otherIcon=sprite('icons/svg/aura.svg');
 const token=new FakeToken();
 token.id='token-1';token.actor=a;token.effects={children:[otherIcon,bleedIcon]};
@@ -42,7 +43,8 @@ const game={
  user:{id:'gm',isGM:true},actors:{contents:[a]},scenes:{contents:[]},
  modules:new Map([[NS,{active:true,api}],['lib-wrapper',{active:false}]])
 };
-const ctx={console,Map,Set,Promise,Date,game,PIXI:{Text:FakeText},
+const document={createElement(){return {className:'',textContent:'',style:{}}}};
+const ctx={console,Map,Set,Promise,Date,game,document,PIXI:{Text:FakeText},
  canvas:{tokens:{placeables:[token]}},CONFIG:{
  statusEffects:[{id:'bleed',img:bleedSrc},{id:'prone',img:'icons/svg/aura.svg'}],
  Token:{objectClass:FakeToken}
@@ -99,6 +101,35 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  a.items.contents=[unrelated];
  assert.equal(api.bleedDisplay.formula(a),'2d4+1',
   'native Bleed flags remain sufficient with no Item Buff');
+ // Selected-token native status picker shows the same formula.
+ const hudControl={style:{},children:[],attributes:{},
+  setAttribute(name,value){this.attributes[name]=value},
+  appendChild(child){this.children.push(child)},
+  querySelector(selector){return selector==='.pf1ae-bleed-hud-value'?
+   this.children.find(c=>c.className==='pf1ae-bleed-hud-value')??null:null}};
+ const hudRoot={querySelectorAll(selector){
+  assert.match(selector,/data-status-id/);return [hudControl];
+ }};
+ const hud={object:{actor:a}};
+ const event=hooks.get('renderTokenHUD')?.[0];
+ assert.equal(typeof event,'function','token HUD render listener installed');
+ event(hud,hudRoot);
+ assert.equal(hudControl.children.length,1);
+ assert.equal(hudControl.children[0].textContent,'2d4+1');
+ assert.equal(hudControl.attributes['aria-label'],'Bleed : 2d4+1');
+ assert.equal(hudControl.children[0].style.cssText.includes('pointer-events:none'),true);
+ a.effects.contents[0].flags={[NS]:{bleed:{formula:'5'}}};
+ event(hud,hudRoot);
+ assert.equal(hudControl.children.length,1,'HUD value updates without duplicate');
+ assert.equal(hudControl.children[0].textContent,'5');
+ game.i18n={lang:'fr'};
+ event(hud,hudRoot);
+ assert.equal(hudControl.attributes['aria-label'],'Saignement : 5');
+ // Removing bleed clears the HUD badge while leaving other status controls alone.
+ a.effects.contents[0].disabled=true;
+ event(hud,hudRoot);
+ assert.equal(hudControl.children[0].removed,true);
+ a.effects.contents[0].disabled=false;
  console.log('PASS bleed-display: native Bleed icon formula overlay, single marker,');
  console.log(' redraw/update/reconnect-safe, migration, and other Buff isolation.');
 })().catch(error=>{console.error(error);process.exitCode=1});
