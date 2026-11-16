@@ -238,6 +238,7 @@ function effectiveMeleePenalty(parts){
  for(const fn of (hooks.get('init')??[]).slice(previousInit))fn();
  for(const fn of ready.slice(previousReady))fn();
  const approvalApi=mod.api.scriptApprovals;
+ gm.targets=user.targets;
  game.user=gm;
  assert.equal(shooter.testUserPermission(user,'OWNER'),true);
  assert.equal(approvalApi.check(shooter,preciseFeat,call).approved,false,
