@@ -294,6 +294,20 @@ function effectiveMeleePenalty(parts){
  assert.equal(result[0].some(x=>String(x).includes('(+4)[Shooting into melee]')),true);
  assert.throws(()=>API.prepareAttackOverride({actionUse:u,attackIndex:0,penalty:0}),
   /rolled or completed/);
+ // Native ChatAttack placeholders also may exist before any d20 is
+ // evaluated. An actual attack Roll object must still fail closed.
+ u=make();
+ u.shared.chatAttacks=[{attack:null,critConfirm:null}];
+ assert.equal(API.prepareAttackOverride({actionUse:u,penalty:0}),true,
+  'native card placeholders may exist during attack preparation');
+ result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),0);
+ u=make();
+ u.shared.chatAttacks=[{attack:{total:17}}];
+ assert.throws(()=>API.prepareAttackOverride({actionUse:u,penalty:0}),
+  /rolled or completed/,'a preexisting native attack D20Roll refuses override');
+ u.shared.chatAttacks=[];
+ await u.addAttacks();
  // Async native Script Call has a legitimate preparation window even
  // after count has been prepared. A second simultaneous addAttacks() must
  // not enter while the first use is awaiting its feat script.
