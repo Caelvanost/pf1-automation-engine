@@ -106,6 +106,7 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  // Selected-token native status picker shows the same formula.
  const hudControl={style:{},children:[],attributes:{},
   setAttribute(name,value){this.attributes[name]=value},
+  removeAttribute(name){delete this.attributes[name]},
   appendChild(child){this.children.push(child)},
   querySelector(selector){return selector==='.pf1ae-bleed-hud-value'?
    this.children.find(c=>c.className==='pf1ae-bleed-hud-value')??null:null}};
@@ -119,20 +120,25 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  assert.equal(hudControl.children.length,1);
  assert.equal(hudControl.children[0].textContent,'2d4+1');
  assert.equal(hudControl.attributes['aria-label'],'Bleed - 2d4+1');
+ assert.equal(hudControl.attributes['data-tooltip-text'],'Bleed - 2d4+1',
+  'Foundry hover reads data-tooltip-text, not native title');
  assert.equal(hudControl.children[0].style.cssText.includes('pointer-events:none'),true);
  a.effects.contents[0].flags={[NS]:{bleed:{enabled:true,formula:'5'}}};
  event(hud,hudRoot);
  assert.equal(hudControl.children.length,1,'HUD value updates without duplicate');
  assert.equal(hudControl.children[0].textContent,'5');
+ assert.equal(hudControl.attributes['data-tooltip-text'],'Bleed - 5');
  game.i18n={lang:'fr'};
  event(hud,hudRoot);
  assert.equal(hudControl.attributes['aria-label'],'Saignement - 5');
+ assert.equal(hudControl.attributes['data-tooltip-text'],'Saignement - 5');
  assert.equal(api.bleedDisplay.label(a),'Saignement - 5');
  const effectName={textContent:'Bleed',setAttribute(name,value){this[name]=value}};
  const sheetRow={querySelector(){return effectName}};
  const sheetRoot={querySelectorAll(){return [sheetRow]}};
  api.bleedDisplay.sheet({actor:a},sheetRoot);
  assert.equal(effectName.textContent,'Saignement - 5');
+ assert.equal(effectName['data-tooltip-text'],'Saignement - 5');
  game.i18n.lang='de';
  api.bleedDisplay.sheet({actor:a},sheetRoot);
  assert.equal(effectName.textContent,'Bleed - 5','non-French locale gets English name');
@@ -141,6 +147,8 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  a.effects.contents[0].disabled=true;
  event(hud,hudRoot);
  assert.equal(hudControl.children[0].removed,true);
+ assert.equal(hudControl.attributes['data-tooltip-text'],undefined,
+  'stale hover override removed when effect disabled');
  a.effects.contents[0].disabled=false;
  // Existing native Bleed conditions are renamed on GM migration without recreation.
  a.effects.contents[0].name='Bleed';
