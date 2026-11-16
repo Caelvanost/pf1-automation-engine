@@ -17,7 +17,13 @@ const game={user,modules,i18n:{lang:'fr'},settings:{
 const scene={id:'scene',grid:{type:1,units:'ft'}};
 const grid={size:100,
  getCenterPoint({i,j}){return {x:(j+.5)*100,y:(i+.5)*100}},
- measurePath([a,b]){return {distance:Math.hypot(b.x-a.x,b.y-a.y)/100*5}}};
+ measurePath([a,b]){
+  // Pathfinder 1e diagonal grid: 5 ft then 10 ft, not Euclidean distance.
+  const dx=Math.abs(b.x-a.x)/100,dy=Math.abs(b.y-a.y)/100;
+  const diagonals=Math.min(dx,dy),straight=Math.max(dx,dy)-diagonals;
+  return {distance:5*(straight+Math.floor(diagonals/2)*3+
+   (diagonals%2))};
+ }};
 const tokens=[];
 function actor(id,{reach=5,armed=true,disabled=false}={}){
  return {documentName:'Actor',uuid:'Actor.'+id,
