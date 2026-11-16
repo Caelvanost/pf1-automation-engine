@@ -2,6 +2,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const SOURCE=fs.readFileSync(path.resolve(__dirname,'../scripts/ranged-melee.js'),'utf8');
+const APPROVAL=fs.readFileSync(path.resolve(__dirname,'../scripts/script-approvals.js'),'utf8');
 const NS='pf1-automation-engine';
 const user={id:'player',isGM:false,active:true,targets:new Set()};
 const gm={id:'gm',isGM:true,active:true};
@@ -52,7 +53,8 @@ const game={
  i18n:{lang:'en'},
  user,users:[user,gm],modules:new Map(),combat,
  settings:{get(_n,k){return settings.get(k)},
-  register(_n,k,v){if(!settings.has(k))settings.set(k,v.default)}}
+  register(_n,k,v){if(!settings.has(k))settings.set(k,v.default)},
+  async set(_n,k,v){settings.set(k,v);return v}}
 };
 const mod={active:true,api:{
  scriptApprovals:{check(_actor,_item,call){return {approved:call._approved===true}}}
@@ -60,7 +62,10 @@ const mod={active:true,api:{
 game.modules.set(NS,mod);
 const ctx={console,Promise,Date,Map,Set,WeakMap,WeakSet,Number,Object,
  game,Hooks:{on,once(name,fn){if(name==='ready')ready.push(fn);else on(name,fn)}},
- foundry:{applications:{api:{DialogV2:{wait:async()=>manualChoices.shift()??null}}}},
+ foundry:{utils:{deepClone:structuredClone},
+  applications:{api:{DialogV2:{wait:async()=>manualChoices.shift()??null}}}},
+ fromUuid:async uuid=>uuid===shooter.uuid?shooter:
+  uuid===preciseFeat?.uuid?preciseFeat:null,
  canvas:{scene,grid,tokens:{placeables:objects}},pf1:{
   actionUse:{ActionUse},settings:{distance:{metric:false}}}};
 ctx.globalThis=ctx;vm.createContext(ctx);
@@ -221,6 +226,52 @@ function effectiveMeleePenalty(parts){
  assert.equal(result.every(parts=>parts.some(x=>String(x).includes('(+4)[Shooting into melee]'))),true);
  assert.equal(u.shared.attackBonus.length,1,'Precise Shot does not leave a shared modifier');
  assert.equal(u.shared.attacks.every((a,i)=>a.attackBonus===String(-5*i)),true);
+ // Exercise the REAL ScriptApproval service together with the REAL native
+ // ranged melee script dispatcher while a GM rolls an actor also owned
+ // by a player. In secure mode it must not execute without approval.
+ // Trusted mode must allow only this exact native toggle subscription.
+ call._source={id:call.id,category:call.category,name:call.name,
+  script:'PF1AE:rangedMelee:override native feat code'};
+ const previousInit=(hooks.get('init')??[]).length;
+ const previousReady=ready.length;
+ vm.runInContext(APPROVAL,ctx,{filename:'script-approvals.js'});
+ for(const fn of (hooks.get('init')??[]).slice(previousInit))fn();
+ for(const fn of ready.slice(previousReady))fn();
+ const approvalApi=mod.api.scriptApprovals;
+ game.user=gm;
+ assert.equal(shooter.testUserPermission(user,'OWNER'),true);
+ assert.equal(approvalApi.check(shooter,preciseFeat,call).approved,false,
+  'secure mode refuses player-owned unapproved native toggle');
+ let beforeGM=scriptInvoked;
+ u=make();result=await u.addAttacks();
+ assert.equal(scriptInvoked,beforeGM,'GM must not execute unapproved player Script Call');
+ assert.equal(effectiveMeleePenalty(result[0]),-4,'secure refusal preserves −4');
+ assert.equal(API.lastDiagnostic().status,'engaged');
+ settings.set('trustedTableMode',true);
+ assert.equal(approvalApi.check(shooter,preciseFeat,call).approved,true,
+  'trusted table accepts exact native ranged melee toggle');
+ u=make();result=await u.addAttacks();
+ assert.equal(scriptInvoked,beforeGM+1,'GM executes native player feat in trusted mode');
+ assert.equal(effectiveMeleePenalty(result[0]),0,
+  'GM-side Precise Shot cancels the shared −4 on player-owned actor');
+ assert.equal(result[0].some(x=>String(x).includes('(+4)[Shooting into melee]')),true);
+ assert.equal(u.shared.attackBonus.length,1,'GM cancellation cleans temporary bonus');
+ settings.set('trustedTableMode',false);
+ assert.equal(approvalApi.check(shooter,preciseFeat,call).approved,false);
+ await approvalApi.approve({actor:shooter,item:preciseFeat,scriptId:call.id});
+ assert.equal(approvalApi.check(shooter,preciseFeat,call).approved,true);
+ beforeGM=scriptInvoked;
+ u=make();result=await u.addAttacks();
+ assert.equal(scriptInvoked,beforeGM+1,
+  'secure mode allows only individually approved native call');
+ assert.equal(effectiveMeleePenalty(result[0]),0);
+ call._source.script='edited code after approval';
+ assert.equal(approvalApi.check(shooter,preciseFeat,call).approved,false);
+ beforeGM=scriptInvoked;
+ u=make();result=await u.addAttacks();
+ assert.equal(scriptInvoked,beforeGM,'GM refuses modified approved Script Call');
+ assert.equal(effectiveMeleePenalty(result[0]),-4);
+ game.user=user;
  // Partial override, duplicate and ownership checks.
  shooter.items.contents.pop();
  u=make(2);
