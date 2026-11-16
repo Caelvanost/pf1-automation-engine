@@ -56,6 +56,61 @@ function bvSheet(app,element){
  }
 }
 
+
+/**
+ * PF1's rich token-condition tooltip is rendered separately from the HUD
+ * button and reads the system condition label, not the ActiveEffect name.
+ * Patch ONLY its displayed Bleed heading, while the Bleed sprite is hovered.
+ * No global CONFIG.statusEffects changes or saved-document mutations.
+ */
+let BV_TOOLTIP_OBSERVER=null, BV_HOVER_SPRITE=null, BV_HOVER_ACTOR=null;
+const bvTooltipContainers=()=>document?.querySelectorAll?.(
+ '[role="tooltip"], #tooltip, [id*="tooltip"], [class*="tooltip"]'
+)??[];
+function bvPatchRichTooltip(){
+ const actor=BV_HOVER_ACTOR,label=bvLabel(actor);
+ if(!label)return;
+ for(const root of bvTooltipContainers()){
+  const headers=root.querySelectorAll?.(
+   'h1, h2, h3, h4, h5, .title, .tooltip-title, .effect-name, .name, header'
+  )??[];
+  for(const header of headers){
+   // A strict native Bleed heading prevents rewriting other status hover
+   // cards even when the same actor has multiple active effects.
+   const text=String(header.textContent??'').trim();
+   if(text!=='Bleed'&&text!=='Saignement')continue;
+   header.textContent=label;
+   return;
+  }
+ }
+}
+function bvCloseRichTooltip(sprite){
+ if(sprite&&BV_HOVER_SPRITE!==sprite)return;
+ BV_TOOLTIP_OBSERVER?.disconnect?.();
+ BV_TOOLTIP_OBSERVER=null;
+ BV_HOVER_SPRITE=null;
+ BV_HOVER_ACTOR=null;
+}
+function bvOpenRichTooltip(token,sprite){
+ if(!bvEnabled()||!bvLabel(token?.actor))return;
+ if(BV_HOVER_SPRITE===sprite){bvPatchRichTooltip();return;}
+ bvCloseRichTooltip();
+ BV_HOVER_SPRITE=sprite;BV_HOVER_ACTOR=token.actor;
+ bvPatchRichTooltip();
+ const body=document?.body;
+ if(body&&typeof MutationObserver==='function'){
+  BV_TOOLTIP_OBSERVER=new MutationObserver(()=>bvPatchRichTooltip());
+  BV_TOOLTIP_OBSERVER.observe(body,{childList:true,subtree:true,characterData:true});
+ }
+}
+function bvBindRichTooltip(token,sprite){
+ if(typeof sprite?.on!=='function'||sprite.pf1aeRichBleedHover===true)return;
+ sprite.pf1aeRichBleedHover=true;
+ sprite.on('pointerover',()=>bvOpenRichTooltip(token,sprite));
+ sprite.on('pointerout',()=>bvCloseRichTooltip(sprite));
+ sprite.on('destroyed',()=>bvCloseRichTooltip(sprite));
+}
+
 const bvIconSources=actor=>{
  const sources=new Set();
  const add=s=>{if(typeof s==='string'&&s.length>0)sources.add(s)};
@@ -96,6 +151,7 @@ function bvPaint(token){
  if(typeof PIXI?.Text!=='function')return;
  const sprite=bvSprite(token);
  if(!sprite)return;
+ bvBindRichTooltip(token,sprite);
  const formula=bvFormula(token.actor);
  const label=bvLabel(token.actor);
  if(label){sprite.title=label;sprite.accessibleTitle=label;}
@@ -301,6 +357,7 @@ Hooks.once('ready',()=>{
   refresh:token=>bvPaint(token),
   hud:(hud,element)=>bvHud(hud,element),
   hideGenerated:()=>bvRestoreHiding(),
-  refreshNames:()=>bvRestoreNames()
+  refreshNames:()=>bvRestoreNames(),
+  richTooltip:()=>bvPatchRichTooltip()
  });
 });
