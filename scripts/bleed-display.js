@@ -71,10 +71,10 @@ function bvPatchRichTooltip(){
  const actor=BV_HOVER_ACTOR,label=bvLabel(actor);
  if(!label)return;
  for(const root of bvTooltipContainers()){
-  const headers=root.querySelectorAll?.(
-   'h1, h2, h3, h4, h5, .title, .tooltip-title, .effect-name, .name, header'
-  )??[];
-  for(const header of headers){
+  // Rich PF1 condition popovers may use plain DIV/SPAN headings rather than
+  // semantic H-elements. Search descendants from innermost to outermost.
+  const nodes=[...(root.querySelectorAll?.('*')??[])].slice(0,300);
+  for(const header of nodes.reverse()){
    // A strict native Bleed heading prevents rewriting other status hover
    // cards even when the same actor has multiple active effects.
    const text=String(header.textContent??'').trim();
