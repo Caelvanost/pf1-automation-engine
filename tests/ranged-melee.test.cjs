@@ -49,6 +49,7 @@ const scene={id:'scene',grid:{units:'ft'}};
 const grid={measurePath:([a,b])=>({distance:Math.abs(a.x-b.x)})};
 let combat={combatants:[]};
 const game={
+ i18n:{lang:'en'},
  user,users:[user,gm],modules:new Map(),combat,
  settings:{get(_n,k){return settings.get(k)},
   register(_n,k,v){if(!settings.has(k))settings.set(k,v.default)}}
@@ -87,21 +88,21 @@ const make=(count=1,actorDoc=shooter,itemDoc=weapon,actionDoc=action,origin=sour
 function containsPenalty(parts,penalty){
  return parts.some(x=>{
   const text=String(x);
-  return text.includes('('+penalty+')[PF1AE Shooting into Melee]')||
-   text.includes(penalty+'[PF1AE Shooting into Melee]');
+  return text.includes('('+penalty+')[Shooting into melee]')||
+   text.includes(penalty+'[Shooting into melee]');
  });
 }
 function effectiveMeleePenalty(parts){
  return parts.reduce((total,x)=>{
   const text=String(x);
-  if(!text.includes('[PF1AE Shooting into Melee'))return total;
-  const parsed=Number(text.match(/\(?([+-]?\d+)\)?\[PF1AE Shooting into Melee/)?.[1]);
+  if(!text.includes('[Shooting into melee'))return total;
+  const parsed=Number(text.match(/\(?([+-]?\d+)\)?\[Shooting into melee/)?.[1]);
   return total+(Number.isFinite(parsed)?parsed:0);
  },0);
 }
 (async()=>{
  let u=make();
- assert.equal(u.shared.attackBonus.some(x=>String(x).includes('-4[PF1AE Shooting into Melee]')),true,
+ assert.equal(u.shared.attackBonus.some(x=>String(x).includes('-4[Shooting into melee]')),true,
   'pre-roll common penalty is injected at pf1CreateActionUse (like range)');
  let result=await u.addAttacks();
  assert.equal(containsPenalty(result[0],-4),true,'engaged target gets -4 before roll');
@@ -217,7 +218,7 @@ function effectiveMeleePenalty(parts){
  assert.equal(scriptInvoked,1);
  assert.equal(result.every(parts=>effectiveMeleePenalty(parts)===0),true,
   'index +4 corrections cancel the shared -4 for Precise Shot');
- assert.equal(result.every(parts=>parts.some(x=>String(x).includes('(+4)[PF1AE Shooting into Melee Override]'))),true);
+ assert.equal(result.every(parts=>parts.some(x=>String(x).includes('(+4)[Shooting into melee]'))),true);
  assert.equal(u.shared.attackBonus.length,1,'Precise Shot does not leave a shared modifier');
  assert.equal(u.shared.attacks.every((a,i)=>a.attackBonus===String(-5*i)),true);
  // Partial override, duplicate and ownership checks.
@@ -342,6 +343,27 @@ function effectiveMeleePenalty(parts){
  delete enemy.getRollData;
  f.system.attributes.reach=r1;
  enemy.system.attributes.reach=r2;
+ // Language is taken from the active Foundry client, not the world.
+ // The exact same labels must work for the early shared penalty and
+ // the later per-index corrections for Precise Shot.
+ game.i18n.lang='fr';
+ u=make();result=await u.addAttacks();
+ assert.equal(result[0].some(v=>String(v).includes('-4[Tir dans le tas]')),true);
+ assert.equal(result[0].some(v=>String(v).includes('[Shooting into melee]')),false);
+ u=make(1);
+ API.prepareAttackOverride({actionUse:u,attackIndex:0,penalty:0});
+ result=await u.addAttacks();
+ assert.equal(result[0].some(v=>String(v).includes('(+4)[Tir dans le tas]')),true);
+ game.i18n.lang='fr-FR';
+ u=make();result=await u.addAttacks();
+ assert.equal(result[0].some(v=>String(v).includes('-4[Tir dans le tas]')),true);
+ game.i18n.lang='en';
+ u=make();result=await u.addAttacks();
+ assert.equal(result[0].some(v=>String(v).includes('-4[Shooting into melee]')),true);
+ game.i18n.lang='de';
+ u=make();result=await u.addAttacks();
+ assert.equal(result[0].some(v=>String(v).includes('-4[Shooting into melee]')),true);
+ game.i18n.lang='en';
  // Melee attacks: never penalize.
  const melee={...action,actionType:'mwak'};
  u=make(1,shooter,weapon,melee);
