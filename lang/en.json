@@ -32,6 +32,14 @@
       "ReloadEnabled": {
         "Name": "Automatic weapon reload tracking (experimental)",
         "Hint": "Opt-in tracking for configured firearms and crossbows. Native PF1 continues to consume ammunition. Requires manual per-weapon configuration; disabled by default."
+      },
+      "RangedMelee": {
+        "Name": "Automatic shooting into melee penalty",
+        "Hint": "Apply verified PF1e engagement penalties before ranged attack rolls; ambiguous cases require manual resolution."
+      },
+      "RangedMeleePrompt": {
+        "Name": "Ask when melee engagement is uncertain",
+        "Hint": "Before rolling against one target, ask for 0 / −2 / −4 if engagement cannot be verified. Multi-target ambiguity is never guessed."
       }
     },
     "Range": {
@@ -121,6 +129,21 @@
       "Hint": "Automatically uses this action without showing the action list. Pathfinder still manages the roll configuration dialog.",
       "SkipDialog": "Skip dialog",
       "SkipDialogHint": "Use the default action without opening its configuration dialog. PF1 still handles rolls and resource consumption."
+    },
+    "ScriptApprovals": {
+      "Title": "Script Approvals",
+      "Button": "Script Approvals",
+      "MenuHint": "Review every detected native Item Script Call and authorize individual GM fallback execution in secure mode.",
+      "TrustedNotice": "Trusted Table Mode is enabled. Disable it to manage individual approvals.",
+      "Help": "Select the native Item Script Calls allowed to run with GM fallback. Every approval is bound to the Actor, Item, Script Call and saved source.",
+      "Empty": "No embedded Actor Item Script Calls were detected.",
+      "Actor": "Actor",
+      "Item": "Item",
+      "ScriptCall": "Script Call",
+      "Category": "Category",
+      "Approved": "Approved",
+      "Save": "Save changes",
+      "Saved": "Script approvals updated."
     }
   }
 }
