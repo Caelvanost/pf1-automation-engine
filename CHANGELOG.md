@@ -1,3 +1,10 @@
+## v1.33.2 — Native PF1 v11.11 creature size compatibility
+
+- Fix 'target size unknown' during shooting into melee against correctly configured PF1 actors. Native PF1 v11.11 exposes `system.traits.size` as `{base:'med',value:4}`, rather than the legacy `'med'` string.
+- Prefer PF1's prepared integer `size.value` (including size-changing effects), then accept a prepared string size or `size.base` as fallbacks. Unknown values remain uncertain and do not invent a size category.
+- Preserve ranged penalty timing, Precise Shot overrides, target verification and all other existing automation.
+- Add regression coverage for size object values 4/6/7, temporary size changes, base fallback and invalid size data.
+
 ## v1.33.1 — Reuse native range-style pre-roll bonus for shooting into melee
 
 - Move the automatic, proven single-target shooting-into-melee penalty to `pf1CreateActionUse` and `shared.attackBonus`, the same native pre-roll path as PF1AE range increments. No document mutation or post-roll math.
