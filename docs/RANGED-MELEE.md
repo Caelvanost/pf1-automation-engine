@@ -1,4 +1,4 @@
-# PF1AE — Shooting into Melee v1.33.2
+# PF1AE — Shooting into Melee v1.33.3
 
 Foundry VTT 13.351, Pathfinder 1e 11.11, and optional PF1 Firearms & Reload.
 
@@ -130,3 +130,13 @@ console.log([...game.user.targets][0]?.actor?.system?.traits?.size)
 ```
 
 La Harpy de l'exemple utilisateur est `{base:"med", value:4}` et doit désormais être reconnue comme Moyenne. Cette correction ne préjuge pas de l'allonge et de la menace, vérifiées ensuite indépendamment.
+
+### v1.33.3 — Géométrie officielle Foundry 13
+
+La mesure des distances utilise désormais `TokenDocument.getOccupiedGridSpaceOffsets()` et `canvas.grid.getCenterPoint()` avant `canvas.grid.measurePath()`. L'ancien `getOccupiedCells()` n'est pas une méthode standard des tokens Foundry v13 : elle n'est conservée que pour d'éventuelles intégrations compatibles.
+
+Si l'engagement ne peut toujours pas être déterminé, le diagnostic inclut `uncertain`, détaillant la raison pour chaque allié concerné : `grid cells or path unavailable`, `melee threat or reach unknown`, ou `ally size unknown`. La politique d'automatisation reste prudente : aucun −4 n'est inventé si la vérification échoue.
+
+```js
+console.dir(game.modules.get("pf1-automation-engine").api.rangedMelee.lastDiagnostic(), {depth: 5})
+```
