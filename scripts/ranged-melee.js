@@ -276,9 +276,9 @@ function rmSelectTarget(use){
 }
 // Same pre-roll path as range-automation.js: PF1 forwards the shared
 // attackBonus array into every native ChatAttack.addAttack(extraParts).
-// Only a verified single-target COMMON penalty is added at this hook.
-// Script Call overrides are discovered later when the native indexed
-// attack list exists; they apply a temporary per-index DIFFERENCE.
+// A verified common penalty is staged at creation, then removed before
+// native addAttacks() and replaced by the FINAL per-index effective value.
+// This retains early context without emitting compensating +4 / -4 parts.
 function rmCreateUse(use){
  if(!rmAuthorized(use))return;
  RM_PENDING.add(use);
@@ -430,27 +430,37 @@ async function rmBeforeRoll(use,wrapped,args){
   }
  }
  const original=attacks.map(a=>a.attackBonus);
- const changed=[];
+ const changed=[],effectivePenalties=[],overrideReasons=[];
  try{
+  // Native Script Calls have now supplied their overrides. Remove ONLY
+  // PF1AE's staged common modifier, leaving range, feats and other bonuses.
+  // All final melee penalties are inserted in the native per-attack parts.
+  rmRemoveCommon(use);
   for(let index=0;index<attacks.length;index++){
    if(attacks[index].type==='manyshot')continue;
    const chosen=overrides.get(index);
    if(decision.status!=='engaged'&&decision.status!=='manual-choice')continue;
    const effective=chosen?chosen.penalty:decision.penalty;
-   if(effective==null)continue;
-   // With a common -4 already injected into shared.attackBonus,
-   // Precise Shot (effective 0) becomes a +4 per-index correction.
-   // Without one, the index receives the full -4/-2 as before.
-   const delta=effective-(common?.penalty??0);
-   if(!Number.isSafeInteger(delta)||delta===0)continue;
+   if(!rmValid(effective))continue;
+   effectivePenalties.push({attackIndex:index,penalty:effective});
+   if(chosen)overrideReasons.push({attackIndex:index,reason:chosen.reason,
+    penalty:chosen.penalty});
+   // The native first attack's bare '0' is a neutral placeholder.
+   // Temporarily omit only that exact zero, never another typed/native
+   // bonus part. The original is restored in finally.
    const before=String(attacks[index].attackBonus??'').trim();
-   const label=rmPenaltyLabel();
-   attacks[index].attackBonus=(before?before+' + ':'')+
-    '('+(delta>0?'+':'')+delta+')['+label+']';
+   const clean=before==='0'||before==='+0'?'':before;
+   if(effective===0){
+    if(clean!==before)attacks[index].attackBonus=clean;
+    continue;
+   }
+   attacks[index].attackBonus=(clean?clean+' + ':'')+
+    String(effective)+'['+rmPenaltyLabel()+']';
    changed.push(index);
   }
   rmReport(decision.status,{penalty:decision.penalty??null,
    commonPenalty:common?.penalty??0,appliedIndices:changed,
+   effectivePenalties,overrideReasons,
    overrides:[...overrides.keys()],target:context.target?.name??null,
    reason:decision.reason??null,uncertain:decision.uncertain??[],
    stage:'addAttacks'});

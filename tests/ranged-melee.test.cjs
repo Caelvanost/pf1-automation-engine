@@ -226,7 +226,8 @@ function effectiveMeleePenalty(parts){
  assert.equal(scriptInvoked,1);
  assert.equal(result.every(parts=>effectiveMeleePenalty(parts)===0),true,
   'index +4 corrections cancel the shared -4 for Precise Shot');
- assert.equal(result.every(parts=>parts.some(x=>String(x).includes('(+4)[Shooting into melee]'))),true);
+ assert.equal(result.every(parts=>parts.every(x=>!String(x).includes('[Shooting into melee]'))),true,
+  'Precise Shot emits neither -4 nor compensating +4 nor a redundant 0');
  assert.equal(u.shared.attackBonus.length,1,'Precise Shot does not leave a shared modifier');
  assert.equal(u.shared.attacks.every((a,i)=>a.attackBonus===String(-5*i)),true);
  // Exercise the REAL ScriptApproval service together with the REAL native
@@ -258,7 +259,8 @@ function effectiveMeleePenalty(parts){
  assert.equal(scriptInvoked,beforeGM+1,'GM executes native player feat in trusted mode');
  assert.equal(effectiveMeleePenalty(result[0]),0,
   'GM-side Precise Shot cancels the shared −4 on player-owned actor');
- assert.equal(result[0].some(x=>String(x).includes('(+4)[Shooting into melee]')),true);
+ assert.equal(result[0].some(x=>String(x).includes('[Shooting into melee]')),false,
+  'trusted GM Precise Shot produces a clean zero-penalty attack');
  assert.equal(u.shared.attackBonus.length,1,'GM cancellation cleans temporary bonus');
  settings.set('trustedTableMode',false);
  assert.equal(approvalApi.check(shooter,preciseFeat,call).approved,false);
@@ -291,7 +293,7 @@ function effectiveMeleePenalty(parts){
   'the second attack receives normal melee penalty');
  assert.equal(result[0].includes('1[Point Blank Shot]'),true,
   'other feat bonuses survive the precise-shot correction');
- assert.equal(result[0].some(x=>String(x).includes('(+4)[Shooting into melee]')),true);
+ assert.equal(result[0].some(x=>String(x).includes('[Shooting into melee]')),false);
  assert.throws(()=>API.prepareAttackOverride({actionUse:u,attackIndex:0,penalty:0}),
   /rolled or completed/);
  // Native ChatAttack placeholders also may exist before any d20 is
@@ -375,7 +377,46 @@ function effectiveMeleePenalty(parts){
  result=await u.addAttacks();
  assert.equal(effectiveMeleePenalty(result[0]),-4);
  assert.equal(effectiveMeleePenalty(result[1]),-2,
-  'partial override adjusts just the indexed attack while common -4 remains');
+  'partial override displays its final per-index -2');
+ assert.deepEqual(result[0].filter(x=>String(x).includes('[Shooting into melee]')),
+  ['-4[Shooting into melee]'],'non-overridden attack gets one -4 only');
+ assert.equal(result[1].filter(x=>String(x).includes('[Shooting into melee]')).length,1,
+  'overridden attack gets one melee part only');
+ assert.equal(result[1].some(x=>String(x).includes('-2[Shooting into melee]')),true,
+  'the single per-index part contains the effective -2');
+ // Mixed 0/-2/-4 in a single three-attack native full attack.
+ u=make(3);
+ for(const [attackIndex,penalty] of [[0,0],[1,-2],[2,-4]])
+  API.prepareAttackOverride({actionUse:u,attackIndex,penalty,
+   reason:'mixed-override-'+attackIndex});
+ const originalBonuses=u.shared.attacks.map(a=>a.attackBonus);
+ result=await u.addAttacks();
+ const rangedParts=parts=>parts.filter(x=>String(x).includes('[Shooting into melee]'));
+ assert.deepEqual(result.map(parts=>rangedParts(parts).length),[0,1,1],
+  'each indexed attack contains at most one effective melee part');
+ assert.equal(result[1].some(v=>String(v).includes('-2[Shooting into melee]')),true);
+ assert.equal(result[2].some(v=>String(v).includes('-4[Shooting into melee]')),true);
+ assert.equal(result.every(parts=>parts.every(v=>!/\\(\\+4\\)|\\+0\\[Shooting into melee\\]/.test(String(v)))),true,
+  'no compensating +4 or redundant +0 may enter the native formula');
+ assert.equal(result[0].includes('0'),false,
+  'neutral first-attack placeholder is suppressed during native roll');
+ assert.equal(result.every(parts=>parts.includes('1[Point Blank Shot]')),true,
+  'all existing shared bonuses are preserved');
+ assert.deepEqual(u.shared.attacks.map(a=>a.attackBonus),originalBonuses,
+  'per-attack bonuses restored after native roll');
+ assert.equal(u.shared.attackBonus.length,1,'shared modifiers restored');
+ const diagnostic=API.lastDiagnostic();
+ assert.equal(diagnostic.overrideReasons.length,3);
+ assert.equal(diagnostic.overrideReasons[0].reason,'mixed-override-0');
+ assert.deepEqual(Array.from(diagnostic.effectivePenalties,x=>x.penalty),[0,-2,-4]);
+ // Numerical totals match the old -4 + correction behavior without
+ // displaying any artificial correction terms.
+ const oldTotals=[-4+(4),-5-4+(2),-10-4+0];
+ const newTotals=result.map(parts=>parts.reduce((sum,part)=>
+  sum+(String(part).match(/[+-]?\d+/g)??[])
+   .reduce((acc,value)=>acc+Number(value),0),0));
+ assert.deepEqual(newTotals,oldTotals.map(n=>n+1),
+  'effective totals are unchanged, including Point Blank Shot');
  assert.throws(()=>API.prepareAttackOverride({actionUse:u,attackIndex:0,penalty:0}),/completed/);
  u=make();assert.equal(API.prepareForCurrentUse({
   item:weapon,action,attackIndex:0,penalty:0}),true);
@@ -499,7 +540,8 @@ function effectiveMeleePenalty(parts){
  u=make(1);
  API.prepareAttackOverride({actionUse:u,attackIndex:0,penalty:0});
  result=await u.addAttacks();
- assert.equal(result[0].some(v=>String(v).includes('(+4)[Tir dans le tas]')),true);
+ assert.equal(result[0].some(v=>String(v).includes('[Tir dans le tas]')),false,
+  'French precise-shot attack must not display -4 or +4');
  game.i18n.lang='fr-FR';
  u=make();result=await u.addAttacks();
  assert.equal(result[0].some(v=>String(v).includes('-4[Tir dans le tas]')),true);
