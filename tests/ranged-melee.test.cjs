@@ -294,6 +294,34 @@ function effectiveMeleePenalty(parts){
  assert.equal(result[0].some(x=>String(x).includes('(+4)[Shooting into melee]')),true);
  assert.throws(()=>API.prepareAttackOverride({actionUse:u,attackIndex:0,penalty:0}),
   /rolled or completed/);
+ // Async native Script Call has a legitimate preparation window even
+ // after count has been prepared. A second simultaneous addAttacks() must
+ // not enter while the first use is awaiting its feat script.
+ let notifyScript,releaseScript;
+ const scriptEntered=new Promise(resolve=>{notifyScript=resolve});
+ const scriptGate=new Promise(resolve=>{releaseScript=resolve});
+ const waitingFeat={uuid:shooter.uuid+'.Item.waiting-precise',actor:shooter,
+  documentName:'Item',scriptCalls:{contents:[{
+   name:'PF1AE:rangedMelee:override',category:'toggle',
+   async execute(_unused,{rangedMelee}){
+    notifyScript();
+    await scriptGate;
+    rangedMelee.override({attackIndex:0,penalty:0,reason:'precise-shot'});
+   }
+  }]}};
+ shooter.items.contents.push(waitingFeat);
+ u=make();
+ const preparingPromise=u.addAttacks();
+ await scriptEntered;
+ assert.equal(u.shared.rollData.attackCount,1);
+ assert.equal(u.shared.chatAttacks.length,0);
+ await assert.rejects(u.addAttacks(),/being prepared/,
+  'same-use concurrent entry is refused before the first native d20');
+ releaseScript();
+ result=await preparingPromise;
+ assert.equal(effectiveMeleePenalty(result[0]),0,
+  'legitimate async Script Call override succeeds while in preparation');
+ shooter.items.contents.pop();
  // Native d20 execution starts after the wrapper enters the real addAttacks.
  // Simulate an unresolved native call and ensure the gate stays CLOSED.
  u=make();
