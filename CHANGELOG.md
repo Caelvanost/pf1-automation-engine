@@ -1,3 +1,11 @@
+## v1.33.8 — Localized Bleed messages and native condition badges
+
+- Bleed chat messages are now a single localized damage sentence: **« XXX subit N points de saignement ! »** in French and **“XXX takes N points of bleed damage!”** in English (default for other languages).
+- Show the effective bleed HP damage after approved reductions, without a Rolled/Prevented/HP damage breakdown. Preserve real dice roll cards and Dice So Nice integration.
+- Display the saved Bleed formula (fixed value or dice expression) on the existing native Bleed condition icon and in the selected token's native status HUD. No extra Buff or duplicate condition is created.
+- Add regression coverage for French, English fallback, HUD badges, live updates, stale badges and unrelated icons.
+- Keep the existing native PF1 HP damage application, stacked Bleed resolution, GM-authorized Script Calls and persistent turn receipts unchanged.
+
 ## v1.33.7 — Script Call approval manager and localized settings
 
 - Add a GM-only **Script Approvals** settings menu for all discovered native embedded Actor Item Script Calls; checkboxes approve/revoke the exact stored call in secure mode.
