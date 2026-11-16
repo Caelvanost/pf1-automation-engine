@@ -6,8 +6,11 @@ const ns='pf1-automation-engine';
 const settings=new Map([['genericEnabled',true],['genericDebug',false]]);
 const init=[],ready=[];
 const modules=new Map([[ns,{active:true,api:{}}]]);
-const hooks={once(name,callback){(name==='init'?init:ready).push(callback)}};
-const game={modules,i18n:{lang:'fr'},settings:{
+const events=new Map();
+const hooks={once(name,callback){(name==='init'?init:ready).push(callback)},
+ on(name,callback){const list=events.get(name)??[];list.push(callback);events.set(name,list)}};
+const user={id:'player',isGM:false,targets:new Set()};
+const game={user,modules,i18n:{lang:'fr'},settings:{
  get(_ns,key){return settings.get(key)},
  register(_ns,key,def){if(!settings.has(key))settings.set(key,def.default)}
 }};
@@ -107,7 +110,7 @@ const diagonal=token('diagonal',2,2,1);
  assert.equal(value.flanking,false,
   'same side or cross-adjacent position does not flank large target');
  // Native reach can extend to allow a flanking partner at distance.
- const reachAlly=token('reach-ally',4,1,1,{reach:10});
+ const reachAlly=token('reach-ally',3,1,1,{reach:10});
  value=check(left,center,[reachAlly]);
  assert.equal(value.flanking,true,'10 ft natural reach supports distant partner');
  reachAlly.actor.getRollData=()=>({range:{melee:5}});
@@ -147,5 +150,61 @@ const diagonal=token('diagonal',2,2,1);
  assert.equal(Object.isFrozen(value),true);
  assert.equal(Object.isFrozen(value.allies),true);
  assert.equal(game.settings.get(ns,'tacticalPositioningEnabled'),true);
- console.log('PASS tactical-positioning: PF1 geometry, corners, large targets, reach, factions, elevation, unknown states, read-only');
+ // Native PF1 AttackDialog has a Flanking checkbox driven by the
+ // ActionUse's shared.useOptions.flanking (used by Roll Bonuses as well).
+ // PF1AE must preselect it, NOT inject a second attack bonus.
+ const nativeItem={documentName:'Item',uuid:left.actor.uuid+'.Item.sword',
+  actor:left.actor};
+ const meleeAction={actionType:'mwak',hasAttack:true,item:nativeItem};
+ const makeUse=(options={flanking:false},action=meleeAction)=>({
+  actor:left.actor,item:nativeItem,action,token:left,
+  shared:{useOptions:options,attackBonus:['1[Other feat bonus]']}
+ });
+ user.targets=new Set([center]);
+ let use=makeUse();
+ const precheckHook=events.get('pf1CreateActionUse')?.[0];
+ assert.equal(typeof precheckHook,'function','register native ActionUse creation hook');
+ precheckHook(use);
+ assert.equal(use.shared.useOptions.flanking,true,
+  'verified flank prechecks the native PF1 checkbox even when default false');
+ assert.deepEqual(Array.from(use.shared.attackBonus),['1[Other feat bonus]'],
+  'no extra +2 inserted; native system owns the attack formula');
+ assert.equal(api.precheck(use),false,'do not touch an already checked option');
+ use=makeUse();
+ user.targets=new Set([center,otherSide]);
+ precheckHook(use);
+ assert.equal(use.shared.useOptions.flanking,false,
+  'no precheck with multiple targets');
+ user.targets=new Set([center]);
+ use=makeUse();
+ right.actor.items.contents=[];
+ precheckHook(use);
+ // Alternative eligible allies (northwest+diagonal) still exist in world,
+ // so isolate the explicit list via temporary off-scene dispositions.
+ for(const t of tokens)if(![left,center,right].includes(t))
+  t.document.disposition=0;
+ precheckHook(use);
+ assert.equal(use.shared.useOptions.flanking,false,
+  'uncertain threat must not check the native option');
+ right.actor.items.contents.push({type:'attack',actions:{contents:[{actionType:'mwak'}]}});
+ for(const t of tokens)if(![left,center,right].includes(t))
+  t.document.disposition=t===otherSide?-1:1;
+ use=makeUse({flanking:false},{actionType:'rwak',hasAttack:true,item:nativeItem});
+ precheckHook(use);
+ assert.equal(use.shared.useOptions.flanking,false,
+  'never precheck melee flanking for a ranged attack');
+ use=makeUse();
+ settings.set('tacticalPositioningEnabled',false);
+ precheckHook(use);
+ assert.equal(use.shared.useOptions.flanking,false,
+  'disabled detection must not alter native attack options');
+ settings.set('tacticalPositioningEnabled',true);
+ // Player explicitly unchecks the preselected option in the subsequent
+ // native dialog; PF1AE doesn't intercept or reinstate it during rolling.
+ use=makeUse();
+ precheckHook(use);
+ use.shared.useOptions.flanking=false;
+ assert.equal(use.shared.useOptions.flanking,false,
+  'user remains able to uncheck the native option');
+ console.log('PASS tactical-positioning: PF1 geometry, corners, large targets, reach, uncertainty, native checkbox preselection');
 })().catch(error=>{console.error(error);process.exitCode=1});
