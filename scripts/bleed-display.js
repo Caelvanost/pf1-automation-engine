@@ -42,7 +42,7 @@ function bvSheet(app,element){
  const root=element?.querySelectorAll?element:
   element?.[0]?.querySelectorAll?element[0]:null;
  if(!root)return;
- const escapeId=String(native.id).replace(/["\\]/g,'\\const bvIconSources=actor=>{');
+ const escapeId=String(native.id).replace(/[^a-zA-Z0-9_-]/g,'');
  const rows=root.querySelectorAll(
   '[data-effect-id="'+escapeId+'"], [data-document-id="'+escapeId+'"]'
  );
