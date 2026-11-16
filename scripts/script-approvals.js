@@ -7,7 +7,7 @@ const SA_NS='pf1-automation-engine', SA_SETTING='scriptFallbackApprovals';
 const SA_TRUSTED='trustedTableMode';
 const saTrusted=()=>game.settings.get(SA_NS,SA_TRUSTED)===true;
 const SA_AUTO_NAMES=new Map([
- ['toggle',new Set(['PF1AE:bootstrap'])],
+ ['toggle',new Set(['PF1AE:bootstrap','PF1AE:rangedMelee:override'])],
  ['postUse',new Set(['PF1AE:attack:resolved','PF1AE:damage:applied',
   'PF1AE:damage:critical','PF1AE:damage:zeroHP',
   'PF1AE:bleed:before','PF1AE:bleed:applied'])]
