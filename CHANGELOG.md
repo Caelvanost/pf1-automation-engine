@@ -1,3 +1,10 @@
+## v1.33.11 — PF1 rich Bleed token tooltip
+
+- Fix the separate PF1e rich condition popover on the token's Bleed miniature (the one showing Active, Max duration and stopping conditions), not just the default Foundry tooltip.
+- Show the localized title `Saignement - 1d4` in French or `Bleed - 1d4` in English/other locales, using the same configured formula already shown on the native effect.
+- Update the popover title when it is inserted after hover and when its content is recreated; leave the description, duration, mechanical condition, and other status tooltips unchanged.
+- Add regression tests for the rich popover, French and English fallback, lifecycle and isolation.
+
 ## v1.33.10 — Native Bleed thumbnail hover label
 
 - Correct the native effect miniature hover tooltip: `Saignement - 1d4` for French and `Bleed - 1d4` for all other locales.
