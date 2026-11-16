@@ -137,13 +137,20 @@ function rmCanThreaten(actor){
  const statuses=actor.statuses;
  if(['dead','unconscious','paralyzed','stunned','helpless','petrified']
   .some(x=>statuses?.has?.(x)))return false;
- const weapons=rmItems(actor).filter(i=>
-  i.type==='weapon'&&i.system?.equipped===true&&
-  (i.system?.subType==='natural'||
-   i.actions?.contents?.some(a=>['mwak','msak'].includes(a.actionType))||
-   i.system?.actions?.some(a=>['mwak','msak'].includes(a.actionType))));
- // Unknown melee threat is NOT proof of no engagement.
- return weapons.length>0?true:null;
+ const melee=rmItems(actor).some(item=>{
+  // PF1 NPCs frequently represent natural strikes as attack Items, not
+  // equipped manufactured weapons. A natural attack can threaten even
+  // when item.system.equipped is absent.
+  const natural=item.system?.subType==='natural';
+  const armed=item.type==='weapon'&&item.system?.equipped===true;
+  const nativeAttack=item.type==='attack';
+  if(!natural&&!armed&&!nativeAttack)return false;
+  const actions=item.actions?.contents??item.system?.actions??[];
+  return natural||[...actions].some(action=>
+   ['mwak','msak'].includes(action?.actionType));
+ });
+ // No known attack is NOT proof a creature cannot threaten.
+ return melee?true:null;
 }
 function rmNaturalMeleeReach(actor){
  // PF1 11.11 prepares natural melee reach in getRollData().range.melee;
@@ -212,6 +219,8 @@ function rmJudge({origin,target,allTokens,grid,sceneUnit}={}){
     uncertain.push({ally:ally.name??ally.id,
      reason:'melee threat or reach unknown',
      allyThreat:aThreat,targetThreat:tThreat,
+     allyHasMeleeAttack:rmCanThreaten(ally.actor),
+     targetHasMeleeAttack:rmCanThreaten(target.actor),
      allyReach:rmNaturalMeleeReach(ally.actor),
      targetReach:rmNaturalMeleeReach(target.actor),
      allyReachData:ally.actor?.getRollData?.()?.range??null,
