@@ -34,7 +34,9 @@ const unrelated=other(a);
 a.items.contents.push(manual,unrelated);
 const bleedSrc='systems/pf1/icons/conditions/bleed.webp';
 const sprite=(src)=>({texture:{source:{resource:{url:src}}},
- width:32,height:32,children:[],addChild(child){this.children.push(child)},
+ width:32,height:32,children:[],handlers:{},
+ on(name,callback){this.handlers[name]=callback;},
+ addChild(child){this.children.push(child)},
  removeChild(child){this.children=this.children.filter(x=>x!==child)}});
 const bleedIcon=sprite(bleedSrc),otherIcon=sprite('icons/svg/aura.svg');
 const token=new FakeToken();
@@ -43,8 +45,24 @@ const game={
  user:{id:'gm',isGM:true},actors:{contents:[a]},scenes:{contents:[]},
  modules:new Map([[NS,{active:true,api}],['lib-wrapper',{active:false}]])
 };
-const document={createElement(){return {className:'',textContent:'',style:{},remove(){this.removed=true}}}};
-const ctx={console,Map,Set,Promise,Date,game,document,PIXI:{Text:FakeText},
+const richTitle={textContent:'Saignement'},otherTitle={textContent:'Blessé'};
+const richTooltip={querySelectorAll(){return [richTitle]}};
+const unrelatedTooltip={querySelectorAll(){return [otherTitle]}};
+let tooltipMutation=null,observerDisconnected=false;
+class FakeMutationObserver{
+ constructor(callback){tooltipMutation=callback}
+ observe(_root,options){assert.equal(options.subtree,true)}
+ disconnect(){observerDisconnected=true}
+}
+const document={
+ body:{},
+ querySelectorAll(selector){
+  assert.match(selector,/tooltip/);return [richTooltip,unrelatedTooltip];
+ },
+ createElement(){return {className:'',textContent:'',style:{},remove(){this.removed=true}}}
+};
+const ctx={console,Map,Set,Promise,Date,game,document,
+ MutationObserver:FakeMutationObserver,PIXI:{Text:FakeText},
  canvas:{tokens:{placeables:[token]}},CONFIG:{
  statusEffects:[{id:'bleed',img:bleedSrc},{id:'prone',img:'icons/svg/aura.svg'}],
  Token:{objectClass:FakeToken}
@@ -154,6 +172,31 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  a.effects.contents[0].name='Bleed';
  await api.bleedDisplay.refreshNames();
  assert.equal(a.effects.contents[0].name,'Saignement - 5');
+
+ // PF1's RICH condition tooltip is a separate popover, not the V13 HUD
+ // button. Simulate hovering the native on-token Bleed miniature.
+ const tooltipIcon=sprite(bleedSrc);
+ token.effects.children=[otherIcon,tooltipIcon];
+ await token.drawEffects();
+ assert.equal(typeof tooltipIcon.handlers.pointerover,'function');
+ game.i18n.lang='fr';
+ richTitle.textContent='Saignement';
+ tooltipIcon.handlers.pointerover();
+ assert.equal(richTitle.textContent,'Saignement - 5',
+  'rich PF1 tooltip heading includes configured formula');
+ assert.equal(otherTitle.textContent,'Blessé','unrelated tooltip is unchanged');
+ // PF1 may recreate the tooltip DOM after pointerover.
+ richTitle.textContent='Saignement';
+ tooltipMutation();
+ assert.equal(richTitle.textContent,'Saignement - 5');
+ tooltipIcon.handlers.pointerout();
+ assert.equal(observerDisconnected,true);
+ // English is the fallback for every non-French Foundry locale.
+ game.i18n.lang='de';
+ richTitle.textContent='Bleed';
+ tooltipIcon.handlers.pointerover();
+ assert.equal(richTitle.textContent,'Bleed - 5');
+ tooltipIcon.handlers.pointerout();
  console.log('PASS bleed-display: native Bleed icon formula overlay, single marker,');
  console.log(' redraw/update/reconnect-safe, migration, and other Buff isolation.');
 })().catch(error=>{console.error(error);process.exitCode=1});
