@@ -1,7 +1,7 @@
 ## v1.33.13 — Precise Shot attack preparation lifecycle
 
 - Fix native `PF1AE:rangedMelee:override` Script Calls being refused when PF1's already-prepared `shared.rollData.attackCount` exists before a single d20 is rolled.
-- Replace the attack-count heuristic with an explicit per-`ActionUse` lifecycle (`created` → `preparing` → `rolling` → `completed`), plus a native `chatAttacks`/message guard. Once native `addAttacks()` starts, no further overrides may be registered.
+- Replace the attack-count heuristic with an explicit per-`ActionUse` lifecycle (`created` → `preparing` → `rolling` → `completed`), plus a native `ChatAttack.attack`/`critConfirm` roll-object and message guard. Empty native ChatAttack placeholders are permitted. Once native `addAttacks()` starts, no further overrides may be registered.
 - Reject same-`ActionUse` concurrent entry during asynchronous preparation/rolling, and close the override window permanently after normal completion or native cancellation.
 - Preserve exact per-index Precise Shot (+4 against the shared −4), other attack bonuses, full attacks, and parallel independent `ActionUse` objects. Native reuse never reopens the window.
 - Keep trusted-table mode and per-call secure-mode approvals unchanged. No modification to the Precise Shot Script Call.
