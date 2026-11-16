@@ -384,6 +384,7 @@ async function rmBeforeRoll(use,wrapped,args){
  // Set phase synchronously before any await. This prevents a second
  // addAttacks() invocation from racing during an async Script Call.
  RM_PHASE.set(use,'preparing');
+ try{
  const attacks=use.shared.attacks;
  const context=rmSelectTarget(use);
  let decision=context.reason?{status:'manual',reason:context.reason}:
@@ -406,10 +407,9 @@ async function rmBeforeRoll(use,wrapped,args){
   rmRemoveCommon(use);
   rmReport('native-manual',{reason:'explicit native attack bonus or melee modifier'});
   RM_PHASE.set(use,'rolling');
-  try{return await wrapped(...args)}
-  finally{rmCleanup(use)}
+  return await wrapped(...args);
  }
- if(decision.status==='manual'&&context.target&&overrides.size===0&&
+ if(decision.status='manual'&&context.target&&overrides.size===0&&
     game.settings.get(RM_NS,'manualRangedMeleePrompt')===true){
   try{
    const selected=await rmManualPrompt(context.target);
@@ -449,6 +449,10 @@ async function rmBeforeRoll(use,wrapped,args){
   return await wrapped(...args);
  }finally{
   attacks.forEach((a,i)=>{a.attackBonus=original[i]});
+ }
+ }finally{
+  // Covers cancellation or failure at ANY preparation stage, including
+  // async Script Calls and prompts before native dice execution begins.
   rmCleanup(use);
  }
 }
