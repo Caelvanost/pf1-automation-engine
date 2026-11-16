@@ -100,12 +100,20 @@ const blDamage=async (actor,amount)=>{
 function blHasDice(roll){
  return Array.isArray(roll?.dice)&&roll.dice.length>0;
 }
+const blChatText=(actor,amount)=>{
+ // The elected GM's Foundry language controls the chat announcement.
+ // Other locales explicitly fall back to English, never to untranslated keys.
+ const locale=String(game.i18n?.lang??'en').toLowerCase();
+ const french=locale==='fr'||locale.startsWith('fr-');
+ const safeName=foundry.utils.escapeHTML?.(actor.name??'Actor')??
+  String(actor.name??'Actor').replace(/[&<>"']/g,'');
+ const text=french?'subit {amount} points de saignement !':
+  'takes {amount} points of bleed damage!';
+ return '<p>🩸 <strong>'+safeName+'</strong> '+
+  text.replace('{amount}','<strong>'+amount+'</strong>')+'</p>';
+};
 async function blAnnounce(actor,roll,original,remaining){
- const prevented=original-remaining;
- const safeName=foundry.utils.escapeHTML?.(actor.name??'Actor')??String(actor.name??'Actor').replace(/[&<>]/g,'');
- const summary='<strong>🩸 Bleed — '+safeName+'</strong>'+
-  '<p>Rolled: <strong>'+original+'</strong> · Prevented: <strong>'+prevented+
-  '</strong> · HP damage: <strong>'+remaining+'</strong></p>';
+ const summary=blChatText(actor,remaining);
  const speaker=ChatMessage.getSpeaker({actor});
  if(blHasDice(roll)&&typeof roll?.toMessage==='function'){
   // This publishes a real Foundry dice roll; Dice So Nice can animate it
