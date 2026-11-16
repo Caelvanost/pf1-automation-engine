@@ -58,57 +58,108 @@ function bvSheet(app,element){
 
 
 /**
- * PF1's rich token-condition tooltip is rendered separately from the HUD
- * button and reads the system condition label, not the ActiveEffect name.
- * Patch ONLY its displayed Bleed heading, while the Bleed sprite is hovered.
- * No global CONFIG.statusEffects changes or saved-document mutations.
+ * PF1 v11 exposes renderPF1ExtendedTooltip(sheet,id,template) before mounting
+ * a system-owned extended tooltip. Do not rely on PIXI icon hover events:
+ * native PF1 effects can be noninteractive sprites.
  */
-let BV_TOOLTIP_OBSERVER=null, BV_HOVER_SPRITE=null, BV_HOVER_ACTOR=null;
-const bvTooltipContainers=()=>document?.querySelectorAll?.(
- '[role="tooltip"], #tooltip, [id*="tooltip"], [class*="tooltip"]'
-)??[];
-function bvPatchRichTooltip(){
- const actor=BV_HOVER_ACTOR,label=bvLabel(actor);
+const bvBleedHeading=text=>/^(?:Bleed|Saignement)(?:\\s*[-–—]\\s*.*)?$/i.test(
+ String(text??'').trim()
+);
+function bvReplaceHeading(root,label){
+ if(!root||!label)return false;
+ const nodes=[root,...(root.querySelectorAll?.('*')??[])];
+ // Work from innermost nodes to avoid overwriting all tooltip contents.
+ for(let index=nodes.length-1;index>=0;index--){
+  const node=nodes[index];
+  if(node.nodeType===3||!node.textContent)continue;
+  if(node.children?.length>0)continue;
+  const value=String(node.textContent).trim();
+  if(!bvBleedHeading(value))continue;
+  if(value===label)return false;
+  node.textContent=label;
+  return true;
+ }
+ return false;
+}
+function bvSystemExtendedTooltip(sheet,id,template){
+ if(!bvEnabled())return;
+ const actor=sheet?.actor??sheet?.document;
+ if(actor?.documentName!=='Actor')return;
+ const label=bvLabel(actor);
  if(!label)return;
- for(const root of bvTooltipContainers()){
-  // Rich PF1 condition popovers may use plain DIV/SPAN headings rather than
-  // semantic H-elements. Search descendants from innermost to outermost.
-  const nodes=[...(root.querySelectorAll?.('*')??[])].slice(0,300);
-  for(const header of nodes.reverse()){
-   // A strict native Bleed heading prevents rewriting other status hover
-   // cards even when the same actor has multiple active effects.
-   const text=String(header.textContent??'').trim();
-   if(text!=='Bleed'&&text!=='Saignement')continue;
-   header.textContent=label;
-   return;
+ const root=template?.content??template;
+ if(!root)return;
+ const identifier=String(id??'').toLowerCase();
+ if(!identifier.includes('bleed')){
+  // Some PF1 extended tooltips use generic identifiers. Require a native
+  // Bleed label within the fragment rather than touching unrelated effects.
+  const nodes=[...(root.querySelectorAll?.('*')??[])];
+  if(!nodes.some(node=>node.children?.length===0&&bvBleedHeading(node.textContent)))return;
+ }
+ bvReplaceHeading(root,label);
+}
+/**
+ * Fallback for PF1's separately mounted token-condition popovers.
+ * Monitor actual DOM insertions; do NOT wait for pointerover on PIXI sprites.
+ */
+let BV_TOOLTIP_DOM_OBSERVER=null;
+function bvTooltipActor(){
+ const hovered=canvas?.tokens?.hovered?.actor;
+ if(bvLabel(hovered))return hovered;
+ const controlled=(canvas?.tokens?.controlled??[]).filter(token=>bvLabel(token.actor));
+ if(controlled.length===1)return controlled[0].actor;
+ return null;
+}
+function bvTooltipCandidate(root){
+ const element=root?.nodeType===3?root.parentElement:root;
+ if(!element||element.nodeType!==1)return false;
+ const tooltip=element.closest?.(
+  '[role="tooltip"], [id*="tooltip"], [class*="tooltip"], '+
+  '[class*="popover"], [class*="condition-info"]'
+ );
+ if(tooltip)return true;
+ // PF1 custom popover templates need not contain the word tooltip in CSS.
+ // The screenshot's duration/termination rows provide stronger identity.
+ let current=element;
+ for(let i=0;i<5&&current;i++,current=current.parentElement){
+  const value=String(current.textContent??'');
+  if(value.length>5000)break;
+  if(/Max duration|Might stop with|Durée max|Durée maximale/i.test(value))
+   return true;
+ }
+ return false;
+}
+function bvPatchDomTooltip(root){
+ const actor=bvTooltipActor(),label=bvLabel(actor);
+ if(!label||!root)return false;
+ const el=root.nodeType===3?root.parentElement:root;
+ if(!el||el.nodeType!==1)return false;
+ const nodes=[el,...(el.querySelectorAll?.('*')??[])];
+ for(let i=nodes.length-1;i>=0;i--){
+  const node=nodes[i];
+  if(node.children?.length>0||!bvBleedHeading(node.textContent))continue;
+  if(!bvTooltipCandidate(node))continue;
+  if(node.textContent===label)return false;
+  node.textContent=label;
+  return true;
+ }
+ return false;
+}
+function bvInstallTooltipObserver(){
+ if(BV_TOOLTIP_DOM_OBSERVER||typeof MutationObserver!=='function'||
+    !document?.body)return;
+ BV_TOOLTIP_DOM_OBSERVER=new MutationObserver(mutations=>{
+  for(const record of mutations){
+   if(record.type==='characterData'){
+    bvPatchDomTooltip(record.target);
+    continue;
+   }
+   for(const node of record.addedNodes??[])bvPatchDomTooltip(node);
   }
- }
-}
-function bvCloseRichTooltip(sprite){
- if(sprite&&BV_HOVER_SPRITE!==sprite)return;
- BV_TOOLTIP_OBSERVER?.disconnect?.();
- BV_TOOLTIP_OBSERVER=null;
- BV_HOVER_SPRITE=null;
- BV_HOVER_ACTOR=null;
-}
-function bvOpenRichTooltip(token,sprite){
- if(!bvEnabled()||!bvLabel(token?.actor))return;
- if(BV_HOVER_SPRITE===sprite){bvPatchRichTooltip();return;}
- bvCloseRichTooltip();
- BV_HOVER_SPRITE=sprite;BV_HOVER_ACTOR=token.actor;
- bvPatchRichTooltip();
- const body=document?.body;
- if(body&&typeof MutationObserver==='function'){
-  BV_TOOLTIP_OBSERVER=new MutationObserver(()=>bvPatchRichTooltip());
-  BV_TOOLTIP_OBSERVER.observe(body,{childList:true,subtree:true,characterData:true});
- }
-}
-function bvBindRichTooltip(token,sprite){
- if(typeof sprite?.on!=='function'||sprite.pf1aeRichBleedHover===true)return;
- sprite.pf1aeRichBleedHover=true;
- sprite.on('pointerover',()=>bvOpenRichTooltip(token,sprite));
- sprite.on('pointerout',()=>bvCloseRichTooltip(sprite));
- sprite.on('destroyed',()=>bvCloseRichTooltip(sprite));
+ });
+ BV_TOOLTIP_DOM_OBSERVER.observe(document.body,{
+  childList:true,subtree:true,characterData:true
+ });
 }
 
 const bvIconSources=actor=>{
@@ -151,7 +202,6 @@ function bvPaint(token){
  if(typeof PIXI?.Text!=='function')return;
  const sprite=bvSprite(token);
  if(!sprite)return;
- bvBindRichTooltip(token,sprite);
  const formula=bvFormula(token.actor);
  const label=bvLabel(token.actor);
  if(label){sprite.title=label;sprite.accessibleTitle=label;}
@@ -327,6 +377,8 @@ Hooks.once('ready',()=>{
  bvInstall();
  Hooks.on('drawToken',token=>bvPaint(token));
  Hooks.on('renderTokenHUD',(hud,element)=>bvHud(hud,element));
+ Hooks.on('renderPF1ExtendedTooltip',bvSystemExtendedTooltip);
+ bvInstallTooltipObserver();
  Hooks.on('renderActorSheet',(app,element)=>bvSheet(app,element));
  Hooks.on('renderActiveEffectConfig',(app)=>{
   const effect=app?.document;
@@ -358,6 +410,7 @@ Hooks.once('ready',()=>{
   hud:(hud,element)=>bvHud(hud,element),
   hideGenerated:()=>bvRestoreHiding(),
   refreshNames:()=>bvRestoreNames(),
-  richTooltip:()=>bvPatchRichTooltip()
+  richTooltip:(root)=>bvPatchDomTooltip(root),
+  extendedTooltip:(sheet,id,template)=>bvSystemExtendedTooltip(sheet,id,template)
  });
 });

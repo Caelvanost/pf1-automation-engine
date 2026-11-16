@@ -45,25 +45,29 @@ const game={
  user:{id:'gm',isGM:true},actors:{contents:[a]},scenes:{contents:[]},
  modules:new Map([[NS,{active:true,api}],['lib-wrapper',{active:false}]])
 };
-const richTitle={textContent:'Saignement'},otherTitle={textContent:'Blessé'};
-const richTooltip={querySelectorAll(){return [richTitle]}};
-const unrelatedTooltip={querySelectorAll(){return [otherTitle]}};
-let tooltipMutation=null,observerDisconnected=false;
+const richTitle={
+ nodeType:1,textContent:'Saignement',children:[],
+ closest(){return richTooltip;},parentElement:null
+};
+const otherTitle={nodeType:1,textContent:'Blessé',children:[]};
+const richTooltip={
+ nodeType:1,textContent:'Saignement Active: 6 seconds Max duration: Infinity years',
+ children:[richTitle],querySelectorAll(){return [richTitle]}
+};
+richTitle.parentElement=richTooltip;
+let tooltipMutation=null;
 class FakeMutationObserver{
  constructor(callback){tooltipMutation=callback}
  observe(_root,options){assert.equal(options.subtree,true)}
- disconnect(){observerDisconnected=true}
+ disconnect(){}
 }
 const document={
  body:{},
- querySelectorAll(selector){
-  assert.match(selector,/tooltip/);return [richTooltip,unrelatedTooltip];
- },
  createElement(){return {className:'',textContent:'',style:{},remove(){this.removed=true}}}
 };
 const ctx={console,Map,Set,Promise,Date,game,document,
  MutationObserver:FakeMutationObserver,PIXI:{Text:FakeText},
- canvas:{tokens:{placeables:[token]}},CONFIG:{
+ canvas:{tokens:{placeables:[token],controlled:[token],hovered:token}},CONFIG:{
  statusEffects:[{id:'bleed',img:bleedSrc},{id:'prone',img:'icons/svg/aura.svg'}],
  Token:{objectClass:FakeToken}
 },Hooks:{
@@ -173,30 +177,36 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  await api.bleedDisplay.refreshNames();
  assert.equal(a.effects.contents[0].name,'Saignement - 5');
 
- // PF1's RICH condition tooltip is a separate popover, not the V13 HUD
- // button. Simulate hovering the native on-token Bleed miniature.
- const tooltipIcon=sprite(bleedSrc);
- token.effects.children=[otherIcon,tooltipIcon];
- await token.drawEffects();
- assert.equal(typeof tooltipIcon.handlers.pointerover,'function');
+ // Official PF1 extended tooltip hook modifies the unmounted fragment.
+ const extended=hooks.get('renderPF1ExtendedTooltip')?.[0];
+ assert.equal(typeof extended,'function');
+ game.i18n.lang='fr';
+ const extendedTitle={nodeType:1,textContent:'Saignement',children:[]};
+ const template={content:{nodeType:11,textContent:'',querySelectorAll(){return [extendedTitle]}}};
+ extended({actor:a},'condition-bleed',template);
+ assert.equal(extendedTitle.textContent,'Saignement - 5');
+ extendedTitle.textContent='Bleed';
+ game.i18n.lang='de';
+ extended({actor:a},'condition-bleed',template);
+ assert.equal(extendedTitle.textContent,'Bleed - 5','English fallback on PF1 hook');
+ const noBleed={nodeType:1,textContent:'Fatigued',children:[]};
+ const foreignTemplate={content:{nodeType:11,textContent:'',querySelectorAll(){return [noBleed]}}};
+ extended({actor:a},'condition-fatigue',foreignTemplate);
+ assert.equal(noBleed.textContent,'Fatigued','unrelated effect stays untouched');
+ // The real on-token PF1 tooltip is a DOM popover inserted AFTER hover,
+ // not an interactive PIXI sprite.
  game.i18n.lang='fr';
  richTitle.textContent='Saignement';
- tooltipIcon.handlers.pointerover();
- assert.equal(richTitle.textContent,'Saignement - 5',
-  'rich PF1 tooltip heading includes configured formula');
- assert.equal(otherTitle.textContent,'Blessé','unrelated tooltip is unchanged');
- // PF1 may recreate the tooltip DOM after pointerover.
- richTitle.textContent='Saignement';
- tooltipMutation();
+ tooltipMutation([{type:'childList',addedNodes:[richTooltip]}]);
  assert.equal(richTitle.textContent,'Saignement - 5');
- tooltipIcon.handlers.pointerout();
- assert.equal(observerDisconnected,true);
- // English is the fallback for every non-French Foundry locale.
+ assert.equal(otherTitle.textContent,'Blessé');
+ richTitle.textContent='Saignement';
+ tooltipMutation([{type:'characterData',target:{nodeType:3,parentElement:richTitle}}]);
+ assert.equal(richTitle.textContent,'Saignement - 5');
  game.i18n.lang='de';
  richTitle.textContent='Bleed';
- tooltipIcon.handlers.pointerover();
+ tooltipMutation([{type:'childList',addedNodes:[richTooltip]}]);
  assert.equal(richTitle.textContent,'Bleed - 5');
- tooltipIcon.handlers.pointerout();
  console.log('PASS bleed-display: native Bleed icon formula overlay, single marker,');
  console.log(' redraw/update/reconnect-safe, migration, and other Buff isolation.');
 })().catch(error=>{console.error(error);process.exitCode=1});
