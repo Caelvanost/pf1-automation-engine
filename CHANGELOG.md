@@ -1,3 +1,9 @@
+## v1.33.5 — Localized shooting-into-melee roll label
+
+- Rename only the native attack-roll modifier tag: `Shooting into melee` when the Foundry client language is English or anything other than French, and `Tir dans le tas` for French (including `fr-FR`).
+- Apply the same localized tag to the early shared penalty and later per-index overrides (including Precise Shot). No change to actual penalties, attack timing, rules or settings.
+- Extend regression coverage for French, English, fallback language and per-index corrections.
+
 ## v1.33.4 — Native PF1 computed melee reach and NPC natural attacks
 
 - Fix the reported three-ally diagnostic `melee threat or reach unknown`: PF1 11.11 exposes computed melee reach at `actor.getRollData().range.melee`, while `system.attributes.reach` is absent on standard actors. Prefer the prepared PF1 value; retain legacy attributes only as fallbacks, never assume a guessed 5-ft reach.
