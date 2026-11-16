@@ -75,14 +75,24 @@ const rmUnits=unit=>{
  const s=String(unit??'').toLowerCase();
  return ['ft','feet','foot'].includes(s)?'ft':['m','meter','meters','metre','metres'].includes(s)?'m':null;
 };
-const rmCells=token=>{
+const rmCells=(token,grid)=>{
  try{
+  const document=token?.document??token;
+  // Foundry V13 TokenDocument API. getOccupiedCells() is not a V13
+  // Token method; its use caused every normal-scene distance to be null.
+  const offsets=document?.getOccupiedGridSpaceOffsets?.();
+  if(Array.isArray(offsets)&&offsets.length&&typeof grid?.getCenterPoint==='function'){
+   const points=offsets.map(offset=>grid.getCenterPoint(offset));
+   if(points.every(p=>Number.isFinite(p?.x)&&Number.isFinite(p?.y)))
+    return points;
+  }
+  // Compatibility with independently provided grid-cell geometries.
   const cells=token?.getOccupiedCells?.()??token?.object?.getOccupiedCells?.();
   return cells&&typeof cells[Symbol.iterator]==='function'?[...cells]:null;
  }catch(_){return null}
 };
 function rmDistance(a,b,grid){
- const aa=rmCells(a),bb=rmCells(b);
+ const aa=rmCells(a,grid),bb=rmCells(b,grid);
  if(!aa?.length||!bb?.length||typeof grid?.measurePath!=='function')return null;
  let best=Infinity;
  for(const p of aa)for(const q of bb){
@@ -160,10 +170,15 @@ function rmJudge({origin,target,allTokens,grid,sceneUnit}={}){
  if(targetSize==null)return {status:'manual',reason:'target size unknown'};
  const friends=(allTokens??[]).filter(t=>t!==origin&&t!==target&&rmFaction(t)===side);
  let ambiguity=false,penalties=[];
+ const uncertain=[];
  for(const ally of friends){
   if(!rmInCombat(ally)||!rmInCombat(target))continue;
   const dist=rmDistance(ally,target,grid);
-  if(dist==null){ambiguity=true;continue;}
+  if(dist==null){
+   ambiguity=true;
+   uncertain.push({ally:ally.name??ally.id,reason:'grid cells or path unavailable'});
+   continue;
+  }
   // An ally at 10 ft or farther cannot trigger this penalty, even
   // if it has exceptional reach. Do not require their threat data.
   if(dist>=(unit==='m'?3:10)-1e-6)continue;
@@ -173,15 +188,27 @@ function rmJudge({origin,target,allTokens,grid,sceneUnit}={}){
   // A verified true suffices even when the other creature's capability
   // is unknown (for example an unarmed ally facing an armed target).
   if(aThreat!==true&&tThreat!==true){
-   if(aThreat===null||tThreat===null)ambiguity=true;
+   if(aThreat===null||tThreat===null){
+    ambiguity=true;
+    uncertain.push({ally:ally.name??ally.id,
+     reason:'melee threat or reach unknown',
+     allyThreat:aThreat,targetThreat:tThreat,
+     allyReach:ally.actor?.system?.attributes?.reach??null,
+     targetReach:target.actor?.system?.attributes?.reach??null});
+   }
    continue;
   }
   const allySize=rmSize(ally.actor);
-  if(allySize==null){ambiguity=true;continue;}
+  if(allySize==null){
+   ambiguity=true;
+   uncertain.push({ally:ally.name??ally.id,reason:'ally size unknown'});
+   continue;
+  }
   const delta=targetSize-allySize;
   penalties.push(delta>=3?0:delta===2?-2:-4);
  }
- if(ambiguity)return {status:'manual',reason:'uncertain threat or token geometry'};
+ if(ambiguity)return {status:'manual',
+  reason:'uncertain threat or token geometry',uncertain};
  if(!penalties.length)return {status:'not-engaged',penalty:0};
  return {status:'engaged',penalty:Math.min(...penalties)};
 }
@@ -217,8 +244,8 @@ function rmCreateUse(use){
  if(decision.status!=='engaged'||!rmValid(decision.penalty)||
     decision.penalty===0||rmNativeManual(use)){
   rmReport(decision.status,{stage:'pf1CreateActionUse',
-   reason:decision.reason??null,penalty:decision.penalty??null,
-   injected:false});
+   reason:decision.reason??null,uncertain:decision.uncertain??[],
+   penalty:decision.penalty??null,injected:false});
   return;
  }
  if(RM_COMMON.has(use))return;
@@ -355,7 +382,8 @@ async function rmBeforeRoll(use,wrapped,args){
   rmReport(decision.status,{penalty:decision.penalty??null,
    commonPenalty:common?.penalty??0,appliedIndices:changed,
    overrides:[...overrides.keys()],target:context.target?.name??null,
-   reason:decision.reason??null,stage:'addAttacks'});
+   reason:decision.reason??null,uncertain:decision.uncertain??[],
+   stage:'addAttacks'});
   return await wrapped(...args);
  }finally{
   attacks.forEach((a,i)=>{a.attackBonus=original[i]});

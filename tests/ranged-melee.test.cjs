@@ -274,6 +274,39 @@ function effectiveMeleePenalty(parts){
  u=make();result=await u.addAttacks();
  assert.equal(containsPenalty(result[0],-4),true);
  scene.grid.units='ft';grid.measurePath=([a,b])=>({distance:Math.abs(a.x-b.x)});
+ // Foundry v13 ACTUAL TokenDocument API: a normal Token has no
+ // getOccupiedCells(), but its document exposes grid offsets (i,j).
+ const fLegacy=friendly.getOccupiedCells;
+ const tLegacy=target.getOccupiedCells;
+ const sLegacy=source.getOccupiedCells;
+ friendly.getOccupiedCells=undefined;
+ target.getOccupiedCells=undefined;
+ source.getOccupiedCells=undefined;
+ const centerBefore=grid.getCenterPoint;
+ grid.getCenterPoint=({i,j})=>({x:j*5+2.5,y:i*5+2.5});
+ friendly.document.getOccupiedGridSpaceOffsets=()=>[{i:0,j:2}];
+ target.document.getOccupiedGridSpaceOffsets=()=>[{i:0,j:1}];
+ source.document.getOccupiedGridSpaceOffsets=()=>[{i:0,j:0}];
+ u=make();result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),-4,
+  'native v13 token grid offsets produce correct melee distance without getOccupiedCells');
+ assert.equal(API.lastDiagnostic().status,'engaged');
+ // If neither official nor compatibility geometry exists, surface
+ // which ally could not be measured rather than guessing engagement.
+ target.document.getOccupiedGridSpaceOffsets=()=>[];
+ u=make();result=await u.addAttacks();
+ assert.equal(API.lastDiagnostic().status,'manual');
+ assert.equal(API.lastDiagnostic().uncertain?.[0]?.reason,
+  'grid cells or path unavailable');
+ target.document.getOccupiedGridSpaceOffsets=()=>[{i:0,j:1}];
+ delete friendly.document.getOccupiedGridSpaceOffsets;
+ delete target.document.getOccupiedGridSpaceOffsets;
+ delete source.document.getOccupiedGridSpaceOffsets;
+ friendly.getOccupiedCells=fLegacy;
+ target.getOccupiedCells=tLegacy;
+ source.getOccupiedCells=sLegacy;
+ if(centerBefore===undefined)delete grid.getCenterPoint;
+ else grid.getCenterPoint=centerBefore;
  // Melee attacks: never penalize.
  const melee={...action,actionType:'mwak'};
  u=make(1,shooter,weapon,melee);

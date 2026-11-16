@@ -1,3 +1,10 @@
+## v1.33.3 — Foundry v13 token geometry compatibility
+
+- Fix the real-world `uncertain threat or token geometry` warning after the v1.33.2 size fix: Foundry v13 Token objects do not expose `getOccupiedCells()`. Use native `TokenDocument.getOccupiedGridSpaceOffsets()`, convert cells to measured center points with `canvas.grid.getCenterPoint()`, then measure with the existing `canvas.grid.measurePath()`.
+- Keep the former `getOccupiedCells` compatibility path for custom integrations but do not depend on that nonstandard method on normal Foundry v13 tokens.
+- Return detailed `uncertain` entries in `api.rangedMelee.lastDiagnostic()` for each unresolved ally, distinguishing missing grid geometry, unknown threat/reach, and missing ally size; retain fail-closed behavior instead of inventing a −4.
+- Add regression cases for actual v13 TokenDocument offsets without `getOccupiedCells`, distance-based engagement, and detailed uncertainty output. Existing Native PF1 range penalties, Precise Shot and firearm automation are unaffected.
+
 ## v1.33.2 — Native PF1 v11.11 creature size compatibility
 
 - Fix 'target size unknown' during shooting into melee against correctly configured PF1 actors. Native PF1 v11.11 exposes `system.traits.size` as `{base:'med',value:4}`, rather than the legacy `'med'` string.
