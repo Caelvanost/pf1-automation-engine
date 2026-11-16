@@ -30,7 +30,7 @@ const game={user:users[0],users,actors:{contents:[actor]},scenes:{contents:[]},
   registerMenu:(_ns,k,options)=>registrations.set(k,options),
   set:async(_ns,k,value)=>{settings.set(k,structuredClone(value));return value}
  }};
-const ctx={console,FormApplication,game,Date,Map,Set,
+const ctx={console,FormApplication,game,Date,Map,Set,ui:{notifications:{info(){}}},
  foundry:{utils:{deepClone:structuredClone,mergeObject:(a,b)=>({...a,...b})}},
  Hooks:{once:(k,cb)=>lifecycle.set(k,cb),callAll(){}},
  fromUuid:async uuid=>docs.get(uuid)};
@@ -63,7 +63,8 @@ const api=game.modules.get(ns).api.scriptApprovals;
  settings.set('trustedTableMode',false);
  data=await form.getData();
  script._source.script='changed after dialog opened';
- await assert.rejects(form._updateObject(null,{'approval-0':'on'}),/changed/);
+ const changedIndex=data.scripts.find(x=>x.scriptId==='precise').index;
+ await assert.rejects(form._updateObject(null,{['approval-'+changedIndex]:'on'}),/changed/);
  assert.equal(api.check(actor,item,script).approved,false,'stale source cannot be approved');
  const replacement={...script};
  item.scriptCalls.contents[0]=replacement;
