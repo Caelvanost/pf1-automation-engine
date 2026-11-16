@@ -408,7 +408,7 @@ function effectiveMeleePenalty(parts){
  const diagnostic=API.lastDiagnostic();
  assert.equal(diagnostic.overrideReasons.length,3);
  assert.equal(diagnostic.overrideReasons[0].reason,'mixed-override-0');
- assert.deepEqual(diagnostic.effectivePenalties.map(x=>x.penalty),[0,-2,-4]);
+ assert.deepEqual(Array.from(diagnostic.effectivePenalties,x=>x.penalty),[0,-2,-4]);
  // Numerical totals match the old -4 + correction behavior without
  // displaying any artificial correction terms.
  const oldTotals=[-4+(4),-5-4+(2),-10-4+0];
