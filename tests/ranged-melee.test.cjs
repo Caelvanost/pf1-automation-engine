@@ -307,6 +307,41 @@ function effectiveMeleePenalty(parts){
  source.getOccupiedCells=sLegacy;
  if(centerBefore===undefined)delete grid.getCenterPoint;
  else grid.getCenterPoint=centerBefore;
+ // Native PF1 11.11: reach appears in getRollData().range.melee,
+ // not on actor.system.attributes.reach. All three allies in the
+ // reported world had missing legacy reach fields.
+ const r1=f.system.attributes.reach;
+ const r2=enemy.system.attributes.reach;
+ delete f.system.attributes.reach;
+ delete enemy.system.attributes.reach;
+ f.getRollData=()=>({range:{melee:5,reach:10}});
+ enemy.getRollData=()=>({range:{melee:5,reach:10}});
+ u=make();result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),-4,
+  'native PF1 prepared melee reach works without legacy reach field');
+ assert.equal(API.lastDiagnostic().status,'engaged');
+ // Reached range can be larger than natural melee range; do not confuse
+ // range.reach with range.melee for ordinary melee threats.
+ f.getRollData=()=>({range:{melee:1,reach:15}});
+ enemy.getRollData=()=>({range:{melee:1,reach:15}});
+ u=make();result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),0);
+ assert.equal(API.lastDiagnostic().status,'not-engaged');
+ f.getRollData=()=>({range:{melee:5}});
+ enemy.getRollData=()=>({range:{melee:5}});
+ u=make();result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),-4);
+ // Missing prepared and legacy reach still fails closed with details.
+ f.getRollData=()=>({range:{}});
+ enemy.getRollData=()=>({range:{}});
+ u=make();result=await u.addAttacks();
+ assert.equal(API.lastDiagnostic().status,'manual');
+ assert.equal(API.lastDiagnostic().uncertain?.[0]?.reason,
+  'melee threat or reach unknown');
+ delete f.getRollData;
+ delete enemy.getRollData;
+ f.system.attributes.reach=r1;
+ enemy.system.attributes.reach=r2;
  // Melee attacks: never penalize.
  const melee={...action,actionType:'mwak'};
  u=make(1,shooter,weapon,melee);

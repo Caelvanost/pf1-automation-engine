@@ -1,4 +1,4 @@
-# PF1AE — Shooting into Melee v1.33.3
+# PF1AE — Shooting into Melee v1.33.4
 
 Foundry VTT 13.351, Pathfinder 1e 11.11, and optional PF1 Firearms & Reload.
 
@@ -140,3 +140,30 @@ Si l'engagement ne peut toujours pas être déterminé, le diagnostic inclut `un
 ```js
 console.dir(game.modules.get("pf1-automation-engine").api.rangedMelee.lastDiagnostic(), {depth: 5})
 ```
+
+### v1.33.4 — Allonge native PF1 et attaques naturelles
+
+PF1 v11.11 expose l'allonge de mêlée calculée via
+`actor.getRollData().range.melee`, plutôt que systématiquement via
+`actor.system.attributes.reach`. PF1AE privilégie la valeur calculée,
+avec un repli compatible pour d'éventuels anciens champs. Une valeur absente
+ne devient **jamais** automatiquement « 1,50 m » : le diagnostic reste
+`manual` tant que la menace n'est pas établie.
+
+Les attaques naturelles et les objets natifs de type `attack` utilisés
+notamment par les PNJ sont désormais pris en compte dans la recherche de
+sources d'attaque de mêlée. Les nouveaux champs `allyHasMeleeAttack`,
+`targetHasMeleeAttack`, `allyReachData` et `targetReachData`
+permettent de distinguer une arme ou attaque non reconnue d'une allonge
+inconnue.
+
+```js
+const t=[...game.user.targets][0];
+console.log("PF1 computed melee reach",t?.actor?.getRollData?.()?.range);
+console.table(game.modules.get("pf1-automation-engine")
+  ?.api?.rangedMelee?.lastDiagnostic()?.uncertain??[]);
+```
+
+**Validation dans Foundry :** recommencer le tir contre la harpie après
+installation v1.33.4. En cas de refus, inspecter les champs détaillés
+plutôt que forcer un malus pour des alliés incapables de menacer.

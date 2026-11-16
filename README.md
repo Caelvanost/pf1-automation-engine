@@ -1,10 +1,10 @@
 # PF1 Automation Engine
 
-**Version 1.33.3 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.33.4 · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
-## Shooting into melee (v1.33.3)
+## Shooting into melee (v1.33.4)
 
 PF1AE can now apply verified Pathfinder 1e ranged-into-melee attack penalties **before each native attack roll** using the same `pf1CreateActionUse` / `shared.attackBonus` pre-roll extension point as range increments for verified single-target engagements. A separate per-index correction is reserved for feat overrides or cases resolved later. The rule is **−4**, reduced to **−2** for targets two size categories larger and **0** for three sizes larger, and is avoided at 10 ft separation. Uncertain threat, faction or target associations defer to manual adjudication instead of guessing. The module does not hardcode feats: native Item Script Calls may supply exact-index penalty overrides, including **Precise Shot**. See [Ranged melee API and full Script Call](docs/RANGED-MELEE.md).
 
