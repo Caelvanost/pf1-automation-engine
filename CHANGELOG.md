@@ -1,3 +1,12 @@
+## v1.33.14 — Clean effective shooting-into-melee roll parts
+
+- Native ranged attack rolls now display the **final per-attack melee penalty** only: `-4[Tir dans le tas]`, `-2[Tir dans le tas]`, or no melee penalty for `penalty:0` (English: `Shooting into melee`).
+- Preserve the early creation-time shared modifier for context, but remove only that PF1AE-owned part after native Script Calls finish and before native `ActionUse.addAttacks()`; inject exactly one effective per-index part instead of showing `-4` plus compensating `+4`.
+- Temporarily suppress the native exact `0` attack-bonus placeholder for affected attacks, restoring all original `shared.attacks` data after resolution, cancellation, or error.
+- Retain distinct overrides per attack index, the v1.33.13 preparation/roll/completed lifecycle, all actor/item/Script Call approval checks, native manual options, and coexistence with independent feat, range and other attack bonuses.
+- Keep override `reason` values in diagnostics without showing them in roll formulas.
+- Add regression coverage for mixed `0`, `-2`, `-4` full attacks, clean Precise Shot, exact formula parts and unchanged numeric results.
+
 ## v1.33.13 — Precise Shot attack preparation lifecycle
 
 - Fix native `PF1AE:rangedMelee:override` Script Calls being refused when PF1's already-prepared `shared.rollData.attackCount` exists before a single d20 is rolled.
