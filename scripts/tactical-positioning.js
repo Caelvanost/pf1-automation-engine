@@ -240,9 +240,9 @@ function tpPrecheck(use){
  if(!attacker||attacker.actor?.uuid!==use.actor.uuid)return false;
  const result=tpCheckFlanking({attacker,target:targets[0]});
  if(result.flanking!==true)return false;
- // Preserve any explicit selection established by a different provider.
- // Only a previously unset option is prechecked, never overwritten.
- if(use.shared.useOptions.flanking!==undefined)return false;
+ // This hook runs when ActionUse is created, before the player edits the
+ // attack dialog. PF1 may initialize the checkbox to false by default.
+ // The attack dialog still owns the final user selection.
  use.shared.useOptions.flanking=true;
  return true;
 }
