@@ -1,3 +1,12 @@
+## v1.33.7 — Script Call approval manager and localized settings
+
+- Add a GM-only **Script Approvals** settings menu for all discovered native embedded Actor Item Script Calls; checkboxes approve/revoke the exact stored call in secure mode.
+- Show disabled checkboxes while Trusted Table Mode is active; existing approvals remain stored.
+- Keep strict Actor/Item/native Script Call identity and exact source fingerprint validation. A changed script must be approved again; edits during the open dialog are rejected.
+- Localize the new menu and ranged-melee configuration in French and English (English fallback for other Foundry languages).
+- Add regression tests for discovery, granting, revocation, trust-mode read-only state, stale source and modified identity.
+- No change to the Precise Shot Script Call.
+
 ## v1.33.6 — Trusted Table Mode permits exact ranged-melee override Script Calls
 
 - Add **only** `PF1AE:rangedMelee:override` to the trusted-table allowlist for native `toggle` Script Calls, beside `PF1AE:bootstrap`. This fixes elected-GM fallback refusals for Precise Shot on a player-owned Actor.

@@ -435,13 +435,13 @@ function rmInstall(){
 }
 Hooks.once('init',()=>{
  game.settings.register(RM_NS,RM_SETTING,{
-  name:'PF1AE: Automatic shooting into melee penalty',
-  hint:'Apply verified Pathfinder 1e engagement penalties before ranged attack dice; ambiguous cases require manual resolution.',
+  name:game.i18n?.localize?.('PF1AE.Settings.RangedMelee.Name')??'Automatic shooting into melee penalty',
+  hint:game.i18n?.localize?.('PF1AE.Settings.RangedMelee.Hint')??'Apply verified Pathfinder 1e engagement penalties before ranged attack dice; ambiguous cases require manual resolution.',
   scope:'world',config:true,restricted:true,type:Boolean,default:true
  });
  game.settings.register(RM_NS,'manualRangedMeleePrompt',{
-  name:'PF1AE: Ask when melee engagement is uncertain',
-  hint:'Before rolling against one target, ask for 0 / -2 / -4 if engagement cannot be verified. Multi-target ambiguity is never guessed.',
+  name:game.i18n?.localize?.('PF1AE.Settings.RangedMeleePrompt.Name')??'Ask when melee engagement is uncertain',
+  hint:game.i18n?.localize?.('PF1AE.Settings.RangedMeleePrompt.Hint')??'Before rolling against one target, ask for 0 / -2 / -4 if engagement cannot be verified. Multi-target ambiguity is never guessed.',
   scope:'world',config:true,restricted:true,type:Boolean,default:true
  });
  Hooks.on('pf1CreateActionUse',use=>{

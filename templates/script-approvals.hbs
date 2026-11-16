@@ -1,0 +1,21 @@
+<form class="pf1ae-script-approvals" style="padding:10px;display:flex;flex-direction:column;height:100%;gap:10px">
+ <p>{{notice}}</p>
+ <div style="overflow:auto;flex:1;min-height:200px">
+  <table class="table" style="width:100%">
+   <thead><tr><th>{{actorLabel}}</th><th>{{itemLabel}}</th><th>{{scriptLabel}}</th><th>{{categoryLabel}}</th><th style="text-align:center">{{approveLabel}}</th></tr></thead>
+   <tbody>
+   {{#each scripts}}
+    <tr title="{{reason}}">
+     <td>{{actorName}}</td><td>{{itemName}}</td><td><strong>{{name}}</strong><small style="display:block;opacity:.65">{{scriptId}}</small></td>
+     <td>{{category}}</td><td style="text-align:center"><input type="checkbox" name="approval-{{index}}" {{#if approved}}checked{{/if}} {{#if disabled}}disabled{{/if}} aria-label="{{name}}"/></td>
+    </tr>
+   {{else}}
+    <tr><td colspan="5">{{../empty}}</td></tr>
+   {{/each}}
+   </tbody>
+  </table>
+ </div>
+ {{#if canEdit}}
+ <footer style="display:flex;justify-content:flex-end"><button type="submit"><i class="fas fa-save"></i> {{saveLabel}}</button></footer>
+ {{/if}}
+</form>
