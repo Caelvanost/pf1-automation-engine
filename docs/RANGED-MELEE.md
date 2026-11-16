@@ -1,4 +1,4 @@
-# PF1AE — Shooting into Melee v1.33.5
+# PF1AE — Shooting into Melee v1.33.6
 
 Foundry VTT 13.351, Pathfinder 1e 11.11, and optional PF1 Firearms & Reload.
 
@@ -171,3 +171,11 @@ plutôt que forcer un malus pour des alliés incapables de menacer.
 ### v1.33.5 — Libellé de malus localisé
 
 Le libellé dans les formules de jet d'attaque utilise la langue du **client Foundry** : `Shooting into melee` en anglais (et par défaut), `Tir dans le tas` en français, y compris `fr-FR`. La même traduction s'applique aux corrections par index de Tir de précision. Les valeurs de malus et leur application ne changent pas.
+
+### v1.33.6 — Mode Table de confiance et Tir de précision
+
+Le nom exact `PF1AE:rangedMelee:override` est désormais autorisé en mode Table de confiance **uniquement** pour les Script Calls natifs de catégorie `Basculer` (`toggle`). Cette autorisation est contrôlée par le mécanisme d'approbation PF1AE qui vérifie toujours l'identité Actor/Item/Script Call et l'appartenance de l'objet à l'acteur. Le mode Table de confiance reste désactivé par défaut.
+
+En mode sécurisé, une approbation explicite et individuelle de la version enregistrée du Script Call demeure obligatoire avant toute exécution sur le MJ pour un personnage appartenant aussi à un joueur. Toute modification du script invalide cette approbation. Aucun changement du code du Script Call Tir de précision n'est requis.
+
+**Test :** le MJ utilise un personnage appartenant également à un joueur, ayant Tir de précision. Mode sécurisé sans approbation : malus de −4 maintenu. Mode Table de confiance actif : le Script Call natif applique un +4 correcteur et le malus effectif est 0. Mode sécurisé après approbation exacte : malus également neutralisé. Un Script Call d'un autre objet, d'un autre acteur ou en catégorie `postUse` ne bénéficie pas de l'autorisation spéciale.
