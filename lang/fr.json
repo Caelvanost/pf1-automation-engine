@@ -32,6 +32,14 @@
       "ReloadEnabled": {
         "Name": "Gestion automatique du chargement des armes (expérimental)",
         "Hint": "Suivi optionnel des armes à feu et arbalètes configurées. PF1 conserve la consommation native des munitions. Configuration manuelle par arme ; désactivé par défaut."
+      },
+      "RangedMelee": {
+        "Name": "Pénalité automatique de tir dans la mêlée",
+        "Hint": "Applique les pénalités d’engagement vérifiées de PF1 avant les jets d’attaque à distance ; les cas ambigus nécessitent une décision manuelle."
+      },
+      "RangedMeleePrompt": {
+        "Name": "Demander si l’engagement au corps à corps est incertain",
+        "Hint": "Avant un tir sur une seule cible, propose 0 / −2 / −4 si l’engagement ne peut pas être vérifié. Aucune supposition en cas de cibles multiples."
       }
     },
     "Range": {
@@ -121,6 +129,21 @@
       "Hint": "Utilise automatiquement cette action sans afficher la liste des actions. Le dialogue de configuration du jet reste géré par Pathfinder.",
       "SkipDialog": "Ignorer le dialogue (Skip dialog)",
       "SkipDialogHint": "Utiliser directement l'action par défaut sans ouvrir sa fenêtre de configuration. Les jets et consommations restent gérés par PF1."
+    },
+    "ScriptApprovals": {
+      "Title": "Autorisation de scripts",
+      "Button": "Autorisation de scripts",
+      "MenuHint": "Afficher les Script Calls des objets de la partie et autoriser individuellement leur exécution par le MJ en mode sécurisé.",
+      "TrustedNotice": "La Table de confiance est activée. Désactivez-la pour gérer les autorisations individuelles.",
+      "Help": "Cochez les Script Calls autorisés à s’exécuter en relais MJ. Chaque autorisation est liée à l’acteur, à l’objet, au Script Call et à son code enregistré.",
+      "Empty": "Aucun Script Call d’objet intégré à un acteur n’a été détecté.",
+      "Actor": "Personnage",
+      "Item": "Objet",
+      "ScriptCall": "Script Call",
+      "Category": "Catégorie",
+      "Approved": "Autorisé",
+      "Save": "Enregistrer les modifications",
+      "Saved": "Autorisations de scripts mises à jour."
     }
   }
 }
