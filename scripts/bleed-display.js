@@ -51,6 +51,7 @@ function bvSheet(app,element){
   if(target){
    target.textContent=label;
    target.setAttribute?.('title',label);
+   target.setAttribute?.('data-tooltip-text',label);
   }
  }
 }
@@ -147,11 +148,26 @@ function bvHud(hud,element){
   const existing=control.querySelector?.('.pf1ae-bleed-hud-value');
   if(!formula){
    existing?.remove?.();
+   // Remove our tooltip override, allowing Foundry's native status label.
+   control.removeAttribute?.('data-tooltip-text');
+   for(const icon of control.querySelectorAll?.('[data-tooltip-text]')??[]){
+    if(icon.classList?.contains?.('pf1ae-bleed-hud-value'))continue;
+    icon.removeAttribute?.('data-tooltip-text');
+   }
    continue;
   }
   const localized=bvLabel(actor);
   control.title=localized;
   control.setAttribute?.('aria-label',localized);
+  // Foundry V13 TooltipManager reads data-tooltip-text, not title or
+  // aria-label. Preserve the native data-tooltip key and avoid HTML.
+  control.setAttribute?.('data-tooltip-text',localized);
+  // Some PF1 skins put the hover anchor on the icon nested in the
+  // status control. Override that exact icon's tooltip as well.
+  for(const icon of control.querySelectorAll?.('[data-tooltip], [data-tooltip-text]')??[]){
+   if(icon.classList?.contains?.('pf1ae-bleed-hud-value'))continue;
+   icon.setAttribute?.('data-tooltip-text',localized);
+  }
   if(existing){existing.textContent=formula;continue;}
   if(typeof document?.createElement!=='function')continue;
   const badge=document.createElement('span');
