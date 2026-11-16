@@ -9,6 +9,8 @@ const RM_SCRIPT='PF1AE:rangedMelee:override';
 const RM_OVERRIDES=new WeakMap(),RM_COMPLETED=new WeakSet();
 const RM_COMMON=new WeakMap();
 const RM_PENDING=new Set();
+const rmPenaltyLabel=()=>String(game.i18n?.lang??'en').toLowerCase().split(/[-_]/)[0]==='fr'
+ ?'Tir dans le tas':'Shooting into melee';
 let RM_DIAGNOSTIC=null;
 const rmReport=(status,details={})=>{
  RM_DIAGNOSTIC={status,...details,at:Date.now()};
@@ -279,7 +281,7 @@ function rmCreateUse(use){
   return;
  }
  if(RM_COMMON.has(use))return;
- const part=String(decision.penalty)+'[PF1AE Shooting into Melee]';
+ const part=String(decision.penalty)+'['+rmPenaltyLabel()+']';
  shared.attackBonus.push(part);
  RM_COMMON.set(use,{part,penalty:decision.penalty,targetId:
   context.target?.document?.uuid??context.target?.id,
@@ -403,8 +405,7 @@ async function rmBeforeRoll(use,wrapped,args){
    const delta=effective-(common?.penalty??0);
    if(!Number.isSafeInteger(delta)||delta===0)continue;
    const before=String(attacks[index].attackBonus??'').trim();
-   const label=common?'PF1AE Shooting into Melee Override':
-    'PF1AE Shooting into Melee';
+   const label=rmPenaltyLabel();
    attacks[index].attackBonus=(before?before+' + ':'')+
     '('+(delta>0?'+':'')+delta+')['+label+']';
    changed.push(index);

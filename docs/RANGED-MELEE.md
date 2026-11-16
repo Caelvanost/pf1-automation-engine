@@ -1,4 +1,4 @@
-# PF1AE — Shooting into Melee v1.33.4
+# PF1AE — Shooting into Melee v1.33.5
 
 Foundry VTT 13.351, Pathfinder 1e 11.11, and optional PF1 Firearms & Reload.
 
@@ -167,3 +167,7 @@ console.table(game.modules.get("pf1-automation-engine")
 **Validation dans Foundry :** recommencer le tir contre la harpie après
 installation v1.33.4. En cas de refus, inspecter les champs détaillés
 plutôt que forcer un malus pour des alliés incapables de menacer.
+
+### v1.33.5 — Libellé de malus localisé
+
+Le libellé dans les formules de jet d'attaque utilise la langue du **client Foundry** : `Shooting into melee` en anglais (et par défaut), `Tir dans le tas` en français, y compris `fr-FR`. La même traduction s'applique aux corrections par index de Tir de précision. Les valeurs de malus et leur application ne changent pas.
