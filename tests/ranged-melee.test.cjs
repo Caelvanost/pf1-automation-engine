@@ -390,8 +390,12 @@ function effectiveMeleePenalty(parts){
  const originalBonuses=u.shared.attacks.map(a=>a.attackBonus);
  result=await u.addAttacks();
  const rangedParts=parts=>parts.filter(x=>String(x).includes('[Shooting into melee]'));
- assert.deepEqual(result.map(rangedParts),[[],['-2[Shooting into melee]'],
-  ['-4[Shooting into melee]']]);
+ assert.deepEqual(result.map(parts=>rangedParts(parts).length),[0,1,1],
+  'each indexed attack contains at most one effective melee part');
+ assert.equal(result[1].some(v=>String(v).includes('-2[Shooting into melee]')),true);
+ assert.equal(result[2].some(v=>String(v).includes('-4[Shooting into melee]')),true);
+ assert.equal(result.every(parts=>parts.every(v=>!/\\(\\+4\\)|\\+0\\[Shooting into melee\\]/.test(String(v)))),true,
+  'no compensating +4 or redundant +0 may enter the native formula');
  assert.equal(result[0].includes('0'),false,
   'neutral first-attack placeholder is suppressed during native roll');
  assert.equal(result.every(parts=>parts.includes('1[Point Blank Shot]')),true,
@@ -406,10 +410,9 @@ function effectiveMeleePenalty(parts){
  // Numerical totals match the old -4 + correction behavior without
  // displaying any artificial correction terms.
  const oldTotals=[-4+(4),-5-4+(2),-10-4+0];
- const newTotals=result.map(parts=>parts.reduce((sum,part)=>{
-  const n=Number(String(part).match(/^\\(?([+-]?\\d+)/)?.[1]);
-  return sum+(Number.isFinite(n)?n:0);
- },0));
+ const newTotals=result.map(parts=>parts.reduce((sum,part)=>
+  sum+(String(part).match(/[+-]?\\d+/g)??[])
+   .reduce((acc,value)=>acc+Number(value),0),0));
  assert.deepEqual(newTotals,oldTotals.map(n=>n+1),
   'effective totals are unchanged, including Point Blank Shot');
  assert.throws(()=>API.prepareAttackOverride({actionUse:u,attackIndex:0,penalty:0}),/completed/);
