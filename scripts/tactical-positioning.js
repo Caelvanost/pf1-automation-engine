@@ -219,12 +219,44 @@ function tpCheckFlanking({attacker,target,allies}={}){
   candidates:eligible,uncertain});
  return tpOut('no-qualified-opposite-ally',{candidates:eligible});
 }
+/**
+ * Preselect PF1's existing Attack Dialog "Flanking" checkbox, never add a
+ * second +2. The option is passed through by native ActionUse: users can
+ * change it in the attack dialog before rolling. Roll Bonuses uses this
+ * precise native extension point and shared.useOptions.flanking contract.
+ */
+function tpPrecheck(use){
+ if(!tpEnabled())return false;
+ if(!use||use?.actor?.documentName!=='Actor'||
+    use?.item?.documentName!=='Item'||
+    use.item.actor?.uuid!==use.actor.uuid||
+    !['mwak','msak'].includes(use.action?.actionType)||
+    use.action?.hasAttack!==true||
+    !use.shared?.useOptions||typeof use.shared.useOptions!=='object')return false;
+ if(use.shared.useOptions.flanking===true)return false;
+ const targets=[...(game.user?.targets??[])];
+ if(targets.length!==1)return false;
+ const attacker=use.token?.object??use.token;
+ if(!attacker||attacker.actor?.uuid!==use.actor.uuid)return false;
+ const result=tpCheckFlanking({attacker,target:targets[0]});
+ if(result.flanking!==true)return false;
+ // Preserve any explicit selection established by a different provider.
+ // Only a previously unset option is prechecked, never overwritten.
+ if(use.shared.useOptions.flanking!==undefined)return false;
+ use.shared.useOptions.flanking=true;
+ return true;
+}
 Hooks.once('init',()=>{
+ Hooks.on('pf1CreateActionUse',use=>{
+  try{tpPrecheck(use)}catch(error){
+   console.warn('[PF1AE][TacticalPositioning] Native precheck skipped',error);
+  }
+ });
  game.settings.register(TP_NS,TP_SETTING,{
   name:game.i18n?.localize?.('PF1AE.Settings.TacticalPositioning.Name')??
    'Tactical positioning detection',
   hint:game.i18n?.localize?.('PF1AE.Settings.TacticalPositioning.Hint')??
-   'Read-only flanking checks; no automatic attack bonus.',
+   'Detect flanking and precheck the native melee-attack option when certain; never add a bonus independently.',
   scope:'world',config:true,restricted:true,type:Boolean,default:true
  });
 });
@@ -234,6 +266,7 @@ Hooks.once('ready',()=>{
  module.api??={};
  module.api.tacticalPositioning=Object.freeze({
   checkFlanking:options=>tpCheckFlanking(options),
+  precheck:use=>tpPrecheck(use),
   lastDiagnostic:()=>TP_LAST?structuredClone(TP_LAST):null
  });
 });
