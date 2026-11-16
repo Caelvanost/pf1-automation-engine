@@ -43,7 +43,7 @@ const game={
  user:{id:'gm',isGM:true},actors:{contents:[a]},scenes:{contents:[]},
  modules:new Map([[NS,{active:true,api}],['lib-wrapper',{active:false}]])
 };
-const document={createElement(){return {className:'',textContent:'',style:{}}}};
+const document={createElement(){return {className:'',textContent:'',style:{},remove(){this.removed=true}}}};
 const ctx={console,Map,Set,Promise,Date,game,document,PIXI:{Text:FakeText},
  canvas:{tokens:{placeables:[token]}},CONFIG:{
  statusEffects:[{id:'bleed',img:bleedSrc},{id:'prone',img:'icons/svg/aura.svg'}],
