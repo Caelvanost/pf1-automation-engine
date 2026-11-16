@@ -42,8 +42,8 @@
         "Hint": "Before rolling against one target, ask for 0 / −2 / −4 if engagement cannot be verified. Multi-target ambiguity is never guessed."
       },
       "TacticalPositioning": {
-        "Name": "Tactical positioning detection",
-        "Hint": "Lets Item Script Calls check flanking using geometry, reach and threat. Diagnostics only: never adds attack bonuses automatically."
+        "Name": "Automatic flanking detection",
+        "Hint": "Precheck the native Flanking option for melee attacks when positioning, reach and threat are verified. Players may change the checkbox in the attack dialog; PF1 applies its own +2, without stacking."
       }
     },
     "Range": {
