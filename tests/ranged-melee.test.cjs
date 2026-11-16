@@ -65,7 +65,7 @@ const ctx={console,Promise,Date,Map,Set,WeakMap,WeakSet,Number,Object,
  foundry:{utils:{deepClone:structuredClone},
   applications:{api:{DialogV2:{wait:async()=>manualChoices.shift()??null}}}},
  fromUuid:async uuid=>uuid===shooter.uuid?shooter:
-  uuid===preciseFeat?.uuid?preciseFeat:null,
+  shooter.items?.contents?.find(item=>item.uuid===uuid)??null,
  canvas:{scene,grid,tokens:{placeables:objects}},pf1:{
   actionUse:{ActionUse},settings:{distance:{metric:false}}}};
 ctx.globalThis=ctx;vm.createContext(ctx);
