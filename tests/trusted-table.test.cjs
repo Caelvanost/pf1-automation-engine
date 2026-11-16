@@ -173,5 +173,35 @@ const restore=async()=>{await Promise.all([...clients.values()].map(c=>c.mod.api
  assert.equal(api.check(hero,bleedItem,beforeBleed).approved,false,
   'editing the approved callback invalidates its fingerprint');
  hero.items.delete(bleedItem.id);docs.delete(bleedItem.uuid);
+ // Precise Shot's exact native toggle subscription shares the same
+ // Trusted Table Mode gate but MUST remain approval-bound in secure mode.
+ const precise=nativeCall('precise-shot','PF1AE:rangedMelee:override','toggle');
+ const precisionItem=item(hero,'precise-shot',[precise]);
+ assert.equal(api.check(hero,precisionItem,precise).approved,false,
+  'secure mode requires exact GM approval for ranged melee override');
+ await clients.get('gm1').ctx.game.settings.set(NS,'trustedTableMode',true);
+ assert.equal(api.check(hero,precisionItem,precise).approved,true,
+  'trusted table accepts native toggle precise-shot subscription');
+ const swapped=nativeCall('precise-shot','PF1AE:rangedMelee:override','toggle');
+ assert.equal(api.check(hero,precisionItem,swapped).approved,false,
+  'trusted mode rejects replaced native Script Call identity');
+ const unrelated=item(npc,'unrelated',[nativeCall('other','PF1AE:bootstrap')]);
+ assert.equal(api.check(hero,unrelated,precise).approved,false,
+  'trusted mode rejects Actor/Item ownership mismatch');
+ const differentCategory=nativeCall('other-category','PF1AE:rangedMelee:override','postUse');
+ const badCategoryItem=item(hero,'bad-category',[differentCategory]);
+ assert.equal(api.check(hero,badCategoryItem,differentCategory).approved,false,
+  'trusted mode does not authorize postUse with the same name');
+ await clients.get('gm1').ctx.game.settings.set(NS,'trustedTableMode',false);
+ assert.equal(api.check(hero,precisionItem,precise).approved,false);
+ await api.approve({actor:hero,item:precisionItem,scriptId:precise.id});
+ assert.equal(api.check(hero,precisionItem,precise).approved,true,
+  'secure mode permits the exact individually approved call');
+ precise._source.script='replaced precise shot code';
+ assert.equal(api.check(hero,precisionItem,precise).approved,false,
+  'editing a secure-approved script requires reapproval');
+ hero.items.delete(precisionItem.id);docs.delete(precisionItem.uuid);
+ hero.items.delete(badCategoryItem.id);docs.delete(badCategoryItem.uuid);
+ npc.items.delete(unrelated.id);docs.delete(unrelated.uuid);
  console.log('PASS trusted-table: opt-in, multi-call, synthetic, live edit, add/delete, two GMs, owner handoff, secure mode, no duplicates');
 })().catch(err=>{console.error(err);process.exitCode=1});
