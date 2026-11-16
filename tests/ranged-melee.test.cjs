@@ -14,11 +14,14 @@ class ActionUse{
  constructor(actor,item,action,token,count=1){
   this.actor=actor;this.item=item;this.action=action;this.token=token;
   this.shared={attacks:Array.from({length:count},(_,i)=>({type:null,attackBonus:String(-5*i)})),
-   chatAttacks:[],rollData:{},attackBonus:['1[Point Blank Shot]'],
+   chatAttacks:[],rollData:{attackCount:count},attackBonus:['1[Point Blank Shot]'],
    useOptions:{},formData:{}};
  }
  async addAttacks(){
   nativeCalls++;
+  if(this.nativeOnEnter)this.nativeOnEnter();
+  if(this.nativeGate)await this.nativeGate;
+  if(this.failNative)throw Error('native action cancelled');
   this.results=this.shared.attacks.map(a=>[...this.shared.attackBonus,a.attackBonus]);
   // Mimic actual PF1 ActionUse.addAttacks loop consuming attackBonus.
   this.shared.chatAttacks.push(...this.results.map(x=>({parts:x})));
@@ -273,6 +276,54 @@ function effectiveMeleePenalty(parts){
  assert.equal(scriptInvoked,beforeGM,'GM refuses modified approved Script Call');
  assert.equal(effectiveMeleePenalty(result[0]),-4);
  game.user=user;
+ // Regression: PF1 has already populated attackCount in rollData during
+ // PREPARATION, before ActionUse.addAttacks() or any d20 roll.
+ u=make(2);
+ assert.equal(u.shared.rollData.attackCount,2);
+ assert.equal(u.shared.chatAttacks.length,0);
+ assert.equal(API.prepareAttackOverride({actionUse:u,attackIndex:0,penalty:0}),true,
+  'prepared native attackCount must not be mistaken for a rolled d20');
+ result=await u.addAttacks();
+ assert.equal(effectiveMeleePenalty(result[0]),0);
+ assert.equal(effectiveMeleePenalty(result[1]),-4,
+  'the second attack receives normal melee penalty');
+ assert.equal(result[0].includes('1[Point Blank Shot]'),true,
+  'other feat bonuses survive the precise-shot correction');
+ assert.equal(result[0].some(x=>String(x).includes('(+4)[Shooting into melee]')),true);
+ assert.throws(()=>API.prepareAttackOverride({actionUse:u,attackIndex:0,penalty:0}),
+  /rolled or completed/);
+ // Native d20 execution starts after the wrapper enters the real addAttacks.
+ // Simulate an unresolved native call and ensure the gate stays CLOSED.
+ u=make();
+ let releaseRoll,beginNative;
+ const nativeEntered=new Promise(resolve=>{beginNative=resolve});
+ u.nativeOnEnter=beginNative;
+ u.nativeGate=new Promise(resolve=>{releaseRoll=resolve});
+ const rollingPromise=u.addAttacks();
+ await nativeEntered;
+ assert.throws(()=>API.prepareAttackOverride({actionUse:u,penalty:0}),
+  /rolled or completed/,'late mutations during native rolling must be refused');
+ await assert.rejects(u.addAttacks(),/already rolling or being prepared/,
+  'same-use concurrent invocation must not double-roll d20');
+ releaseRoll();
+ await rollingPromise;
+ assert.throws(()=>API.prepareAttackOverride({actionUse:u,penalty:0}),/completed/);
+ // Native cancellation cannot reopen a previously started action.
+ u=make();
+ u.failNative=true;
+ await assert.rejects(u.addAttacks(),/native action cancelled/);
+ assert.throws(()=>API.prepareAttackOverride({actionUse:u,penalty:0}),
+  /rolled or completed/,'failed native action stays terminal');
+ u.failNative=false;
+ await u.addAttacks();
+ assert.throws(()=>API.prepareAttackOverride({actionUse:u,penalty:0}),
+  /rolled or completed/,'native ActionUse reuse never reopens overrides');
+ // A canceled or concurrent action cannot corrupt a different ActionUse.
+ u=make();
+ const separate=make();
+ await Promise.all([u.addAttacks(),separate.addAttacks()]);
+ assert.equal(effectiveMeleePenalty(u.results[0]),-4);
+ assert.equal(effectiveMeleePenalty(separate.results[0]),-4);
  // Partial override, duplicate and ownership checks.
  shooter.items.contents.pop();
  u=make(2);
