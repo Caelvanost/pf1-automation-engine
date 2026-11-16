@@ -1,3 +1,10 @@
+## v1.33.12 — PF1 rich Bleed tooltip integration
+
+- Use PF1's documented `renderPF1ExtendedTooltip(sheet, id, template)` hook to localize the Bleed title in system extended tooltips before they are displayed.
+- Use a guarded DOM insertion observer for the separate token effect popover, which does not trigger PIXI effect-sprite hover events. Match the Bleed heading and an active token with a configured formula; leave other condition tooltips unchanged.
+- Display `Saignement - 1d4` with a French interface or `Bleed - 1d4` otherwise. Preserve status identity, descriptive content, durations, and damage automation.
+- Replace the previous incorrect PIXI pointer event test with regression checks for both PF1 tooltip rendering and DOM insertion.
+
 ## v1.33.11 — PF1 rich Bleed token tooltip
 
 - Fix the separate PF1e rich condition popover on the token's Bleed miniature (the one showing Active, Max duration and stopping conditions), not just the default Foundry tooltip.
