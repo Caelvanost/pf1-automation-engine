@@ -37,7 +37,8 @@ function buff(actor,name,formula,active=true){
 }
 function nativeBleed(actor,formula){
  const effect={uuid:actor.uuid+'.ActiveEffect.bleed',documentName:'ActiveEffect',
-  parent:actor,statuses:new Set(['bleed']),disabled:false,flags:{},
+  parent:actor,statuses:new Set(['bleed']),disabled:false,flags:{},name:'Bleed',
+  async update(change){if('name' in change)this.name=change.name;return this;},
   getFlag(ns,key){return this.flags[ns]?.[key]},
   async setFlag(ns,key,value){this.flags[ns]??={};
    this.flags[ns][key]=structuredClone(value);return this;}
@@ -311,6 +312,7 @@ async function hit(c){return api.process(c)}
  const nativeActor=createActor('native-bleed');
  const status=nativeBleed(nativeActor,'1d4');
  await api.configure({effect:status,formula:'1d4'});
+ assert.equal(status.name,'Bleed - 1d4','native ActiveEffect name includes formula');
  status.flags[NS].manualBleed={generated:true};
  const nativeCombat=combat(nativeActor,{id:'native-bleed-case'});
  const rollsBefore=rollEvaluations;
@@ -339,6 +341,7 @@ async function hit(c){return api.process(c)}
  await api.configure({effect:frenchStatus,formula:'2'});
  await hit(combat(frenchActor,{id:'bleed-french'}));
  assert.match(chatMessages.at(-1).data.content,/Croûte.*subit.*2.*points de saignement !/);
+ assert.equal(frenchStatus.name,'Saignement - 2','French native effect name');
  gm.game.i18n.lang='de';
  const germanActor=createActor('Sailor');
  const germanStatus=nativeBleed(germanActor,'2');

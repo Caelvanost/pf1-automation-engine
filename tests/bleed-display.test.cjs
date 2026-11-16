@@ -88,11 +88,13 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  await token.drawEffects();
  assert.equal(otherIcon.children.length,0);
  // The native ActiveEffect wins over any legacy Buff formula.
- a.effects={contents:[{documentName:'ActiveEffect',statuses:new Set(['bleed']),
-  disabled:false,flags:{[NS]:{bleed:{formula:'2d4+1'}}},
+ a.effects={contents:[{id:'bleed-native',documentName:'ActiveEffect',statuses:new Set(['bleed']),
+  disabled:false,name:'Bleed',flags:{[NS]:{bleed:{enabled:true,formula:'2d4+1'}}},
+  async update(change){if(change.name)this.name=change.name;},
   getFlag(ns,key){return this.flags[ns]?.[key]??null}
  }]};
  assert.equal(api.bleedDisplay.formula(a),'2d4+1');
+ assert.equal(api.bleedDisplay.label(a),'Bleed - 2d4+1');
  a.effects.contents[0].disabled=true;
  assert.equal(api.bleedDisplay.formula(a),'2d6+1',
   'disabled native condition does not replace legacy fallback');
@@ -116,20 +118,34 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  event(hud,hudRoot);
  assert.equal(hudControl.children.length,1);
  assert.equal(hudControl.children[0].textContent,'2d4+1');
- assert.equal(hudControl.attributes['aria-label'],'Bleed : 2d4+1');
+ assert.equal(hudControl.attributes['aria-label'],'Bleed - 2d4+1');
  assert.equal(hudControl.children[0].style.cssText.includes('pointer-events:none'),true);
- a.effects.contents[0].flags={[NS]:{bleed:{formula:'5'}}};
+ a.effects.contents[0].flags={[NS]:{bleed:{enabled:true,formula:'5'}}};
  event(hud,hudRoot);
  assert.equal(hudControl.children.length,1,'HUD value updates without duplicate');
  assert.equal(hudControl.children[0].textContent,'5');
  game.i18n={lang:'fr'};
  event(hud,hudRoot);
- assert.equal(hudControl.attributes['aria-label'],'Saignement : 5');
+ assert.equal(hudControl.attributes['aria-label'],'Saignement - 5');
+ assert.equal(api.bleedDisplay.label(a),'Saignement - 5');
+ const effectName={textContent:'Bleed',setAttribute(name,value){this[name]=value}};
+ const sheetRow={querySelector(){return effectName}};
+ const sheetRoot={querySelectorAll(){return [sheetRow]}};
+ api.bleedDisplay.sheet({actor:a},sheetRoot);
+ assert.equal(effectName.textContent,'Saignement - 5');
+ game.i18n.lang='de';
+ api.bleedDisplay.sheet({actor:a},sheetRoot);
+ assert.equal(effectName.textContent,'Bleed - 5','non-French locale gets English name');
+ game.i18n.lang='fr';
  // Removing bleed clears the HUD badge while leaving other status controls alone.
  a.effects.contents[0].disabled=true;
  event(hud,hudRoot);
  assert.equal(hudControl.children[0].removed,true);
  a.effects.contents[0].disabled=false;
+ // Existing native Bleed conditions are renamed on GM migration without recreation.
+ a.effects.contents[0].name='Bleed';
+ await api.bleedDisplay.refreshNames();
+ assert.equal(a.effects.contents[0].name,'Saignement - 5');
  console.log('PASS bleed-display: native Bleed icon formula overlay, single marker,');
  console.log(' redraw/update/reconnect-safe, migration, and other Buff isolation.');
 })().catch(error=>{console.error(error);process.exitCode=1});

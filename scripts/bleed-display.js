@@ -20,6 +20,41 @@ const bvFormula=actor=>{
  const value=nativeValue??item?.getFlag?.(BV_NS,'bleed')?.formula;
  return typeof value==='string'&&value.length>0&&value.length<=100?value:null;
 };
+
+/** Client-language label; never rely on the world-persisted name for translations. */
+function bvLabel(actor){
+ const formula=bvFormula(actor);
+ if(!formula)return null;
+ const lang=String(game.i18n?.lang??'en').toLowerCase();
+ return (lang==='fr'||lang.startsWith('fr-')?'Saignement':'Bleed')+' - '+formula;
+}
+function bvNative(actor){
+ return [...(actor?.effects?.contents??actor?.effects?.values?.()??[])]
+  .find(effect=>effect?.statuses?.has?.('bleed')===true&&effect.disabled!==true)??null;
+}
+/** Adapt the native effect row in actor/effects sheets without changing its UUID or statuses. */
+function bvSheet(app,element){
+ if(!bvEnabled())return;
+ const actor=app?.actor??app?.document?.actor??
+  (app?.document?.documentName==='Actor'?app.document:null);
+ const native=bvNative(actor),label=bvLabel(actor);
+ if(!native?.id||!label)return;
+ const root=element?.querySelectorAll?element:
+  element?.[0]?.querySelectorAll?element[0]:null;
+ if(!root)return;
+ const escapeId=String(native.id).replace(/[^a-zA-Z0-9_-]/g,'');
+ const rows=root.querySelectorAll(
+  '[data-effect-id="'+escapeId+'"], [data-document-id="'+escapeId+'"]'
+ );
+ for(const row of rows){
+  const target=row.querySelector?.('.effect-name, .item-name, .name, [data-role="effect-name"]');
+  if(target){
+   target.textContent=label;
+   target.setAttribute?.('title',label);
+  }
+ }
+}
+
 const bvIconSources=actor=>{
  const sources=new Set();
  const add=s=>{if(typeof s==='string'&&s.length>0)sources.add(s)};
@@ -61,6 +96,8 @@ function bvPaint(token){
  const sprite=bvSprite(token);
  if(!sprite)return;
  const formula=bvFormula(token.actor);
+ const label=bvLabel(token.actor);
+ if(label){sprite.title=label;sprite.accessibleTitle=label;}
  if(!formula){
   for(const child of [...(sprite.children??[])]){
    if(child?.[BV_BADGE]===true){sprite.removeChild?.(child);child.destroy?.();}
@@ -112,10 +149,9 @@ function bvHud(hud,element){
    existing?.remove?.();
    continue;
   }
-  const localized=String(game.i18n?.lang??'en').toLowerCase().startsWith('fr')?
-   'Saignement':'Bleed';
-  control.title=localized+' : '+formula;
-  control.setAttribute?.('aria-label',localized+' : '+formula);
+  const localized=bvLabel(actor);
+  control.title=localized;
+  control.setAttribute?.('aria-label',localized);
   if(existing){existing.textContent=formula;continue;}
   if(typeof document?.createElement!=='function')continue;
   const badge=document.createElement('span');
@@ -164,6 +200,31 @@ async function bvRestoreHiding(){
   }
  }
 }
+
+/** Bring existing native Bleed condition names up to date on world load.
+ * Only the elected active GM writes, avoiding conflicting client locales.
+ */
+async function bvRestoreNames(){
+ if(!bvEnabled()||game.user?.isGM!==true)return;
+ const leader=[...(game.users??[])].filter(u=>u.active&&u.isGM)
+  .sort((a,b)=>a.id.localeCompare(b.id))[0];
+ if(leader&&leader.id!==game.user.id)return;
+ const actors=new Map();
+ const add=actor=>{if(actor?.documentName==='Actor'&&actor.uuid)
+  actors.set(actor.uuid,actor);};
+ for(const actor of game.actors?.contents??[])add(actor);
+ for(const scene of game.scenes?.contents??[])
+  for(const token of scene.tokens?.contents??[])add(token.actor??token.object?.actor);
+ for(const actor of actors.values()){
+  const effect=bvNative(actor),name=bvLabel(actor);
+  if(!effect||!name||typeof effect.update!=='function'||effect.name===name)continue;
+  // Never rename an unrelated unconfigured native bleed status.
+  if(effect.getFlag?.(BV_NS,'bleed')?.enabled!==true)continue;
+  try{await effect.update({name});}
+  catch(error){console.warn('[PF1AE][BleedDisplay] Cannot update native effect name',effect.uuid,error);}
+ }
+}
+
 function bvInstall(){
  const klass=CONFIG.Token?.objectClass??globalThis.Token;
  const prototype=klass?.prototype;
@@ -194,6 +255,13 @@ Hooks.once('ready',()=>{
  bvInstall();
  Hooks.on('drawToken',token=>bvPaint(token));
  Hooks.on('renderTokenHUD',(hud,element)=>bvHud(hud,element));
+ Hooks.on('renderActorSheet',(app,element)=>bvSheet(app,element));
+ Hooks.on('renderActiveEffectConfig',(app)=>{
+  const effect=app?.document;
+  if(effect?.statuses?.has?.('bleed')!==true)return;
+  const label=bvLabel(effect.parent??effect.actor);
+  if(label&&app.window)app.window.title=label;
+ });
  Hooks.on('refreshToken',token=>bvPaint(token));
  Hooks.on('updateActiveEffect',effect=>{
   if(effect?.statuses?.has?.('bleed')!==true)return;
@@ -208,11 +276,15 @@ Hooks.once('ready',()=>{
     console.warn('[PF1AE][BleedDisplay] Could not hide generated Buff',error));
  });
  void bvRestoreHiding();
+ void bvRestoreNames();
  const mod=game.modules.get(BV_NS);mod.api??={};
  mod.api.bleedDisplay=Object.freeze({
   formula:bvFormula,
+  label:bvLabel,
+  sheet:(app,element)=>bvSheet(app,element),
   refresh:token=>bvPaint(token),
   hud:(hud,element)=>bvHud(hud,element),
-  hideGenerated:()=>bvRestoreHiding()
+  hideGenerated:()=>bvRestoreHiding(),
+  refreshNames:()=>bvRestoreNames()
  });
 });

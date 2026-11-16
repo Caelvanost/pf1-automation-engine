@@ -1,3 +1,11 @@
+## v1.33.9 — Localized native Bleed effect names
+
+- The native Bleed ActiveEffect name now includes its configured formula when set: `Saignement - 1d4` in French or `Bleed - 1d4` otherwise.
+- Render local-language names in the token HUD and native actor effect rows, while leaving the original status identity and icon unchanged.
+- Updates when the formula changes and defaults to English for non-French Foundry clients.
+- Regression coverage for formula-bearing effect names in both languages, and for local display updates.
+- No changes to Bleed damage, chat announcements or script authorization.
+
 ## v1.33.8 — Localized Bleed messages and native condition badges
 
 - Bleed chat messages are now a single localized damage sentence: **« XXX subit N points de saignement ! »** in French and **“XXX takes N points of bleed damage!”** in English (default for other languages).

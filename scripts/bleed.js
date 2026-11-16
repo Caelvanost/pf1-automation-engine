@@ -257,6 +257,15 @@ async function blConfigure({effect,type='hp',formula,stacking='highest'}={}){
  if(blIsNativeBleed(effect)&&effect.disabled===true)
   throw Error('Cannot configure a disabled native Bleed condition.');
  await effect.setFlag(BL_NS,BL_FLAG,{enabled:true,type,formula,stacking});
+ // The native ActiveEffect's actual name is updated, so PF1's effect lists
+ // show the formula even in views that do not expose a render hook.
+ // Client-side display overlays adapt it to each user's Foundry locale.
+ if(blIsNativeBleed(effect)&&typeof effect.update==='function'){
+  const locale=String(game.i18n?.lang??'en').toLowerCase();
+  const label=(locale==='fr'||locale.startsWith('fr-')?'Saignement':'Bleed')+
+   ' - '+formula;
+  if(effect.name!==label)await effect.update({name:label});
+ }
  return effect.getFlag(BL_NS,BL_FLAG);
 }
 function blScheduleTurn(combat,source){
