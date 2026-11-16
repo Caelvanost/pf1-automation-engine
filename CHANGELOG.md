@@ -1,3 +1,10 @@
+## v1.33.4 — Native PF1 computed melee reach and NPC natural attacks
+
+- Fix the reported three-ally diagnostic `melee threat or reach unknown`: PF1 11.11 exposes computed melee reach at `actor.getRollData().range.melee`, while `system.attributes.reach` is absent on standard actors. Prefer the prepared PF1 value; retain legacy attributes only as fallbacks, never assume a guessed 5-ft reach.
+- Recognize melee threats from native PF1 NPC `attack` Items and natural attacks, rather than requiring every threat to be an explicitly equipped manufactured weapon. Unknown threat still triggers manual adjudication.
+- Enrich per-ally diagnostics with `allyHasMeleeAttack`, `targetHasMeleeAttack`, and each actor's prepared range data to distinguish lacking a melee action from lacking an allonge value.
+- Add regression cases for native reach with no legacy attribute, reach-weapon versus natural melee reach, and safe uncertainty on missing data. No changes to attack modifiers, range penalty integration or other PF1AE features.
+
 ## v1.33.3 — Foundry v13 token geometry compatibility
 
 - Fix the real-world `uncertain threat or token geometry` warning after the v1.33.2 size fix: Foundry v13 Token objects do not expose `getOccupiedCells()`. Use native `TokenDocument.getOccupiedGridSpaceOffsets()`, convert cells to measured center points with `canvas.grid.getCenterPoint()`, then measure with the existing `canvas.grid.measurePath()`.
