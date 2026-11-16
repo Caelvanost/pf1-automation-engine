@@ -120,7 +120,7 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  assert.equal(hudControl.children[0].textContent,'2d4+1');
  assert.equal(hudControl.attributes['aria-label'],'Bleed - 2d4+1');
  assert.equal(hudControl.children[0].style.cssText.includes('pointer-events:none'),true);
- a.effects.contents[0].flags={[NS]:{bleed:{formula:'5'}}};
+ a.effects.contents[0].flags={[NS]:{bleed:{enabled:true,formula:'5'}}};
  event(hud,hudRoot);
  assert.equal(hudControl.children.length,1,'HUD value updates without duplicate');
  assert.equal(hudControl.children[0].textContent,'5');
