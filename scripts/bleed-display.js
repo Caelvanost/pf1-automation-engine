@@ -1,5 +1,5 @@
 /**
- * PF1AE — Bleed: single native condition icon with a formula badge.
+ * PF1AE — Bleed: native condition icon and selected-token HUD formula badges.
  * Uses PF1's native Buff hide-from-token setting.
  */
 const BV_NS='pf1-automation-engine';
@@ -57,11 +57,16 @@ function bvSprite(token){
 }
 function bvPaint(token){
  if(!bvEnabled()||!token?.actor)return;
- const formula=bvFormula(token.actor);
- if(!formula)return;
  if(typeof PIXI?.Text!=='function')return;
  const sprite=bvSprite(token);
  if(!sprite)return;
+ const formula=bvFormula(token.actor);
+ if(!formula){
+  for(const child of [...(sprite.children??[])]){
+   if(child?.[BV_BADGE]===true){sprite.removeChild?.(child);child.destroy?.();}
+  }
+  return;
+ }
  const previous=sprite.children?.find(child=>child?.[BV_BADGE]===true);
  if(previous){
   if(previous.text!==formula)previous.text=formula;
@@ -83,6 +88,48 @@ function bvPaint(token){
  badge.eventMode='none';
  sprite.addChild(badge);
 }
+
+/** Render the formula on the native Bleed control in the selected-token HUD.
+ * Never edit the Actor, native ActiveEffect or CONFIG.statusEffects.
+ */
+function bvHud(hud,element){
+ if(!bvEnabled())return;
+ const actor=hud?.object?.actor??hud?.actor??hud?.document?.actor;
+ if(!actor)return;
+ const formula=bvFormula(actor);
+ const root=element?.querySelectorAll?element:
+  element?.[0]?.querySelectorAll?element[0]:
+  hud?.element?.querySelectorAll?hud.element:null;
+ if(!root)return;
+ // Foundry V13 palette uses data-status-id; compatibility selectors are
+ // restricted to exact Bleed controls, never arbitrary effect icons.
+ const controls=root.querySelectorAll(
+  '[data-status-id="bleed"], [data-effect-id="bleed"], [data-condition="bleed"]'
+ );
+ for(const control of controls){
+  const existing=control.querySelector?.('.pf1ae-bleed-hud-value');
+  if(!formula){
+   existing?.remove?.();
+   continue;
+  }
+  const localized=String(game.i18n?.lang??'en').toLowerCase().startsWith('fr')?
+   'Saignement':'Bleed';
+  control.title=localized+' : '+formula;
+  control.setAttribute?.('aria-label',localized+' : '+formula);
+  if(existing){existing.textContent=formula;continue;}
+  if(typeof document?.createElement!=='function')continue;
+  const badge=document.createElement('span');
+  badge.className='pf1ae-bleed-hud-value';
+  badge.textContent=formula;
+  // Purely decorative: clicks still reach the native effect control.
+  badge.style.cssText='position:absolute;bottom:0;right:0;pointer-events:none;'+
+   'font-size:11px;font-weight:700;color:white;background:#161616cc;'+
+   'padding:0 2px;border-radius:3px;line-height:1.1;z-index:2';
+  if(control.style&&!control.style.position)control.style.position='relative';
+  control.appendChild(badge);
+ }
+}
+
 const bvTokens=actor=>{
  const result=new Map();
  for(const token of canvas?.tokens?.placeables??[]){
@@ -146,6 +193,7 @@ Hooks.once('ready',()=>{
  if(!bvEnabled())return;
  bvInstall();
  Hooks.on('drawToken',token=>bvPaint(token));
+ Hooks.on('renderTokenHUD',(hud,element)=>bvHud(hud,element));
  Hooks.on('refreshToken',token=>bvPaint(token));
  Hooks.on('updateActiveEffect',effect=>{
   if(effect?.statuses?.has?.('bleed')!==true)return;
@@ -164,6 +212,7 @@ Hooks.once('ready',()=>{
  mod.api.bleedDisplay=Object.freeze({
   formula:bvFormula,
   refresh:token=>bvPaint(token),
+  hud:(hud,element)=>bvHud(hud,element),
   hideGenerated:()=>bvRestoreHiding()
  });
 });
