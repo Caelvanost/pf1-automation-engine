@@ -150,6 +150,10 @@ function bvHud(hud,element){
    existing?.remove?.();
    // Remove our tooltip override, allowing Foundry's native status label.
    control.removeAttribute?.('data-tooltip-text');
+   for(const icon of control.querySelectorAll?.('[data-tooltip-text]')??[]){
+    if(icon.classList?.contains?.('pf1ae-bleed-hud-value'))continue;
+    icon.removeAttribute?.('data-tooltip-text');
+   }
    continue;
   }
   const localized=bvLabel(actor);
