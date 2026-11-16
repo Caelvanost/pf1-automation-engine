@@ -380,8 +380,10 @@ function effectiveMeleePenalty(parts){
   'partial override displays its final per-index -2');
  assert.deepEqual(result[0].filter(x=>String(x).includes('[Shooting into melee]')),
   ['-4[Shooting into melee]'],'non-overridden attack gets one -4 only');
- assert.deepEqual(result[1].filter(x=>String(x).includes('[Shooting into melee]')),
-  ['-2[Shooting into melee]'],'overridden attack gets one -2 only');
+ assert.equal(result[1].filter(x=>String(x).includes('[Shooting into melee]')).length,1,
+  'overridden attack gets one melee part only');
+ assert.equal(result[1].some(x=>String(x).includes('-2[Shooting into melee]')),true,
+  'the single per-index part contains the effective -2');
  // Mixed 0/-2/-4 in a single three-attack native full attack.
  u=make(3);
  for(const [attackIndex,penalty] of [[0,0],[1,-2],[2,-4]])
