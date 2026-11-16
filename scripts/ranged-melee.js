@@ -145,14 +145,33 @@ function rmCanThreaten(actor){
  // Unknown melee threat is NOT proof of no engagement.
  return weapons.length>0?true:null;
 }
+function rmNaturalMeleeReach(actor){
+ // PF1 11.11 prepares natural melee reach in getRollData().range.melee;
+ // it does not populate system.attributes.reach on ordinary characters.
+ // Use the PF1 computed value rather than guessing 5 ft from size.
+ let prepared;
+ try{prepared=actor?.getRollData?.()?.range?.melee}
+ catch(error){rmReport('reach-warning',{actorUuid:actor?.uuid,
+  reason:String(error?.message??error)})}
+ const candidates=[prepared,
+  actor?.system?.attributes?.naturalReach?.total,
+  actor?.system?.attributes?.naturalReach?.value,
+  actor?.system?.attributes?.reach?.total,
+  actor?.system?.attributes?.reach];
+ for(const value of candidates){
+  if(value===null||value===undefined||value==='')continue;
+  const n=Number(value);
+  if(Number.isFinite(n)&&n>0)return n;
+ }
+ return null;
+}
 function rmThreatens(from,to,unit,grid){
  const actor=from.actor;
  if(!actor)return null;
  const able=rmCanThreaten(actor);
  if(able!==true)return able;
- const reach=actor.system?.attributes?.reach;
- const n=Number(typeof reach==='object'?reach?.total:reach);
- if(!Number.isFinite(n)||n<=0)return null;
+ const n=rmNaturalMeleeReach(actor);
+ if(n===null)return null;
  const distance=rmDistance(from,to,grid);
  if(distance==null)return null;
  // PF1's table convention: 5 ft = 1.5 m.
@@ -193,8 +212,10 @@ function rmJudge({origin,target,allTokens,grid,sceneUnit}={}){
     uncertain.push({ally:ally.name??ally.id,
      reason:'melee threat or reach unknown',
      allyThreat:aThreat,targetThreat:tThreat,
-     allyReach:ally.actor?.system?.attributes?.reach??null,
-     targetReach:target.actor?.system?.attributes?.reach??null});
+     allyReach:rmNaturalMeleeReach(ally.actor),
+     targetReach:rmNaturalMeleeReach(target.actor),
+     allyReachData:ally.actor?.getRollData?.()?.range??null,
+     targetReachData:target.actor?.getRollData?.()?.range??null});
    }
    continue;
   }
