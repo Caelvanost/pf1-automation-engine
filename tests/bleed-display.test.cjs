@@ -89,7 +89,8 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  assert.equal(otherIcon.children.length,0);
  // The native ActiveEffect wins over any legacy Buff formula.
  a.effects={contents:[{id:'bleed-native',documentName:'ActiveEffect',statuses:new Set(['bleed']),
-  disabled:false,flags:{[NS]:{bleed:{formula:'2d4+1'}}},
+  disabled:false,name:'Bleed',flags:{[NS]:{bleed:{enabled:true,formula:'2d4+1'}}},
+  async update(change){if(change.name)this.name=change.name;},
   getFlag(ns,key){return this.flags[ns]?.[key]??null}
  }]};
  assert.equal(api.bleedDisplay.formula(a),'2d4+1');
@@ -141,6 +142,10 @@ vm.runInContext(code,ctx,{filename:'bleed-display.js'});
  event(hud,hudRoot);
  assert.equal(hudControl.children[0].removed,true);
  a.effects.contents[0].disabled=false;
+ // Existing native Bleed conditions are renamed on GM migration without recreation.
+ a.effects.contents[0].name='Bleed';
+ await api.bleedDisplay.refreshNames();
+ assert.equal(a.effects.contents[0].name,'Saignement - 5');
  console.log('PASS bleed-display: native Bleed icon formula overlay, single marker,');
  console.log(' redraw/update/reconnect-safe, migration, and other Buff isolation.');
 })().catch(error=>{console.error(error);process.exitCode=1});
