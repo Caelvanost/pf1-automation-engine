@@ -144,8 +144,8 @@ function c3Inspect({attacker,target,scene,rayLimit=C3_MAX_RAYS}={}){
  if(!walls||!tiles||!regions)
   return c3Result("unavailable","scene-geometry-collections-unavailable");
  const diagnostics={
-  attacker:{...a,height:at},
-  target:{...b,height:bt},
+  attacker:{...a,verticalExtent:at},
+  target:{...b,verticalExtent:bt},
   walls:c3WallSummary(walls),tiles:c3RoofSummary(tiles),
   regions:regions.length,
   rays:[],warnings:[]
