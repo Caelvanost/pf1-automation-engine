@@ -11,7 +11,8 @@ const all=[];
 const game={modules};
 const ctx={console,game,Hooks:{once(_name,fn){ready.push(fn)}},
  canvas:{scene,grid:{size:100},tokens:{placeables:all}},
- foundry:{utils:{deepClone:structuredClone}},Object,Math,Set,Map,Number};
+ foundry:{utils:{deepClone:structuredClone}},
+ CONST:{WALL_MOVEMENT_TYPES:{NONE:0,NORMAL:20}},Object,Math,Set,Map,Number};
 ctx.globalThis=ctx;vm.createContext(ctx);
 vm.runInContext(code,ctx,{filename:'cover-pf1-rules.js'});
 for(const fn of ready)fn();
@@ -30,7 +31,7 @@ assert.equal(result.acBonus,0);
 assert.equal(result.origins.length,4);
 assert.equal(result.origins.every(x=>x.traces.length===4),true);
 assert.equal(api.lastDiagnostic().type,'none');
-const wall=(id,x1,y1,x2,y2,{bottom=0,top=10,move=1,door=0,ds=0}={})=>({
+const wall=(id,x1,y1,x2,y2,{bottom=0,top=10,move=20,door=0,ds=0}={})=>({
  id,uuid:'Scene.s.Wall.'+id,c:[x1,y1,x2,y2],
  flags:{'wall-height':{bottom,top}},move,door,ds
 });
@@ -40,6 +41,12 @@ assert.equal(result.status,'confirmed','complete wall proves no direct line of e
 assert.equal(result.type,'total');
 assert.equal(result.preventsDirectAttack,true);
 assert.equal(result.acBonus,null);
+// Foundry v13 normal movement walls are 20; legacy 1 must not be trusted.
+scene.walls.contents[0].move=1;
+result=check();
+assert.equal(result.status,'uncertain','unsupported legacy movement value is not a solid wall');
+scene.walls.contents[0].move=20;
+assert.equal(check().type,'total','native normal movement value preserves total cover');
 scene.walls.contents.length=0;
 scene.walls.contents.push(wall('partial',200,25,200,120));
 result=check();
