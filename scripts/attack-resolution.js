@@ -135,12 +135,66 @@ async function arResolve(context={}){
  const selected=await arSelect({...context,item,action,actor,targetToken,targetActor,roll});
  const baseValue=selected.type&&selected.type!=='manual'
    ?arValue(targetActor,selected.type):null;
- // Cover is a modifier to the defense (not concealment); allow a verified
- // external caller to pass its actual numeric bonus, without altering PF1.
- const cover=typeof context.coverBonus==='number'&&Number.isFinite(context.coverBonus)
-   &&context.coverBonus>=0&&context.coverBonus<=100?context.coverBonus:0;
- const defense={...selected,value:baseValue==null?null:baseValue+cover,
-   baseValue,coverBonus:cover};
+ // Cover modifies the relevant native defense temporarily, never an Actor.
+ // An explicit caller may provide a reviewed assessment; all automatic
+ // uncertainty fails closed. The legacy coverBonus is preserved for clients
+ // which do not provide an assessment.
+ const coverAssessment=context.coverAssessment??null;
+ const coverProvided=coverAssessment!==null;
+ const validCover=coverProvided&&
+   ['confirmed','manual'].includes(coverAssessment?.status)&&
+   typeof coverAssessment.acBonus==='number'&&
+   Number.isFinite(coverAssessment.acBonus)&&coverAssessment.acBonus>=0;
+ const cover=coverProvided?(validCover?coverAssessment.acBonus:null):
+   typeof context.coverBonus==='number'&&Number.isFinite(context.coverBonus)&&
+   context.coverBonus>=0&&context.coverBonus<=100?context.coverBonus:0;
+ // If cover is supplied as an environmental assessment, a verified
+ // native breakdown is required before adding its bonus. Otherwise PF1AE
+ // could charge +4 twice when a sheet already includes native cover.
+ const api=game.modules.get(AR_NS)?.api;
+ let nativeProvenance=null;
+ const explicitTypes=context.nativeBonusTypes??{};
+ const mustInspect=coverProvided&&validCover&&cover>0&&
+  !Number.isFinite(explicitTypes.cover)&&
+  context.nativeTypesComplete!==true;
+ if(mustInspect&&api?.nativeCover?.inspect){
+  nativeProvenance=api.nativeCover.inspect({
+   actor:targetActor,defense:selected.type
+  });
+ }
+ const nativeTypes={...explicitTypes};
+ if(nativeProvenance?.status==='resolved'&&
+    Number.isFinite(nativeProvenance.nativeCover))
+  nativeTypes.cover=nativeProvenance.nativeCover;
+ const knownNativeCover=typeof nativeTypes.cover==='number'&&
+  Number.isFinite(nativeTypes.cover)&&nativeTypes.cover>=0;
+ const coverNeedsBaseline=coverProvided&&validCover&&cover>0;
+ const coverUnverified=coverNeedsBaseline&&!knownNativeCover&&
+   context.nativeTypesComplete!==true;
+ const baselineCover=knownNativeCover?nativeTypes.cover:0;
+ const coverIncrement=coverProvided&&validCover&&knownNativeCover?
+  Math.max(0,cover-baselineCover):cover;
+ const typedBaseline=validCover?
+  {...nativeTypes,cover:Math.max(baselineCover,cover)}:nativeTypes;
+ const modifiers=(selected.type&&selected.type!=='cmd'&&selected.type!=='manual'&&
+  targetActor?.uuid)?api?.defenseModifiers?.evaluate?.({
+   defenderActor:targetActor,defenderUuid:targetActor.uuid,
+   attackerUuid:actor?.uuid??null,
+   defense:selected.type,nativeTypes:typedBaseline,
+   nativeTypesComplete:context.nativeTypesComplete===true
+  })??null:null;
+ const uncertainCover=coverProvided&&(!validCover||coverUnverified||
+   coverAssessment.preventsDirectAttack===true);
+ const uncertainMods=modifiers?.status==='uncertain';
+ const extra=modifiers?.status==='resolved'?modifiers.total??0:0;
+ const defense={...selected,
+  value:baseValue==null||coverIncrement==null||uncertainCover||uncertainMods
+   ?null:baseValue+coverIncrement+extra,
+  baseValue,coverBonus:coverIncrement,coverAssessment:coverProvided?coverAssessment:null,
+  nativeCoverProvenance:nativeProvenance,
+  conditionalBonus:modifiers?.status==='resolved'?extra:null,
+  conditionalModifiers:modifiers,
+  uncertain:uncertainCover||uncertainMods};
  const result=arOutcome({natural,total,defense,context});
  const final={...result,save:selected.save??null,actorUuid:actor?.uuid??null,itemUuid:item?.uuid??null,
   actionId:action?.id??action?._id??null,

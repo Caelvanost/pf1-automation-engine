@@ -13,7 +13,7 @@ const item={id:'i',uuid:'Actor.p.Item.i',documentName:'Item',
  getFlag(_ns,k){return this.flags[k]},
  async setFlag(_ns,k,v){this.flags[k]=structuredClone(v);return v}};
 const actor={uuid:'Actor.p',documentName:'Actor',items:new Map([['i',item]]),
- testUserPermission(_u,p){return p==='OWNER'},getActiveTokens(){return []}};
+ testUserPermission(_u,p){return p==='OWNER'},getActiveTokens(){return activeAttackTokens}};
 item.actor=actor;
 const action={id:'trip',item,actor,actionType:'cmb',hasAttack:true,isCombatManeuver:true};
 item.actions.set('trip',action);
@@ -21,14 +21,24 @@ const target={uuid:'Actor.enemy',documentName:'Actor',system:{attributes:{
  ac:{normal:{total:25},touch:{total:17},flatFooted:{total:24}},
  cmd:{total:19}}}};
 const token={uuid:'Scene.s.Token.enemy',documentName:'Token',actor:target};
+token.object={actor:target,document:{uuid:token.uuid,parent:{id:'s'},
+ id:'enemy',x:300,y:0,width:1,height:1,elevation:0},losHeight:5};
+const attackerToken={uuid:'Scene.s.Token.player',documentName:'Token',actor};
+attackerToken.object={actor,document:{uuid:attackerToken.uuid,parent:{id:'s'},
+ id:'player',x:0,y:0,width:1,height:1,elevation:0},losHeight:5};
+const activeAttackTokens=[attackerToken];
 const target2={uuid:'Scene.s.Token.other',documentName:'Token',
  actor:{uuid:'Actor.other',system:{attributes:{cmd:{total:30}}}}};
-const api={};
+const coverInspections=[];
+const api={coverPF1:{inspect(options){coverInspections.push(options);return {
+ status:'confirmed',type:'normal',acBonus:4,reflexBonus:2,
+ source:'pf1-corner-rays'};}}};
 const context={console,Map,Set,WeakSet,Promise,Date,Number,structuredClone,
  pf1:{config:{maneuverActionTypes:new Set(['cmb'])}},
  foundry:{utils:{deepClone:structuredClone}},
  Hooks:hooks,
- fromUuid:async uuid=>uuid===token.uuid?token:uuid===target2.uuid?target2:null,
+ fromUuid:async uuid=>uuid===token.uuid?token:uuid===target2.uuid?target2:
+ uuid===attackerToken.uuid?attackerToken:null,
  game:{user,users:new Map([['p',user]]),settings:{get:(_ns,k)=>k==='genericEnabled'?true:false},
  modules:new Map([['pf1-automation-engine',{active:true,api}]]),
  i18n:{localize:k=>k}},
@@ -84,5 +94,26 @@ const tick=()=>new Promise(r=>setTimeout(r,15));
  assert.equal(published.length,3);
  assert.equal(delivered.length,2,'no stale Script Call callback');
  assert.equal(published[2].defense.value,19);
+ // The PF1 corner-ray service is evaluated for the exact single-target
+ // ranged action and carried through the native post-roll resolution.
+ const ranged={id:'arrow',item,actor,actionType:'rwak',hasAttack:true,
+  touch:false,isCombatManeuver:false};
+ item.actions.set('arrow',ranged);
+ hooks.callAll('pf1AttackRoll',ranged,roll(12,29),{
+  attackIndex:0,targets:[token]});
+ hooks.callAll('pf1PostActionUse',{
+  action:ranged,shared:{targets:[token],chatAttacks:[{}]}},message);
+ await tick();
+ const covered=published[3]?.targetResults?.[0];
+ assert.equal(coverInspections.length,1,'exactly one cover inspection');
+ assert.equal(covered?.coverDiagnosis?.type,'normal');
+ assert.equal(covered?.defense?.baseValue,25);
+ assert.equal(covered?.defense?.coverAssessment?.acBonus,4);
+ assert.equal(covered?.defense?.value,null,
+  'no guessed native cover baseline; comparison must not claim a hit');
+ assert.equal(covered?.resolution,'indeterminate');
+ assert.equal(target.system.attributes.ac.normal.total,25,
+  'native sheet AC must remain unchanged');
+
  console.log('PASS attack resolution integration: existing Script Call, CMD, natural d20, target pair, no subscriber');
 })().catch(e=>{console.error(e);process.exitCode=1});

@@ -35,7 +35,7 @@ jobs:
           if ($manifest.id -ne 'pf1-automation-engine') { throw 'Unexpected module ID' }
           if ($manifest.manifest -ne $expectedManifest) { throw 'Wrong stable Foundry manifest URL' }
           if ($manifest.download -ne $expectedDownload) { throw 'Wrong GitHub release asset URL' }
-          # Maintained release gate: 36 suites; seven historical suites excluded.
+          # Maintained release gate: 43 suites; seven historical suites excluded.
           # Reject an unlisted suite instead of silently omitting new tests.
           # The separate manual regression audit runs all suites.
           $tests = @(
@@ -46,7 +46,10 @@ jobs:
             'native-save-post-chatmessage','neutrality','rest-hooks',
             'save-outcomes','template-save-outcomes','timed-save-outcomes',
             'turn-phases','trusted-table','range-automation','i18n','reload-core',
-            'attack-resolution','attack-resolution-integration','item-default-action','chat-actions','chat-action-bootstrap','bleed','bleed-manual','bleed-display','ranged-melee','script-approval-menu','tactical-positioning'
+            'attack-resolution','attack-resolution-integration','item-default-action','chat-actions','chat-action-bootstrap','bleed','bleed-manual','bleed-display','ranged-melee','script-approval-menu','tactical-positioning',
+            'defense-modifiers','cover-detection','cover-saves',
+            'cover-3d-diagnostics','cover-pf1-rules','native-cover-provenance',
+            'native-cover-attack-integration'
           )
           $legacy = @(
             'compendium-templates','duration-group','dynamic-effects',
@@ -58,7 +61,7 @@ jobs:
           if (@(Compare-Object -ReferenceObject $expected -DifferenceObject $actual).Count -ne 0) {
             throw 'Test inventory changed: update the maintained gate or the legacy list'
           }
-          if ($tests.Count -ne 36 -or $legacy.Count -ne 7) { throw 'Unexpected regression gate size' }
+          if ($tests.Count -ne 43 -or $legacy.Count -ne 7) { throw 'Unexpected regression gate size' }
           foreach ($name in $tests) {
             $file = Join-Path 'tests' "$name.test.cjs"
             if (-not (Test-Path $file)) { throw "Missing regression test: $file" }
@@ -88,7 +91,7 @@ jobs:
             foreach ($field in @('id','version','manifest','download')) {
               if ($packaged.$field -ne $manifest.$field) { throw "Packaged manifest mismatch: $field" }
             }
-            foreach ($required in @('scripts/bootstrap.js','scripts/attack-events.js','scripts/save-outcomes.js','scripts/effect-groups.js','scripts/reload-adapter.js','scripts/item-default-action.js','scripts/chat-actions.js','scripts/chat-action-bootstrap.js','scripts/bleed.js','scripts/bleed-manual.js','scripts/bleed-display.js','scripts/ranged-melee.js','scripts/tactical-positioning.js','templates/script-approvals.hbs','lang/en.json','lang/fr.json')) {
+            foreach ($required in @('scripts/bootstrap.js','scripts/attack-events.js','scripts/save-outcomes.js','scripts/effect-groups.js','scripts/reload-adapter.js','scripts/item-default-action.js','scripts/chat-actions.js','scripts/chat-action-bootstrap.js','scripts/bleed.js','scripts/bleed-manual.js','scripts/bleed-display.js','scripts/ranged-melee.js','scripts/tactical-positioning.js','scripts/defense-modifiers.js','scripts/cover-detection.js','scripts/cover-saves.js','scripts/cover-3d-diagnostics.js','scripts/cover-pf1-rules.js','scripts/native-cover-provenance.js','templates/script-approvals.hbs','lang/en.json','lang/fr.json')) {
               if (-not $archive.GetEntry($required)) { throw "Required module file missing: $required" }
             }
             if ($archive.GetEntry('scripts/reload-core.js')) { throw 'Retired reload engine must not be packaged.' }

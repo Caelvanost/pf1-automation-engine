@@ -82,6 +82,76 @@ const run=(natural,total,options={})=>ar.resolveAttack({
  assert.equal((await run(10,20,{additionalCheckPending:true})).hit,null);
  assert.equal((await run(10,20,{coverBonus:4})).defense.value,24);
  assert.equal((await run(10,20,{coverBonus:4})).hit,false);
+ // Generic conditional defenses and manual cover modify only the
+ // effective comparison; native AC data and the d20 roll remain unchanged.
+ const baseApi=api.defenseModifiers;
+ api.defenseModifiers={evaluate:()=>({status:'resolved',total:4,applied:[],
+  suppressed:[]})};
+ r=await run(10,23,{nativeBonusTypes:{cover:0},
+  coverAssessment:{type:'normal',status:'manual',
+  acBonus:4,preventsDirectAttack:false}});
+ assert.equal(r.defense.value,28,'native CA 20 + conditional 4 + cover 4');
+ assert.equal(r.defense.coverBonus,4);
+ assert.equal(r.defense.conditionalBonus,4);
+ assert.equal(target.system.attributes.ac.normal.total,20,'no sheet AC mutation');
+ r=await run(10,23,{
+  coverAssessment:{status:'confirmed',type:'normal',acBonus:4,
+   source:'pf1-corner-rays'}
+ });
+ assert.equal(r.resolution,'indeterminate',
+  'automatic cover cannot assume native PF1 AC contains no cover');
+ assert.equal(r.defense.value,null);
+ r=await run(10,23,{
+  nativeBonusTypes:{cover:0},
+  coverAssessment:{status:'confirmed',type:'normal',acBonus:4,
+   source:'pf1-corner-rays'}
+ });
+ assert.equal(r.defense.value,28,
+  'automatic cover uses verified baseline and separate conditional bonus');
+ r=await run(10,23,{
+  nativeBonusTypes:{cover:4},
+  coverAssessment:{status:'confirmed',type:'normal',acBonus:4,
+   source:'pf1-corner-rays'}
+ });
+ assert.equal(r.defense.value,24,
+  'native cover already included is never added twice');
+
+ r=await run(10,99,{coverAssessment:{type:'total',status:'manual',
+  acBonus:null,preventsDirectAttack:true}});
+ assert.equal(r.resolution,'indeterminate','total cover blocks AC comparison');
+ api.defenseModifiers={evaluate:()=>({status:'uncertain',
+  reason:'native deflection breakdown unknown',total:null})};
+ r=await run(10,99);
+ assert.equal(r.resolution,'indeterminate',
+  'unknown preexisting typed bonus must not produce a false hit');
+ api.defenseModifiers=baseApi;
+ const nativeInspector=api.nativeCover;
+ api.nativeCover={inspect:()=>({
+  status:'resolved',nativeCover:0,reason:'native-pf1-typed-ac-sources'
+ })};
+ r=await run(12,22,{coverAssessment:{
+  status:'confirmed',type:'normal',acBonus:4,source:'pf1-corner-rays'
+ }});
+ assert.equal(r.defense.value,24,
+  'PF1 native typed provenance 0 allows +4 effective AC without sheet change');
+ assert.equal(r.defense.nativeCoverProvenance.nativeCover,0);
+ api.nativeCover={inspect:()=>({
+  status:'resolved',nativeCover:4,reason:'native-pf1-typed-ac-sources'
+ })};
+ r=await run(12,22,{coverAssessment:{
+  status:'confirmed',type:'normal',acBonus:4,source:'pf1-corner-rays'
+ }});
+ assert.equal(r.defense.value,20,'existing native cover does not stack twice');
+ assert.equal(r.defense.coverBonus,0);
+ api.nativeCover={inspect:()=>({
+  status:'uncertain',nativeCover:null,reason:'untyped-native-source'
+ })};
+ r=await run(12,22,{coverAssessment:{
+  status:'confirmed',type:'normal',acBonus:4,source:'pf1-corner-rays'
+ }});
+ assert.equal(r.resolution,'indeterminate',
+  'ambiguous native source prevents automatic result');
+ api.nativeCover=nativeInspector;
  // Missing actual natural d20, target, defense and total fail closed.
  assert.equal((await ar.resolveAttack({item,actor,action,roll:{total:25},targetActor:target})).resolution,'indeterminate');
  assert.equal((await run(11,25,{targetActor:null,targetToken:null})).hit,null);

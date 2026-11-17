@@ -2,7 +2,7 @@
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
   "description": "A modular Pathfinder 1e automation engine for attacks, range and melee-engagement penalties, damage, saves, bleeding, effects, rests, persistent scripts, and secure multiplayer chat actions.",
-  "version": "1.34.0",
+  "version": "1.35.0",
   "authors": [
     {
       "name": "Caelvanost"
@@ -48,6 +48,12 @@
     "scripts/bleed.js",
     "scripts/bleed-manual.js",
     "scripts/bleed-display.js",
+    "scripts/defense-modifiers.js",
+    "scripts/cover-detection.js",
+    "scripts/cover-3d-diagnostics.js",
+    "scripts/cover-pf1-rules.js",
+    "scripts/cover-saves.js",
+    "scripts/native-cover-provenance.js",
     "scripts/attack-resolution.js",
     "scripts/attack-events.js",
     "scripts/item-default-action.js",
@@ -76,5 +82,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.34.0/pf1-automation-engine-v1.34.0.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.35.0/pf1-automation-engine-v1.35.0.zip"
 }
