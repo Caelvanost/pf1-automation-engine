@@ -1,3 +1,9 @@
+## v1.34.0 — Official minor release: Tactical Positioning Engine
+
+- Publish the previously tested **generic tactical positioning and native PF1 Flanking checkbox preselection** as a SemVer **minor** version instead of a patch.
+- **No functional or API changes** from v1.33.15; all existing behavior, scripts, settings, and data remain unchanged.
+- Preserve the v1.33.15 release as historical reference; v1.34.0 is the official version for the new feature.
+
 ## v1.33.15 — Generic tactical positioning and native Flanking precheck
 
 - Add a **class-neutral, feat-neutral** tactical positioning service with `api.tacticalPositioning.checkFlanking({attacker,target,allies?})`.
