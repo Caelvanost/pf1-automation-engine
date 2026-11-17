@@ -1,3 +1,11 @@
+## v1.35.0 — Experimental conditional defenses and 3D cover (prerelease)
+
+- **TEST RELEASE — NOT FULLY VALIDATED IN LIVE FOUNDRY**. The 43 maintained automated suites passed on the development branch. Please test in a backed-up world; report discrepancies in PF1 11.11 prepared AC source breakdown and Levels/Wall Height/Better Roofs 3D geometry.
+- Add generic, source-bound conditional defensive modifiers stored in Item flags, source-aware Reflex cover bridge, and 3D read-only trajectory diagnostics.
+- Add preliminary Pathfinder 1e corner-ray cover interpretation for ranged/reach/adjacent melee, walls, doors, soft cover, token footprints up to 8×8 and conservative inter-floor Levels checks.
+- Inspect native PF1 AC source details to apply only the *incremental* cover bonus in attack resolution, without changing native character sheets or re-rolling an attack. Ambiguous native AC sources or geometry remain indeterminate.
+- **Known limitations:** real Foundry multiplayer integration not yet checked; complex roof/sloping-wall interactions, some large melee cases, manual in-dialog selector, chat diagnostics and full ability lifecycle remain incomplete. This is not a blanket automatic cover system.
+
 ## v1.34.0 — Official minor release: Tactical Positioning Engine
 
 - Publish the previously tested **generic tactical positioning and native PF1 Flanking checkbox preselection** as a SemVer **minor** version instead of a patch.
