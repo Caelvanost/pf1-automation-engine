@@ -24,9 +24,13 @@ const actionUse={action,actor,token:attacker.document,
  shared:{targets:[target]}};
 const native={process:0,dialog:0,ammo:8,magazine:6,posts:0};
 class NativeActionUse {
+ async createAttackDialog(){ native.dialog++;return {}; }
  async process(){
+  // PF1 11.11's hook occurs INSIDE process, before createAttackDialog.
+  callbacks.get('pf1CreateActionUse')?.(this);
+  const form=await this.createAttackDialog();
+  if(!form)return undefined;
   native.process++;
-  native.dialog++;
   native.ammo--;
   native.magazine--;
   native.posts++;
@@ -56,14 +60,17 @@ const before=callbacks.get('pf1PreActionUse');
 const after=callbacks.get('pf1aeAttackResolution');
 assert.equal(typeof before,'function');
 assert.equal(typeof after,'function');
-assert.equal(pf1aeModule.api.coverNativeBridge.earlyGateMode(),'instance-hook');
+assert.equal(pf1aeModule.api.coverNativeBridge.earlyGateMode(),'native-dialog-hook');
 const originalPrototypeProcess=NativeActionUse.prototype.process;
+const originalPrototypeDialog=NativeActionUse.prototype.createAttackDialog;
 callbacks.get('pf1CreateActionUse')(actionUse);
 assert.equal(NativeActionUse.prototype.process,originalPrototypeProcess,
- 'the native ActionUse prototype must never be modified');
-const onceGuard=actionUse.process;
+ 'the native ActionUse process prototype must never be modified');
+assert.equal(NativeActionUse.prototype.createAttackDialog,originalPrototypeDialog,
+ 'the native ActionUse dialog prototype must never be modified');
+const onceGuard=actionUse.createAttackDialog;
 callbacks.get('pf1CreateActionUse')(actionUse);
-assert.equal(actionUse.process,onceGuard,'instance guard is idempotent');
+assert.equal(actionUse.createAttackDialog,onceGuard,'dialog guard is idempotent');
 assert.equal(before(actionUse),undefined,'empty battlefield does not block');
 scene.walls.contents.push({id:'wall',c:[200,-200,200,300],
  uuid:'Scene.s.Wall.w',move:20,door:0,ds:0});
@@ -273,7 +280,13 @@ after(base);
  // and it never cuts an already-started prototype wrapper call.
  let registrationCount=0,nextCalls=0;
  class WrappedActionUse{
-  async process(){nextCalls++;return 'next-wrapper'}
+  async createAttackDialog(){return {}}
+  async process(){
+   lwHooks.get('pf1CreateActionUse')?.(this);
+   const form=await this.createAttackDialog();
+   if(!form)return undefined;
+   nextCalls++;return 'next-wrapper';
+  }
  }
  const originalMethod=WrappedActionUse.prototype.process;
  const lwMod={active:true,api:{
@@ -310,7 +323,7 @@ after(base);
   'PF1AE must not register any libWrapper process wrapper');
  assert.equal(WrappedActionUse.prototype.process,originalMethod,
   'other modules retain the full prototype process chain');
- assert.equal(lwMod.api.coverNativeBridge.earlyGateMode(),'instance-hook');
+ assert.equal(lwMod.api.coverNativeBridge.earlyGateMode(),'native-dialog-hook');
  const lwUse=Object.assign(new WrappedActionUse(),{
   actor:lwActor,
   action:{actionType:'rwak',hasAttack:true,isCombatManeuver:false,
@@ -318,8 +331,8 @@ after(base);
  });
  lwHooks.get('pf1CreateActionUse')(lwUse);
  assert.equal(await lwUse.process(),undefined,
-  'confirmed total cover skips prototype chain before it starts');
- assert.equal(nextCalls,0,'forbidden use never invokes modifier dialog');
+  'confirmed total cover exits the native process at dialog creation');
+ assert.equal(nextCalls,0,'forbidden use never invokes modifier dialog or rolls');
  lwMod.api.coverPF1.inspect=()=>({status:'confirmed',type:'none',
   preventsDirectAttack:false});
  assert.equal(await lwUse.process(),'next-wrapper',
