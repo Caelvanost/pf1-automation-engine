@@ -80,7 +80,7 @@ A manual result can be recorded by a GM only when the GM has verified the physic
 
 ### Attack resolution
 
-The existing `attackResolution.resolveAttack` now accepts a verified `coverAssessment` and `nativeBonusTypes`; uncertain or total-cover assessments cause `resolution:'indeterminate'`. The legacy `coverBonus` option remains supported for existing consumers. This comparison takes place **after** PF1 has rolled the attack, without creating a new roll.
+The existing `attackResolution.resolveAttack` now accepts a verified `coverAssessment` and `nativeBonusTypes`. When a positive cover assessment is supplied, the native breakdown must explicitly establish the already-included `cover` bonus (e.g. `nativeBonusTypes:{cover:0}`) or establish that all native types have been verified; otherwise it fails closed. It never adds environmental cover to an existing native cover bonus a second time. Uncertain or total-cover assessments cause `resolution:'indeterminate'`. The legacy `coverBonus` option remains supported for existing consumers. This comparison takes place **after** PF1 has rolled the attack, without creating a new roll.
 
 ## Native Reflex-cover bridge — `api.coverSaves`
 
