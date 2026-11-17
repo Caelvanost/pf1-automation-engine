@@ -154,6 +154,13 @@
       "Approved": "Approved",
       "Save": "Save changes",
       "Saved": "Script approvals updated."
+    },
+    "Cover": {
+      "CardTitle": "PF1AE — cover against this attack",
+      "NativeAC": "Native AC",
+      "EffectiveAC": "Effective AC",
+      "PendingAC": "Unverified (GM review)",
+      "TotalBlocked": "Total cover: no direct line of effect. Direct attack cancelled."
     }
   }
 }
