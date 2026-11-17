@@ -52,6 +52,8 @@ actionUse.shared.targets.push(token('c',400,{uuid:'Actor.c'}));
 assert.equal(before(actionUse),undefined,'multiple targets never blocked globally');
 actionUse.shared.targets.pop();
 actionUse.shared.targets=[];
+scene.walls.contents[0].door=0;
+scene.walls.contents[0].ds=0;
 system.user.targets.add(target);
 assert.equal(before(actionUse),false,'single active target is supported when action targets missing');
 system.user.targets.clear();
