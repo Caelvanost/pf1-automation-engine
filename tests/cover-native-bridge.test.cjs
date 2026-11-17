@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const callbacks=new Map(),ready=[],alerts=[],cards=[];
 const pf1aeModule={active:true,api:{}};
-const scene={id:'s',grid:{type:1},walls:{contents:[]},tiles:{contents:[]},regions:{contents:[]}};
+const scene={id:'s',grid:{type:1,units:'ft'},walls:{contents:[]},tiles:{contents:[]},regions:{contents:[]}};
 const tokens=[],system={modules:new Map([['pf1-automation-engine',pf1aeModule]]),
  settings:{get(_n,k){return k==='genericEnabled'?true:'2d'}},
  user:{id:'player',isGM:false,targets:new Set()},
@@ -18,6 +18,7 @@ function token(id,x,who){
 }
 const attacker=token('a',0,actor),target=token('b',300,enemy);
 const action={actionType:'rwak',hasAttack:true,isCombatManeuver:false,
+ getRange({type}){return type==='max'?this.testMaxRange??5:0},
  actor,item:{actor}};
 const actionUse={action,actor,token:attacker.document,
  shared:{targets:[target]}};
@@ -33,8 +34,11 @@ class NativeActionUse {
  }
 }
 Object.setPrototypeOf(actionUse,NativeActionUse.prototype);
-const ctx={console,game:system,canvas:{scene,grid:{size:100},tokens:{placeables:tokens}},
- pf1:{config:{maneuverActionTypes:new Set(['cmb'])},
+const ctx={console,game:system,canvas:{scene,grid:{size:100,measurePath([a,b]){
+ return {distance:Math.hypot(b.x-a.x,b.y-a.y)/100*5};
+ }},tokens:{placeables:tokens}},
+ pf1:{settings:{distance:{metric:false}},
+  config:{maneuverActionTypes:new Set(['cmb'])},
   actionUse:{ActionUse:NativeActionUse}},
  foundry:{utils:{deepClone:structuredClone}},
  CONST:{WALL_MOVEMENT_TYPES:{NONE:0,NORMAL:20}},
@@ -42,7 +46,7 @@ const ctx={console,game:system,canvas:{scene,grid:{size:100},tokens:{placeables:
  ui:{notifications:{warn(msg){alerts.push(msg)}}},
  Set,Map,Object,Number,Math};
 ctx.globalThis=ctx;vm.createContext(ctx);
-for(const filename of ['cover-pf1-rules.js','cover-native-bridge.js'])
+for(const filename of ['cover-pf1-rules.js','melee-reach.js','cover-native-bridge.js'])
  vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../scripts/'+filename),'utf8'),
   ctx,{filename});
 for(const fn of ready)fn();
@@ -130,6 +134,60 @@ after(base);
  assert.equal(native.process,3);
  scene.walls.contents.length=0;
  system.user.targets.clear();
+ // Melee max-range gate is before the native modifier dialog and resources.
+ action.actionType='mwak';
+ action.testMaxRange=5;
+ actionUse.shared.targets=[target];
+ const meleeInitial={...native};
+ const reachApi=pf1aeModule.api.meleeReach;
+ let reach=reachApi.inspectActionUse(actionUse);
+ assert.equal(reach.status,'out-of-reach');
+ assert.equal(reach.distance,15);
+ assert.equal(reach.maximumReach,5);
+ assert.equal(await actionUse.process(),undefined);
+ assert.deepEqual(native,meleeInitial,
+  'out-of-reach melee spends no charges or ammo and opens no dialog');
+ assert.equal(before(actionUse),false,
+  'native pre-use remains a secondary melee reach safety gate');
+ // Adjacent, normal reach and action-specific polearm reach.
+ target.document.x=100;
+ assert.equal(reachApi.inspectActionUse(actionUse).status,'in-reach');
+ assert.deepEqual(await actionUse.process(),{used:true});
+ target.document.x=200;
+ action.testMaxRange=10;
+ assert.equal(reachApi.inspectActionUse(actionUse).status,'in-reach');
+ assert.deepEqual(await actionUse.process(),{used:true});
+ action.testMaxRange=5;
+ assert.equal(reachApi.inspectActionUse(actionUse).status,'out-of-reach');
+ const snapshot={...native};
+ assert.equal(await actionUse.process(),undefined);
+ assert.deepEqual(native,snapshot);
+ // Check closest square, not center, for Large rectangular targets.
+ target.document.x=300;
+ target.document.width=3;
+ assert.equal(reachApi.inspectActionUse(actionUse).status,'in-reach');
+ assert.deepEqual(await actionUse.process(),{used:true});
+ target.document.width=1;
+ // Different elevations, missing range and multiple targets must not block.
+ target.document.elevation=10;
+ assert.equal(reachApi.inspectActionUse(actionUse).status,'uncertain');
+ assert.deepEqual(await actionUse.process(),{used:true});
+ target.document.elevation=0;
+ action.testMaxRange=null;
+ action.getRange=()=>null;
+ assert.equal(reachApi.inspectActionUse(actionUse).status,'uncertain');
+ assert.deepEqual(await actionUse.process(),{used:true});
+ action.getRange=({type})=>type==='max'?5:0;
+ actionUse.shared.targets=[target,{...target,document:{...target.document,
+  uuid:'Scene.s.Token.extra',id:'extra'},actor:{uuid:'Actor.other'}}];
+ assert.equal(reachApi.inspectActionUse(actionUse).status,'uncertain');
+ assert.deepEqual(await actionUse.process(),{used:true});
+ // Only the requested single-target melee action is gated.
+ actionUse.shared.targets=[target];
+ action.actionType='rwak';
+ assert.equal(reachApi.inspectActionUse(actionUse).status,'uncertain');
+ assert.deepEqual(await actionUse.process(),{used:true});
+ action.actionType='mwak';
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(cards.length,1);
  assert.ok(card.content.startsWith('<article class="pf1-chat">'));
@@ -146,5 +204,5 @@ after(base);
   ...base,targetResults:[{...base.targetResults[0],
    coverDiagnosis:{status:'uncertain'}}]}),null);
  assert.equal(actor.uuid,'Actor.a');
- console.log('PASS native cover bridge: early process cancellation with no dialog/ammo/magazine, native fallback, multi-target safety, card annotation');
+ console.log('PASS native cover bridge and melee reach: early cancellation, native range, adjacent, large footprint, uncertain, ammo/dialog safety');
 })().catch(error=>{console.error(error);process.exitCode=1});
