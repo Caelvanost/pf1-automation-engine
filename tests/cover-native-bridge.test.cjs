@@ -24,6 +24,7 @@ const actionUse={action,actor,token:attacker.document,
 const ctx={console,game:system,canvas:{scene,grid:{size:100},tokens:{placeables:tokens}},
  pf1:{config:{maneuverActionTypes:new Set(['cmb'])}},
  foundry:{utils:{deepClone:structuredClone}},
+ CONST:{WALL_MOVEMENT_TYPES:{NONE:0,NORMAL:20}},
  Hooks:{on(n,fn){callbacks.set(n,fn)},once(n,fn){if(n==='ready')ready.push(fn)}},
  ui:{notifications:{warn(msg){alerts.push(msg)}}},
  Set,Map,Object,Number,Math};
@@ -38,13 +39,19 @@ assert.equal(typeof before,'function');
 assert.equal(typeof after,'function');
 assert.equal(before(actionUse),undefined,'empty battlefield does not block');
 scene.walls.contents.push({id:'wall',c:[200,-200,200,300],
- uuid:'Scene.s.Wall.w',move:1,door:0,ds:0});
+ uuid:'Scene.s.Wall.w',move:20,door:0,ds:0});
 const diagnosis=pf1aeModule.api.coverNativeBridge.preview(actionUse);
 assert.equal(diagnosis?.status,'confirmed');
 assert.equal(diagnosis?.type,'total');
 assert.equal(diagnosis?.preventsDirectAttack,true);
 assert.equal(before(actionUse),false,'PF1 cancellable pre-use hook blocks total cover');
 assert.equal(alerts.length,1);
+scene.walls.contents[0].move=1;
+assert.notEqual(before(actionUse),false,
+ 'legacy movement value must not cancel an attack on uncertain geometry');
+scene.walls.contents[0].move=20;
+assert.equal(before(actionUse),false,
+ 'native Foundry 13 wall movement value blocks again');
 scene.walls.contents[0].ds=1;scene.walls.contents[0].door=1;
 assert.equal(before(actionUse),undefined,'open door does not block');
 scene.walls.contents[0].door=0;scene.walls.contents[0].ds=0;
