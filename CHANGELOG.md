@@ -1,3 +1,12 @@
+## v1.37.0 — Native melee reach rejection before attack dialog (experimental)
+
+- Add a class-agnostic `api.meleeReach.inspect` and `inspectActionUse` read-only engine for PF1 11.11 melee weapon/spell attack maximum reach. Use native `action.getRange({type:"max"})` so natural reach, reach weapons and action-specific adjustments are not hardcoded.
+- Measure nearest occupied square centers between grid-aligned rectangular tokens using the Foundry square-grid `measurePath`, supporting large creatures and native diagonal distance rules; convert the system and scene units conservatively.
+- Reuse the early `ActionUse.process()` interception from v1.36.3: an unequivocal single-target out-of-reach melee attack is rejected before the attack modifier dialog, dice, ChatMessage or charges. Retain the native `pf1PreActionUse` safety fallback.
+- Fail open with an explicit `uncertain` result if native action reach, actor/token identity, square footprint, exact measurement, scene units or elevation cannot be verified. Ranged, maneuvers and multi-target uses remain untouched. This initial gate only checks maximum reach; minimum reach limitations (polearm dead zone) remain a separate rules extension.
+- Add regression coverage for ordinary reach, increased action reach, Large targets, uncertain cases, no resource consumption and native pipeline preservation. Keep the pre-existing 45 maintained CI suites.
+- Experimental: requires real Foundry 13.351 / PF1 11.11 validation with special feats, dynamic size effects and third-party attack modules.
+
 ## v1.36.3 — Cancel proven total-cover attacks before PF1 modifier dialog (experimental)
 
 - Intercept PF1 11.11 `ActionUse.process()` before native requirements, auto ammo selection, roll-data preparation, attack modifier dialog, dice rolls, ammo/charge deductions or chat posts. Proven single-target direct total cover aborts the action immediately with one warning and zero resource changes.
