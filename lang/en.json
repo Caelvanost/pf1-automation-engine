@@ -160,7 +160,8 @@
       "NativeAC": "Native AC",
       "EffectiveAC": "Effective AC",
       "PendingAC": "Unverified (GM review)",
-      "TotalBlocked": "Total cover: no direct line of effect. Direct attack cancelled."
+      "TotalBlocked": "Total cover: no direct line of effect. Direct attack cancelled.",
+      "TotalCardWarning": "Total cover detected after the attack: review and disregard this direct attack."
     }
   }
 }
