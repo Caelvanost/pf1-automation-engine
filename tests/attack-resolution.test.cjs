@@ -125,6 +125,33 @@ const run=(natural,total,options={})=>ar.resolveAttack({
  assert.equal(r.resolution,'indeterminate',
   'unknown preexisting typed bonus must not produce a false hit');
  api.defenseModifiers=baseApi;
+ const nativeInspector=api.nativeCover;
+ api.nativeCover={inspect:()=>({
+  status:'resolved',nativeCover:0,reason:'native-pf1-typed-ac-sources'
+ })};
+ r=await run(12,22,{coverAssessment:{
+  status:'confirmed',type:'normal',acBonus:4,source:'pf1-corner-rays'
+ }});
+ assert.equal(r.defense.value,24,
+  'PF1 native typed provenance 0 allows +4 effective AC without sheet change');
+ assert.equal(r.defense.nativeCoverProvenance.nativeCover,0);
+ api.nativeCover={inspect:()=>({
+  status:'resolved',nativeCover:4,reason:'native-pf1-typed-ac-sources'
+ })};
+ r=await run(12,22,{coverAssessment:{
+  status:'confirmed',type:'normal',acBonus:4,source:'pf1-corner-rays'
+ }});
+ assert.equal(r.defense.value,20,'existing native cover does not stack twice');
+ assert.equal(r.defense.coverBonus,0);
+ api.nativeCover={inspect:()=>({
+  status:'uncertain',nativeCover:null,reason:'untyped-native-source'
+ })};
+ r=await run(12,22,{coverAssessment:{
+  status:'confirmed',type:'normal',acBonus:4,source:'pf1-corner-rays'
+ }});
+ assert.equal(r.resolution,'indeterminate',
+  'ambiguous native source prevents automatic result');
+ api.nativeCover=nativeInspector;
  // Missing actual natural d20, target, defense and total fail closed.
  assert.equal((await ar.resolveAttack({item,actor,action,roll:{total:25},targetActor:target})).resolution,'indeterminate');
  assert.equal((await run(11,25,{targetActor:null,targetToken:null})).hit,null);
