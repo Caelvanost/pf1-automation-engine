@@ -45,7 +45,10 @@ function cbGeometry(actionUse){
  if(selected.length!==1)return null;
  const target=cbToken(selected[0]);
  if(!target?.document?.uuid||target?.actor?.uuid===actor.uuid)return null;
- const source=cbToken(actionUse?.token);
+ const candidate=cbToken(actionUse?.token);
+ // A TokenDocument without a canvas placeable may lack actor provenance;
+ // never select it over the one real active token for this Actor.
+ const source=candidate?.actor?.uuid===actor.uuid?candidate:null;
  const active=actor.getActiveTokens?.()??[];
  const attacker=source??(active.length===1?cbToken(active[0]):null);
  if(!attacker?.document?.uuid||attacker.actor?.uuid!==actor.uuid)return null;
