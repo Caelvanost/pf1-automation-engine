@@ -151,7 +151,21 @@ async function arResolve(context={}){
  // If cover is supplied as an environmental assessment, a verified
  // native breakdown is required before adding its bonus. Otherwise PF1AE
  // could charge +4 twice when a sheet already includes native cover.
- const nativeTypes=context.nativeBonusTypes??{};
+ const api=game.modules.get(AR_NS)?.api;
+ let nativeProvenance=null;
+ const explicitTypes=context.nativeBonusTypes??{};
+ const mustInspect=coverProvided&&validCover&&cover>0&&
+  !Number.isFinite(explicitTypes.cover)&&
+  context.nativeTypesComplete!==true;
+ if(mustInspect&&api?.nativeCover?.inspect){
+  nativeProvenance=api.nativeCover.inspect({
+   actor:targetActor,defense:selected.type
+  });
+ }
+ const nativeTypes={...explicitTypes};
+ if(nativeProvenance?.status==='resolved'&&
+    Number.isFinite(nativeProvenance.nativeCover))
+  nativeTypes.cover=nativeProvenance.nativeCover;
  const knownNativeCover=typeof nativeTypes.cover==='number'&&
   Number.isFinite(nativeTypes.cover)&&nativeTypes.cover>=0;
  const coverNeedsBaseline=coverProvided&&validCover&&cover>0;
@@ -162,7 +176,6 @@ async function arResolve(context={}){
   Math.max(0,cover-baselineCover):cover;
  const typedBaseline=validCover?
   {...nativeTypes,cover:Math.max(baselineCover,cover)}:nativeTypes;
- const api=game.modules.get(AR_NS)?.api;
  const modifiers=(selected.type&&selected.type!=='cmd'&&selected.type!=='manual'&&
   targetActor?.uuid)?api?.defenseModifiers?.evaluate?.({
    defenderActor:targetActor,defenderUuid:targetActor.uuid,
@@ -178,6 +191,7 @@ async function arResolve(context={}){
   value:baseValue==null||coverIncrement==null||uncertainCover||uncertainMods
    ?null:baseValue+coverIncrement+extra,
   baseValue,coverBonus:coverIncrement,coverAssessment:coverProvided?coverAssessment:null,
+  nativeCoverProvenance:nativeProvenance,
   conditionalBonus:modifiers?.status==='resolved'?extra:null,
   conditionalModifiers:modifiers,
   uncertain:uncertainCover||uncertainMods};
