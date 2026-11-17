@@ -16,6 +16,7 @@ const game={modules,settings:{
  get(_ns,key){return key==='coverGeometryMode'?mode:null}
 }};
 const ctx={console,game,foundry:{utils:{deepClone:structuredClone}},
+ CONST:{WALL_MOVEMENT_TYPES:{NONE:0,NORMAL:20}},
  Hooks:{once(name,fn){(name==='init'?init:ready).push(fn)}},
  canvas:{scene,grid:{size:100},tokens:{placeables:[]}},
  CONFIG:{Levels:{API:{testCollision(){calls++;return collision}}}},
@@ -43,7 +44,7 @@ assert.equal(selected.get(),'2d');
 assert.equal(selected.inspect().ready,true);
 // Default 2D disregards both elevation and wall-height: wall geometry only.
 scene.walls.contents.push({id:'wall',uuid:'Scene.test.Wall.w',
- c:[200,-100,200,150],move:1,door:0,ds:0,
+ c:[200,-100,200,150],move:20,door:0,ds:0,
  flags:{'wall-height':{bottom:100,top:110}}});
 let r=inspect();
 assert.equal(r.mode,'2d');
