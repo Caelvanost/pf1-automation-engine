@@ -148,22 +148,36 @@ async function arResolve(context={}){
  const cover=coverProvided?(validCover?coverAssessment.acBonus:null):
    typeof context.coverBonus==='number'&&Number.isFinite(context.coverBonus)&&
    context.coverBonus>=0&&context.coverBonus<=100?context.coverBonus:0;
+ // If cover is supplied as an environmental assessment, a verified
+ // native breakdown is required before adding its bonus. Otherwise PF1AE
+ // could charge +4 twice when a sheet already includes native cover.
+ const nativeTypes=context.nativeBonusTypes??{};
+ const knownNativeCover=typeof nativeTypes.cover==='number'&&
+  Number.isFinite(nativeTypes.cover)&&nativeTypes.cover>=0;
+ const coverNeedsBaseline=coverProvided&&validCover&&cover>0;
+ const coverUnverified=coverNeedsBaseline&&!knownNativeCover&&
+   context.nativeTypesComplete!==true;
+ const baselineCover=knownNativeCover?nativeTypes.cover:0;
+ const coverIncrement=coverProvided&&validCover&&knownNativeCover?
+  Math.max(0,cover-baselineCover):cover;
+ const typedBaseline=validCover?
+  {...nativeTypes,cover:Math.max(baselineCover,cover)}:nativeTypes;
  const api=game.modules.get(AR_NS)?.api;
  const modifiers=(selected.type&&selected.type!=='cmd'&&selected.type!=='manual'&&
   targetActor?.uuid)?api?.defenseModifiers?.evaluate?.({
    defenderActor:targetActor,defenderUuid:targetActor.uuid,
    attackerUuid:actor?.uuid??null,
-   defense:selected.type,nativeTypes:context.nativeBonusTypes,
+   defense:selected.type,nativeTypes:typedBaseline,
    nativeTypesComplete:context.nativeTypesComplete===true
   })??null:null;
- const uncertainCover=coverProvided&&(!validCover||
+ const uncertainCover=coverProvided&&(!validCover||coverUnverified||
    coverAssessment.preventsDirectAttack===true);
  const uncertainMods=modifiers?.status==='uncertain';
  const extra=modifiers?.status==='resolved'?modifiers.total??0:0;
  const defense={...selected,
-  value:baseValue==null||cover==null||uncertainCover||uncertainMods
-   ?null:baseValue+cover+extra,
-  baseValue,coverBonus:cover,coverAssessment:coverProvided?coverAssessment:null,
+  value:baseValue==null||coverIncrement==null||uncertainCover||uncertainMods
+   ?null:baseValue+coverIncrement+extra,
+  baseValue,coverBonus:coverIncrement,coverAssessment:coverProvided?coverAssessment:null,
   conditionalBonus:modifiers?.status==='resolved'?extra:null,
   conditionalModifiers:modifiers,
   uncertain:uncertainCover||uncertainMods};
