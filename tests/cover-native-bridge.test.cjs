@@ -163,11 +163,12 @@ after(base);
  assert.equal(await actionUse.process(),undefined);
  assert.deepEqual(native,snapshot);
  // Check closest square, not center, for Large rectangular targets.
- target.document.x=300;
+ target.document.x=100;
  target.document.width=3;
  assert.equal(reachApi.inspectActionUse(actionUse).status,'in-reach');
  assert.deepEqual(await actionUse.process(),{used:true});
  target.document.width=1;
+ target.document.x=300;
  // Different elevations, missing range and multiple targets must not block.
  target.document.elevation=10;
  assert.equal(reachApi.inspectActionUse(actionUse).status,'uncertain');
