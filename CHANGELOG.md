@@ -1,3 +1,10 @@
+## v1.36.2 — Fix Foundry v13 wall movement classification (experimental)
+
+- Read `CONST.WALL_MOVEMENT_TYPES.NONE/NORMAL` at runtime instead of treating obsolete `move=1` as a blocking wall. Foundry 13 uses `NORMAL=20`; this corrects the false `unclassified-wall` result on ordinary 2D solid walls, which prevented proven total cover from cancelling direct attacks.
+- Retain uncertainty for movement-passable walls, missing runtime constants, unsupported restrictions, and tangential or unknown intersections; do not invent a physical obstruction or cancel uncertain attacks.
+- Update the PF1 corner-ray, native pre-use cancellation and 2D/3D mode regression fixtures to real Foundry 13 wall values; test normal walls, nonstandard legacy values, and native cancellation.
+- This remains an experimental release: complex corner geometry and live PF1 11.11 multiplayer acceptance still require verification.
+
 ## v1.36.1 — Native attack-card effective AC and proven total-cover cancellation (experimental)
 
 - Fix attack-card visibility of cover: annotate the **same native PF1 attack ChatMessage** with the target-specific native and effective AC calculated by PF1AE after the attack roll. Native sheet AC remains unchanged. When the native bonus provenance cannot be verified, display review status rather than claim an incorrect effective AC.
