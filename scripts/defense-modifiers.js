@@ -48,7 +48,7 @@ async function dmActor(uuid){
   doc?.actor?.documentName==='Actor'?doc.actor:null;
 }
 async function dmCheck(data,user){
- if(!dmValidDetails(data))throw Error('Invalid declarative defense modifier');
+ if(!dmValidDetails(data))throw Error('Invalid declarative defense modifier: '+String(data?.key??'missing-key'));
  const [source,defender]=await Promise.all([
   fromUuid(data.sourceItemUuid),dmActor(data.defenderUuid)]);
  if(source?.documentName!=='Item'||source.actor?.uuid!==defender?.uuid||
