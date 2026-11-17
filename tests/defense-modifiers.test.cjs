@@ -33,6 +33,10 @@ const make=(key,bonusType,value,attackerUuid='Actor.enemy')=>({
 });
 (async()=>{
  const baseline=make('designated','deflection',4);
+ const valid=vm.runInContext('dmValidDetails',ctx);
+ assert.equal(valid(baseline),true,
+  'baseline must be a valid declarative record: '+JSON.stringify(baseline));
+
  const stored=await api.register(baseline);
  assert.ok(stored.id);
  assert.equal(SETTINGS.get('defenseModifierRegistry').length,1);
