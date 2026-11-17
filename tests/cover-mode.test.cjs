@@ -43,7 +43,7 @@ assert.equal(selected.get(),'2d');
 assert.equal(selected.inspect().ready,true);
 // Default 2D disregards both elevation and wall-height: wall geometry only.
 scene.walls.contents.push({id:'wall',uuid:'Scene.test.Wall.w',
- c:[200,-100,200,150],move:1,door:0,ds:0,
+ c:[200,-100,200,150],move:20,door:0,ds:0,
  flags:{'wall-height':{bottom:100,top:110}}});
 let r=inspect();
 assert.equal(r.mode,'2d');
