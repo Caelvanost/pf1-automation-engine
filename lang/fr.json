@@ -44,6 +44,12 @@
       "TacticalPositioning": {
         "Name": "Détection automatique de la prise en tenaille",
         "Hint": "Précocher la case native « Prise en tenaille » des attaques au corps à corps lorsque la position, l’allonge et la menace sont vérifiées. Le joueur peut la modifier dans la fenêtre d’attaque ; PF1 applique lui-même le +2, sans cumul."
+      },
+      "CoverGeometryMode": {
+        "Name": "Géométrie de détection des abris",
+        "Hint": "2D (par défaut) utilise le plan de la carte et ignore les élévations, hauteurs des murs et toitures. Le mode 3D nécessite des versions vérifiées de Levels et Wall Height ; Better Roofs est facultatif. Si les données 3D ne sont pas fiables, aucun bonus d'abri n'est supposé.",
+        "TwoD": "2D — carte tactique (par défaut)",
+        "ThreeD": "3D — Levels et Wall Height (facultatif)"
       }
     },
     "Range": {

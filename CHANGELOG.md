@@ -1,3 +1,11 @@
+## v1.36.0 — Configurable 2D / optional 3D cover detection
+
+- Add a **world setting** for PF1 cover geometry: **2D by default**, optionally **3D** for verified Levels 6.1.0 + Wall Height 7.0.8 installations (Better Roofs 3.0.0 optional).
+- In 2D, ray classification uses the square-grid plan and native wall segments and door states; ignores token elevation, Wall Height wall heights and roof occlusion to support ordinary 2D maps.
+- In 3D, enable existing height-aware wall tests and Levels collision checks. Missing/incompatible providers yield an uncertain result, never silently applying 2D cover when 3D is requested.
+- Preserve class-neutral Item Script Call design, native AC source provenance, and no double bonus. Add FR/EN labels and 2D/3D regression tests.
+- This is an **experimental prerelease**: complex roof/vertical line-of-effect cases and real Foundry multiplayer still require acceptance tests.
+
 ## v1.35.0 — Experimental conditional defenses and 3D cover (prerelease)
 
 - **TEST RELEASE — NOT FULLY VALIDATED IN LIVE FOUNDRY**. The 43 maintained automated suites passed on the development branch. Please test in a backed-up world; report discrepancies in PF1 11.11 prepared AC source breakdown and Levels/Wall Height/Better Roofs 3D geometry.

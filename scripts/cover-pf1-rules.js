@@ -27,10 +27,11 @@ const cpAllowedAttack=new Set(["ranged","melee","reach"]);
 function cpResult(status,reason,extra={}){
  const type=status==="confirmed"?extra.type??null:null;
  const bonus=type==="normal"||type==="soft"?4:type==="none"?0:null;
+ const configuredMode=game.modules?.get?.(CP_NS)?.api?.coverMode?.get?.()??"2d";
  const result={status,reason,type,acBonus:bonus,
   reflexBonus:type==="normal"?2:type==="none"||type==="soft"?0:null,
   authoritative:status==="confirmed",
-  source:"pf1-corner-rays",...extra};
+  mode:configuredMode,source:"pf1-corner-rays",...extra};
  if(status!=="confirmed"){
   result.type=null;result.acBonus=null;result.reflexBonus=null;
   result.authoritative=false;
@@ -100,7 +101,7 @@ function cpTokenCross(a,b,rect){
  if(ambiguous)return "ambiguous";
  return crosses>=2?"cross":"clear";
 }
-function cpWallData(wall,height){
+function cpWallData(wall,height,mode){
  const d=cpDoc(wall);
  const coords=d?.c;
  if(!Array.isArray(coords)||coords.length!==4||
@@ -113,6 +114,9 @@ function cpWallData(wall,height){
  // A non-physical or movement-passable wall is not inferred as ballistic.
  if(d.move===0)return {kind:"unknown",reason:"movement-passable-wall"};
  if(d.move!==1)return {kind:"unknown",reason:"wall-movement-restriction"};
+ if(mode==="2d")return {kind:"solid",
+  a:{x:coords[0],y:coords[1]},b:{x:coords[2],y:coords[3]},
+  id:d.uuid??d.id};
  const bounds=d.flags?.["wall-height"];
  const bottom=bounds?.bottom??-Infinity;
  const top=bounds?.top??Infinity;
@@ -128,7 +132,17 @@ function cpWallData(wall,height){
   b:{x:coords[2],y:coords[3]},id:d.uuid??d.id};
 }
 function cpInterpret({attacker,target,attackType="ranged",scene,
- tokens,projectileHeight=null}={}){
+ tokens,projectileHeight=null,mode}={}){
+ const configured=game.modules?.get?.(CP_NS)?.api?.coverMode;
+ const selectedMode=mode??configured?.get?.()??"2d";
+ if(selectedMode!=="2d"&&selectedMode!=="3d")
+  return cpResult("uncertain","invalid-cover-geometry-mode",{mode:selectedMode});
+ if(selectedMode==="3d"){
+  const status=configured?.inspect?.();
+  if(!status?.ready)return cpResult("uncertain",
+   "3d-integration-unavailable",{mode:selectedMode,
+    providerReasons:status?.reasons??["cover-mode-api-missing"]});
+ }
  const s=scene??globalThis.canvas?.scene;
  const grid=globalThis.canvas?.grid;
  if(!s||s.id!==globalThis.canvas?.scene?.id)
@@ -139,36 +153,39 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   return cpResult("uncertain","attack-type-unavailable");
  const a=cpSpace(attacker,s,grid?.size),t=cpSpace(target,s,grid?.size);
  if(!a||!t)return cpResult("uncertain","multi-square-or-invalid-token-space");
- const multilevel=a.elevation!==t.elevation;
+ const multilevel=selectedMode==="3d"&&a.elevation!==t.elevation;
  const levelsApi=globalThis.CONFIG?.Levels?.API;
  const levelsActive=game.modules?.get?.("levels")?.active===true;
  if(multilevel&&(!levelsActive||typeof levelsApi?.testCollision!=="function"))
   return cpResult("uncertain","multilevel-levels-api-required");
- const sourceHeight=cpFinite(projectileHeight)?projectileHeight:
+ const sourceHeight=selectedMode==="2d"?null:
+  cpFinite(projectileHeight)?projectileHeight:
   cpFinite(attacker?.losHeight)?attacker.losHeight:null;
- const targetHeight=cpFinite(projectileHeight)?projectileHeight:
+ const targetHeight=selectedMode==="2d"?null:
+  cpFinite(projectileHeight)?projectileHeight:
   cpFinite(target?.losHeight)?target.losHeight:null;
- if(sourceHeight===null||targetHeight===null)
-  return cpResult("uncertain","projectile-height-unverified");
- if(!multilevel&&sourceHeight!==targetHeight)
-  return cpResult("uncertain","different-sampled-attack-heights");
+ if(selectedMode==="3d"&&(sourceHeight===null||targetHeight===null))
+  return cpResult("uncertain","projectile-height-unverified",{mode:selectedMode});
+ if(selectedMode==="3d"&&!multilevel&&sourceHeight!==targetHeight)
+  return cpResult("uncertain","different-sampled-attack-heights",{mode:selectedMode});
  const walls=cpCollection(s.walls),tiles=cpCollection(s.tiles);
  const regions=cpCollection(s.regions);
  const all=tokens??globalThis.canvas?.tokens?.placeables;
  if(!walls||!tiles||!regions||!Array.isArray(all))
   return cpResult("uncertain","scene-collections-unavailable");
- if(tiles.some(tile=>{
+ if(selectedMode==="3d"&&tiles.some(tile=>{
   const d=cpDoc(tile);
   return d?.overhead||d?.flags?.levels?.blockSightMovement||
     d?.flags?.betterroofs?.brMode||d?.flags?.levels?.rangeTop!=null;
  }))return cpResult("uncertain","roof-or-floor-line-of-effect-unverified");
- if(regions.length)return cpResult("uncertain","region-collision-unverified");
+ if(selectedMode==="3d"&&regions.length)
+  return cpResult("uncertain","region-collision-unverified",{mode:selectedMode});
  const blockingWalls=[];
  const ambiguousWalls=[];
  for(const wall of walls){
-  const value=cpWallData(wall,sourceHeight);
+  const value=cpWallData(wall,sourceHeight,selectedMode);
   // A varying ray height cannot use a single fixed-height wall test.
-  if(sourceHeight!==targetHeight&&value.reason!=="door-open"){
+  if(selectedMode==="3d"&&sourceHeight!==targetHeight&&value.reason!=="door-open"){
    // A wall clear at the source Z may still intersect a sloping shot
    // farther along the ray. Model this conservatively until full 3D
    // wall/surface intersection classification is validated.
@@ -185,8 +202,9 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
    const d=cpDoc(other);
    if(!d||d.id===cpDoc(attacker)?.id||d.id===cpDoc(target)?.id||
        d.parent?.id!==s.id)continue;
-   if(d.elevation!==a.elevation)
-    return cpResult("uncertain","intervening-creature-height-unverified");
+   if(selectedMode==="3d"&&d.elevation!==a.elevation)
+    return cpResult("uncertain","intervening-creature-height-unverified",
+     {mode:selectedMode});
    const rect=cpSpace(other,s,grid.size);
    if(!rect)return cpResult("uncertain","intervening-large-creature-unverified");
    blockers.push(rect);
@@ -260,11 +278,11 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  if(method!=="adjacent-melee"&&considered.some(r=>r.clear))
   return cpResult("confirmed","attacker-selected-clear-corner",{
    type:"none",method,origins:cornerResults,
-   multilevel,sourceHeight,targetHeight});
+   multilevel,sourceHeight,targetHeight,mode:selectedMode});
  if(method==="adjacent-melee"&&considered.every(r=>r.clear))
   return cpResult("confirmed","all-adjacent-melee-rays-clear",{
    type:"none",method,origins:cornerResults,
-   multilevel,sourceHeight,targetHeight});
+   multilevel,sourceHeight,targetHeight,mode:selectedMode});
  // A solid obstruction along every ray may indicate total cover,
  // but PF1 total cover depends on line of effect, not a ray count.
  // Equally, an unknown/grazing ray may be the only clear option.

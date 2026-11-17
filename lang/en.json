@@ -44,6 +44,12 @@
       "TacticalPositioning": {
         "Name": "Automatic flanking detection",
         "Hint": "Precheck the native Flanking option for melee attacks when positioning, reach and threat are verified. Players may change the checkbox in the attack dialog; PF1 applies its own +2, without stacking."
+      },
+      "CoverGeometryMode": {
+        "Name": "Cover detection geometry",
+        "Hint": "2D (default) uses the tactical map and ignores elevations, Wall Height and roof layers. 3D requires tested versions of Levels and Wall Height; Better Roofs is optional. When 3D data cannot be verified, no cover is guessed.",
+        "TwoD": "2D — tactical map (default)",
+        "ThreeD": "3D — Levels and Wall Height (optional)"
       }
     },
     "Range": {

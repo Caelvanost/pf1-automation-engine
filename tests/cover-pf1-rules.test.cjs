@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const code=fs.readFileSync(path.resolve(__dirname,'../scripts/cover-pf1-rules.js'),'utf8');
 const ready=[];
-const mod={api:{},active:true};
+const mod={api:{coverMode:{get:()=>"3d",inspect:()=>({ready:true,reasons:[]})}},active:true};
 const modules=new Map([['pf1-automation-engine',mod]]);
 const scene={id:'s',grid:{type:1},walls:{contents:[]},
  tiles:{contents:[]},regions:{contents:[]}};
