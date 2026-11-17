@@ -149,12 +149,12 @@ async function arResolve(context={}){
    typeof context.coverBonus==='number'&&Number.isFinite(context.coverBonus)&&
    context.coverBonus>=0&&context.coverBonus<=100?context.coverBonus:0;
  const api=game.modules.get(AR_NS)?.api;
- const modifiers=selected.type&&selected.type!=='cmd'&&selected.type!=='manual'&&
-  targetActor?.uuid&&api?.defenseModifiers?.evaluate?.({
+ const modifiers=(selected.type&&selected.type!=='cmd'&&selected.type!=='manual'&&
+  targetActor?.uuid)?api?.defenseModifiers?.evaluate?.({
    defenderUuid:targetActor.uuid,attackerUuid:actor?.uuid??null,
    defense:selected.type,nativeTypes:context.nativeBonusTypes,
    nativeTypesComplete:context.nativeTypesComplete===true
-  })??null;
+  })??null:null;
  const uncertainCover=coverProvided&&(!validCover||
    coverAssessment.preventsDirectAttack===true);
  const uncertainMods=modifiers?.status==='uncertain';
