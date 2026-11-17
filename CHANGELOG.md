@@ -1,3 +1,12 @@
+## v1.38.0 — Generic action range gate for spells and other abilities (experimental)
+
+- Extend the existing `ActionUse.process()` pre-dialog range gate to all **single-target actions with a native measurable range**, including targeted spells, non-attack abilities and ranged attacks. Continue supporting ordinary melee reach and the existing total-cover gate.
+- Use PF1 `action.getRange({type:"max"})` in configured system units, including native spell-level scaling and maximum ranged weapon increments. Measure the shortest occupied-square grid distance in Foundry without altering roll formulas or actors.
+- Reject **only** verified distances above native maximum range, before dialog, charges/spell slots/ammunition, rolls or chat message creation; localized FR/EN notification.
+- Skip non-measurable or self-only ranges, template/area placements, unknown elevations/units, ambiguous actor/target provenance and multiple targets instead of guessing or blocking legitimate casting.
+- Preserve the `api.meleeReach` Script Call entry point and add `api.actionRange`. Extend the maintained regression test to exercise targeted spell, ability, ranged action, template, unknown range and full resource-safety scenarios.
+- Experimental, requires live PF1 11.11 acceptance for special ranges, targeted spells and third-party template modules.
+
 ## v1.37.0 — Native melee reach rejection before attack dialog (experimental)
 
 - Add a class-agnostic `api.meleeReach.inspect` and `inspectActionUse` read-only engine for PF1 11.11 melee weapon/spell attack maximum reach. Use native `action.getRange({type:"max"})` so natural reach, reach weapons and action-specific adjustments are not hardcoded.

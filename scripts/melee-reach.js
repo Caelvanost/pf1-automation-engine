@@ -1,8 +1,8 @@
 /**
- * PF1AE — conservative melee reach gate for Foundry 13 / PF1 11.11.
+ * PF1AE — conservative action range gate for Foundry 13 / PF1 11.11.
  *
  * Pure inspection; never changes Actor, Item, ChatMessage, ammo or charge.
- * A confirmed out-of-range single-target melee attack may be rejected
+ * A confirmed out-of-range single-target action may be rejected
  * by the existing ActionUse.process early gate.
  *
  * PF1 action.getRange({type:"max"}) determines action-specific maximum
@@ -48,9 +48,15 @@ function mrInspect({attacker,target,action,actor,scene,grid}={}){
   !g||typeof g.measurePath!=="function"||
   (s.grid?.type!==1&&s.grid?.type!=="square"))
   return mrUncertain("square-grid-measurement-unavailable");
- if(!action||!["mwak","msak"].includes(action.actionType)||
-    action.hasAttack!==true||action.isCombatManeuver===true)
-  return mrUncertain("not-supported-melee-attack");
+ const isMelee=["mwak","msak"].includes(action?.actionType)&&
+  action?.hasAttack===true&&action?.isCombatManeuver!==true;
+ // PF1 hasRange documents genuine measured spell/ability/weapon ranges.
+ // Never constrain actions without a native numeric range, or template
+ // placements where the origin/destination is chosen after process().
+ if(!action||(!isMelee&&action.hasRange!==true))
+  return mrUncertain("action-has-no-measurable-range");
+ if(action.hasTemplate===true)
+  return mrUncertain("template-placement-unverified");
  if(!attacker||!target||!actor?.uuid||
   attacker.actor?.uuid!==actor.uuid||
   attacker.actor?.uuid===target.actor?.uuid)
@@ -65,11 +71,12 @@ function mrInspect({attacker,target,action,actor,scene,grid}={}){
  if(!aa||!bb)return mrUncertain("token-footprint-unverified");
  if(a.x===t.x&&a.y===t.y)
   return mrUncertain("overlapping-tokens");
- // Prefer the action's prepared maximum reach, never a guessed size default.
+ // The native action determines its maximum usable range (including
+ // ranged-weapon increments and spell level scaling). No default guessed.
  let max;
  try{max=action.getRange?.({type:"max"})}
- catch(_){return mrUncertain("native-reach-evaluation-failed")}
- if(!mrFinite(max)||max<=0)return mrUncertain("native-maximum-reach-unavailable");
+ catch(_){return mrUncertain("native-range-evaluation-failed")}
+ if(!mrFinite(max)||max<=0)return mrUncertain("native-maximum-range-unavailable");
  let minimum=0;
  try{
   const m=action.getRange?.({type:"min"});
@@ -78,7 +85,7 @@ function mrInspect({attacker,target,action,actor,scene,grid}={}){
  const scale=systemUnit===unit?1:systemUnit==="ft"?0.3:1/0.3;
  const maxScene=max*scale,minScene=minimum*scale;
  if(!mrFinite(maxScene)||maxScene<=0)
-  return mrUncertain("invalid-reach-conversion");
+  return mrUncertain("invalid-range-conversion");
  let distance=Infinity;
  // When more than one occupied square is present, use the shortest
  // valid square-centre distance, not the centre of a Large token.
@@ -92,11 +99,14 @@ function mrInspect({attacker,target,action,actor,scene,grid}={}){
  }
  if(!mrFinite(distance))return mrUncertain("distance-unverified");
  const tooFar=distance>maxScene+MR_EPS;
+ const status=tooFar?(isMelee?"out-of-reach":"out-of-range"):
+  (isMelee?"in-reach":"in-range");
  return Object.freeze({
-  status:tooFar?"out-of-reach":"in-reach",
-  outOfReach:tooFar,reason:tooFar?"beyond-native-action-reach":"within-native-action-reach",
+  status,outOfReach:tooFar,outOfRange:tooFar,
+  reason:tooFar?"beyond-native-action-range":"within-native-action-range",
   distance,maximumReach:maxScene,minimumReach:minScene,unit,
-  source:"pf1-action-getRange-max",attackerTokenUuid:a.uuid,
+  source:"pf1-action-getRange-max",actionType:action.actionType??null,
+  attackerTokenUuid:a.uuid,
   targetTokenUuid:t.uuid
  });
 }
@@ -118,7 +128,9 @@ Hooks.once("ready",()=>{
  const mod=game.modules?.get?.(MR_NS);
  if(!mod)return;
  mod.api??={};
- mod.api.meleeReach=Object.freeze({
+ const api=Object.freeze({
   inspect:mrInspect,inspectActionUse:mrFromActionUse
  });
+ mod.api.meleeReach=api; // Retain existing Script Call API.
+ mod.api.actionRange=api; // Generic spells, abilities and ranged attacks.
 });

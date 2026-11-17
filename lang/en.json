@@ -155,6 +155,9 @@
       "Save": "Save changes",
       "Saved": "Script approvals updated."
     },
+    "ActionRange": {
+      "OutOfRange": "Target is beyond this action\u0027s maximum range. Action cancelled."
+    },
     "MeleeReach": {
       "OutOfReach": "Target beyond the maximum reach of this melee attack. Attack cancelled."
     },
