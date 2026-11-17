@@ -31,6 +31,7 @@ function cpResult(status,reason,extra={}){
  const result={status,reason,type,acBonus:bonus,
   reflexBonus:type==="normal"?2:type==="none"||type==="soft"?0:null,
   authoritative:status==="confirmed",
+  preventsDirectAttack:status==="confirmed"&&type==="total",
   mode:configuredMode,source:"pf1-corner-rays",...extra};
  if(status!=="confirmed"){
   result.type=null;result.acBonus=null;result.reflexBonus=null;
@@ -298,12 +299,14 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   return cpResult("confirmed","no-cover",{
    type:"none",method,origins:cornerResults,
    multilevel,sourceHeight,targetHeight});
- // A wall that obstructs ALL rays at EVERY permitted origin could
- // eliminate line of effect entirely: don't downgrade to +4 CA.
- if(considered.every(o=>o.traces.every(r=>
+ // A solid wall crossing EVERY target-corner ray from EVERY valid
+ // attacker origin establishes total cover / no direct line of effect.
+ // A grazing/unknown ray above already returned "uncertain".
+ if(considered.length>0&&considered.every(o=>o.traces.every(r=>
     r.blocked.some(x=>x.kind==="solid"))))
-  return cpResult("uncertain","possible-total-cover",{
-   method,origins:cornerResults});
+  return cpResult("confirmed","every-direct-ray-blocked-by-solid-walls",{
+   type:"total",method,origins:cornerResults,
+   multilevel,sourceHeight,targetHeight,mode:selectedMode});
  return cpResult("confirmed","pf1-corner-rays-obstructed",{
   type:selected.solid?"normal":"soft",method,
   selectedOrigin:selected.originCorner,origins:cornerResults,
