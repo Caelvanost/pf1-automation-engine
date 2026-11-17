@@ -32,7 +32,8 @@ jobs:
             'turn-phases','trusted-table','range-automation','i18n','reload-core',
             'attack-resolution','attack-resolution-integration','item-default-action','chat-actions','chat-action-bootstrap','bleed','bleed-manual','bleed-display','ranged-melee','script-approval-menu','tactical-positioning',
             'defense-modifiers','cover-detection','cover-saves',
-            'cover-3d-diagnostics','cover-pf1-rules','native-cover-provenance'
+            'cover-3d-diagnostics','cover-pf1-rules','native-cover-provenance',
+            'native-cover-attack-integration'
           )
           foreach ($name in $tests) {
             $file = Join-Path tests "$name.test.cjs"
