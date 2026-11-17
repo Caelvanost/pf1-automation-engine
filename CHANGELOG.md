@@ -1,3 +1,11 @@
+## v1.36.1 — Native attack-card effective AC and proven total-cover cancellation (experimental)
+
+- Fix attack-card visibility of cover: annotate the **same native PF1 attack ChatMessage** with the target-specific native and effective AC calculated by PF1AE after the attack roll. Native sheet AC remains unchanged. When the native bonus provenance cannot be verified, display review status rather than claim an incorrect effective AC.
+- When a **single-target, direct weapon/touch attack** has confirmed total cover from every legal PF1 corner ray, the cancellable **pf1PreActionUse** hook returns false before native ammo/resource expenditure and the action is not performed. This requires an unambiguous attacker/target token; uncertain and multiple-target cases do not cancel globally.
+- Complete solid wall obstruction is now classed as `total` rather than `possible-total-cover` only when *every* permitted ray is blocked with no uncertain or grazing rays.
+- Existing PF1 2D/default and optional 3D mode settings preserved. Known issue: when PF1 produces a card without ownership/provenance or an attack bypasses native use hooks, the bridge refuses to alter it; actual UI behavior must be validated in-world. Native cards are **annotated**, not overwritten.
+- Experimental release for Foundry 13.351 / PF1 11.11; 45 maintained CI suites.
+
 ## v1.36.0 — Configurable 2D / optional 3D cover detection
 
 - Add a **world setting** for PF1 cover geometry: **2D by default**, optionally **3D** for verified Levels 6.1.0 + Wall Height 7.0.8 installations (Better Roofs 3.0.0 optional).
