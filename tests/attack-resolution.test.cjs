@@ -87,7 +87,8 @@ const run=(natural,total,options={})=>ar.resolveAttack({
  const baseApi=api.defenseModifiers;
  api.defenseModifiers={evaluate:()=>({status:'resolved',total:4,applied:[],
   suppressed:[]})};
- r=await run(10,23,{coverAssessment:{type:'normal',status:'manual',
+ r=await run(10,23,{nativeBonusTypes:{cover:0},
+  coverAssessment:{type:'normal',status:'manual',
   acBonus:4,preventsDirectAttack:false}});
  assert.equal(r.defense.value,28,'native CA 20 + conditional 4 + cover 4');
  assert.equal(r.defense.coverBonus,4);
