@@ -78,7 +78,9 @@ async function dmMutation(op,data,user){
    throw Error('Actor owner or GM required');
   const id=dmId(data),existing=dmRegistry().find(x=>x.id===id);
   if(!existing)return {removed:false,id};
-  await dmCheck(existing,user);
+  const {id:storedId,...sourceRecord}=existing;
+  if(storedId!==dmId(sourceRecord))throw Error('Defense record identity mismatch');
+  await dmCheck(sourceRecord,user);
   await game.settings.set(DM_NS,DM_REG,dmRegistry().filter(x=>x.id!==id));
   return {removed:true,id};
  }
