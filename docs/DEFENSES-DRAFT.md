@@ -97,6 +97,40 @@ The setting persists on the source ChatMessage. During a later **native Reflex s
 
 **Important:** The API exists, but a usable native attack-dialog manual cover selector and verification of real PF1 11.11 interactions remain pending. Automatic geometry-to-Reflex integration is deliberately disabled until exact provenance and line of effect are established.
 
+## Read-only three-dimensional cover trajectory diagnostics
+
+The optional **`api.cover3D`** service checks the installed module versions (tested source trees: Wall Height **7.0.8**, Levels **6.1.0**, Better Roofs **3.0.0**) and returns sample three-dimensional collision observations. It does **not** change AC, Reflex bonuses, hit determination, damage, scene flags, token elevations, or documents. Its result is always **`authoritative:false`**, with no `coverType` or numerical bonus.
+
+```js
+const cover3D=game.modules.get("pf1-automation-engine")?.api?.cover3D;
+const diagnostic=cover3D?.inspect({
+  attacker: canvas.tokens.controlled[0],
+  target: [...game.user.targets][0]
+});
+console.log(diagnostic);
+// {
+//   status: "collision-detected" | "sampled-clear" | "uncertain" | "impossible" | "unavailable",
+//   authoritative: false, coverType: null, acBonus: null, reflexBonus: null,
+//   modules: [{id:"wall-height", installedVersion:"7.0.8", ...}, ...],
+//   rays: [{originCorner:0, targetCorner:0,
+//           from:{x,y,z},to:{x,y,z},
+//           state:"collision"|"clear"|"unknown"|"unavailable"|"error",
+//           point:{x,y,z}?}],
+//   walls: [{id,bounds:{bottom,top,known},door,doorState,moveRestriction}],
+//   tiles: [{id,elevation,rangeTop,noCollision,blockingFlag,betterRoofsMode,overhead}],
+//   warnings:[],counts:{clear,collision,unknown}
+// }
+```
+
+The adapter checks 4 inset corners of the attacker's **occupied rectangle** against 4 inset corners of the defender's rectangle (16 diagnostics). Inset corners are merely safe test samples, not yet a full PF1 3D corner-ray decision. If both token placeables have a numeric `losHeight`, it uses that sight height as the provisional launch/target sampling height; otherwise it uses the token's elevation and adds an explicit `physical-token-height-unverified` warning. Token/scene/obstacle data are never written.
+
+- **Wall Height:** read `WallDocument.flags["wall-height"].bottom|top`, corresponding to `getWallBounds` in the inspected Wall Height 7.0.8 source. Open/closed doors and restrictions are reported but not interpreted as projectile-blocking rules.
+- **Levels:** call `CONFIG.Levels.API.testCollision(p0,p1,"collision")` with `{x,y,z}` points; classify a finite 3D point as `collision`, `false` or `null` as `clear`, and any other response/error as uncertain. These are **Levels collision observations**, not proof of ballistic obstruction or full PF1 cover.
+- **Better Roofs:** read `flags.betterroofs.brMode` alongside tile elevation, `flags.levels.rangeTop`, `flags.levels.noCollision` and `overhead`. Roofing occlusion is **not** silently equated with physical protection.
+- All three integrations are **optional**: missing modules, unsupported versions, unclassified regions, unknown physical heights, and tile exceptions produce explicit diagnostics without a guessed bonus.
+
+**Testing limitations:** The upstream source tags include code identified by release names; their embedded manifests have sometimes differed from release numbers. The exact installed runtime versions and any differences in the packaged code must still be validated in a live Foundry 13.351 / PF1 11.11 world. No automatic bonus application or 3D overlay is enabled by this adapter.
+
 ## Remaining required work before publication
 
 1. Verify and integrate the native PF1 11.11 attack dialogue's actual lifecycle for automatic/manual cover selection without race conditions.
