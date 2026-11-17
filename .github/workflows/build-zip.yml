@@ -33,7 +33,7 @@ jobs:
             'attack-resolution','attack-resolution-integration','item-default-action','chat-actions','chat-action-bootstrap','bleed','bleed-manual','bleed-display','ranged-melee','script-approval-menu','tactical-positioning',
             'defense-modifiers','cover-detection','cover-saves',
             'cover-3d-diagnostics','cover-pf1-rules','native-cover-provenance',
-            'native-cover-attack-integration'
+            'native-cover-attack-integration','cover-mode'
           )
           foreach ($name in $tests) {
             $file = Join-Path tests "$name.test.cjs"
@@ -64,6 +64,7 @@ jobs:
             if ($null -eq $archive.GetEntry('scripts/cover-3d-diagnostics.js')) { throw 'Missing read-only Cover 3D adapter.' }
             if ($null -eq $archive.GetEntry('scripts/cover-pf1-rules.js')) { throw 'Missing PF1 cover interpretation engine.' }
             if ($null -eq $archive.GetEntry('scripts/native-cover-provenance.js')) { throw 'Missing native PF1 AC provenance adapter.' }
+            if ($null -eq $archive.GetEntry('scripts/cover-mode.js')) { throw 'Missing 2D/3D cover mode service.' }
             if ($null -eq $archive.GetEntry('scripts/cover-saves.js')) { throw 'Missing native Reflex cover service.' }
             if ($null -eq $archive.GetEntry('templates/script-approvals.hbs')) { throw 'Missing Script Approvals form template.' }
             if ($null -eq $archive.GetEntry('lang/en.json')) { throw 'Missing English locale pack.' }
