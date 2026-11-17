@@ -21,7 +21,8 @@ const cbToken=value=>{
  return null;
 };
 const cbList=value=>Array.isArray(value)?value:
- value instanceof Set?[...value]:value?.contents&&Array.isArray(value.contents)?value.contents:[];
+ value?.contents&&Array.isArray(value.contents)?value.contents:
+ typeof value?.values==="function"?[...value.values()]:[];
 const cbEnable=()=>{
  try{return game.modules.get(CB_NS)?.active===true&&
   game.settings.get(CB_NS,"genericEnabled")===true}
