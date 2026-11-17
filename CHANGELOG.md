@@ -1,3 +1,11 @@
+## v1.36.3 — Cancel proven total-cover attacks before PF1 modifier dialog (experimental)
+
+- Intercept PF1 11.11 `ActionUse.process()` before native requirements, auto ammo selection, roll-data preparation, attack modifier dialog, dice rolls, ammo/charge deductions or chat posts. Proven single-target direct total cover aborts the action immediately with one warning and zero resource changes.
+- Use `libWrapper` when active; otherwise use a guarded prototype wrapper. Retain `pf1PreActionUse` as a secondary cancellable safety gate for other entry paths; this hook is too late to prevent the attack dialog.
+- Preserve normal PF1 pipeline for uncertain geometry, open doors, untargeted/multitarget actions, spells with no direct attack and unsupported action types.
+- Extend maintained native bridge regression to assert blocked attacks do not open the dialog, alter ammo or magazine values, or post a card; validate allowed actions retain native behavior.
+- Experimental live-Foundry testing is required, including PF1 weapon reload adapters and third-party wrappers.
+
 ## v1.36.2 — Fix Foundry v13 wall movement classification (experimental)
 
 - Read `CONST.WALL_MOVEMENT_TYPES.NONE/NORMAL` at runtime instead of treating obsolete `move=1` as a blocking wall. Foundry 13 uses `NORMAL=20`; this corrects the false `unclassified-wall` result on ordinary 2D solid walls, which prevented proven total cover from cancelling direct attacks.
