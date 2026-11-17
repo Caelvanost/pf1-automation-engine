@@ -49,7 +49,7 @@ assert.equal(result.reflexBonus,null);
 assert.equal(result.rays.length,16,'four source corners x four target corners');
 assert.equal(result.counts.collision,16);
 assert.equal(collisionCalls.length,16);
-assert.equal(collisionCalls.every(x=>x.type==='collision'),'Levels collision, never sight');
+assert.equal(collisionCalls.every(x=>x.type==='collision'),true,'Levels collision, never sight');
 assert.equal(result.rays.every(x=>x.from.z===5&&x.to.z===5),true);
 assert.equal(result.walls[0].bounds.bottom,0);
 assert.equal(result.walls[0].bounds.top,5);
