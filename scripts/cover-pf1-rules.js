@@ -27,10 +27,11 @@ const cpAllowedAttack=new Set(["ranged","melee","reach"]);
 function cpResult(status,reason,extra={}){
  const type=status==="confirmed"?extra.type??null:null;
  const bonus=type==="normal"||type==="soft"?4:type==="none"?0:null;
+ const configuredMode=game.modules?.get?.(CP_NS)?.api?.coverMode?.get?.()??"2d";
  const result={status,reason,type,acBonus:bonus,
   reflexBonus:type==="normal"?2:type==="none"||type==="soft"?0:null,
   authoritative:status==="confirmed",
-  source:"pf1-corner-rays",...extra};
+  mode:configuredMode,source:"pf1-corner-rays",...extra};
  if(status!=="confirmed"){
   result.type=null;result.acBonus=null;result.reflexBonus=null;
   result.authoritative=false;
