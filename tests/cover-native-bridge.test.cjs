@@ -2,9 +2,9 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const callbacks=new Map(),ready=[],alerts=[],cards=[];
-const module={active:true,api:{}};
+const pf1aeModule={active:true,api:{}};
 const scene={id:'s',grid:{type:1},walls:{contents:[]},tiles:{contents:[]},regions:{contents:[]}};
-const tokens=[],system={modules:new Map([['pf1-automation-engine',module]]),
+const tokens=[],system={modules:new Map([['pf1-automation-engine',pf1aeModule]]),
  settings:{get(_n,k){return k==='genericEnabled'?true:'2d'}},
  user:{id:'player',isGM:false,targets:new Set()},
  messages:new Map(),i18n:{localize:k=>k}};
@@ -39,7 +39,7 @@ assert.equal(typeof after,'function');
 assert.equal(before(actionUse),undefined,'empty battlefield does not block');
 scene.walls.contents.push({id:'wall',c:[200,-200,200,300],
  uuid:'Scene.s.Wall.w',move:1,door:0,ds:0});
-const diagnosis=module.api.coverNativeBridge.preview(actionUse);
+const diagnosis=pf1aeModule.api.coverNativeBridge.preview(actionUse);
 assert.equal(diagnosis?.status,'confirmed');
 assert.equal(diagnosis?.type,'total');
 assert.equal(diagnosis?.preventsDirectAttack,true);
@@ -65,7 +65,7 @@ system.messages.set('message',card);
 const base={sourceMessageId:'message',targetResults:[{targetTokenUuid:target.document.uuid,
  coverDiagnosis:{status:'confirmed',type:'normal',acBonus:4},
  defense:{baseValue:17,value:21,coverBonus:4}}]};
-const html=module.api.coverNativeBridge.cardSection(base);
+const html=pf1aeModule.api.coverNativeBridge.cardSection(base);
 assert.ok(html.includes('21'));
 assert.ok(html.includes('17'));
 after(base);
@@ -81,8 +81,8 @@ after(base);
  const total={...base,targetResults:[{targetTokenUuid:target.document.uuid,
   coverDiagnosis:{status:'confirmed',type:'total',
    preventsDirectAttack:true},defense:{baseValue:17,value:null}}]};
- assert.ok(module.api.coverNativeBridge.cardSection(total).includes('PF1AE.Cover.TotalBlocked'));
- assert.equal(module.api.coverNativeBridge.cardSection({
+ assert.ok(pf1aeModule.api.coverNativeBridge.cardSection(total).includes('PF1AE.Cover.TotalBlocked'));
+ assert.equal(pf1aeModule.api.coverNativeBridge.cardSection({
   ...base,targetResults:[{...base.targetResults[0],
    coverDiagnosis:{status:'uncertain'}}]}),null);
  assert.equal(actor.uuid,'Actor.a');
