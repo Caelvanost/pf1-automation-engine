@@ -31,7 +31,8 @@ jobs:
             'save-outcomes','template-save-outcomes','timed-save-outcomes',
             'turn-phases','trusted-table','range-automation','i18n','reload-core',
             'attack-resolution','attack-resolution-integration','item-default-action','chat-actions','chat-action-bootstrap','bleed','bleed-manual','bleed-display','ranged-melee','script-approval-menu','tactical-positioning',
-            'defense-modifiers','cover-detection','cover-saves'
+            'defense-modifiers','cover-detection','cover-saves',
+            'cover-3d-diagnostics'
           )
           foreach ($name in $tests) {
             $file = Join-Path tests "$name.test.cjs"
@@ -59,6 +60,7 @@ jobs:
             if ($null -eq $archive.GetEntry('scripts/tactical-positioning.js')) { throw 'Missing tactical positioning detection.' }
             if ($null -eq $archive.GetEntry('scripts/defense-modifiers.js')) { throw 'Missing conditional defense registry.' }
             if ($null -eq $archive.GetEntry('scripts/cover-detection.js')) { throw 'Missing cover detection service.' }
+            if ($null -eq $archive.GetEntry('scripts/cover-3d-diagnostics.js')) { throw 'Missing read-only Cover 3D adapter.' }
             if ($null -eq $archive.GetEntry('scripts/cover-saves.js')) { throw 'Missing native Reflex cover service.' }
             if ($null -eq $archive.GetEntry('templates/script-approvals.hbs')) { throw 'Missing Script Approvals form template.' }
             if ($null -eq $archive.GetEntry('lang/en.json')) { throw 'Missing English locale pack.' }
