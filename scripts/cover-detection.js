@@ -81,12 +81,17 @@ function cvInspect({attacker,target,attackType='ranged',scene,
   return cvResult(null,'uncertain','multi-square-corner-choice-not-resolved');
  // This is a necessary condition, not a proof of cover: door states, wall
  // heights, wall-sense restrictions, region obstacles and roof levels matter.
- const walls=[...(s.walls?.contents??s.walls?.values?.()??[])];
+ if(!s.walls||!s.regions||!s.tiles)
+  return cvResult(null,'uncertain','scene-obstacle-collections-unavailable');
+ const walls=[...(s.walls.contents??s.walls.values?.()??[])];
  if(walls.length)return cvResult(null,'uncertain',
   'wall-line-of-effect-unverified');
- const regions=[...(s.regions?.contents??s.regions?.values?.()??[])];
+ const regions=[...(s.regions.contents??s.regions.values?.()??[])];
  if(regions.length)return cvResult(null,'uncertain',
   'region-obstacles-unverified');
+ const tiles=[...(s.tiles.contents??s.tiles.values?.()??[])];
+ if(tiles.some(t=>t?.overhead===true||t?.roof===true))
+  return cvResult(null,'uncertain','overhead-obstacle-unverified');
  // No geometry data is not evidence of an obstacle. Search for creature
  // candidates; report them rather than assuming a midpoint is PF1 soft cover.
  const all=tokens??globalThis.canvas?.tokens?.placeables;
@@ -99,7 +104,14 @@ function cvInspect({attacker,target,attackType='ranged',scene,
   const ob=cvBounds(other,grid);
   if(!ob)return cvResult(null,'uncertain','interposed-token-geometry-unknown');
   if(cvNum(d.elevation)!==cvNum(t.elevation))continue;
-  if(cvCrossesInterior(ab.c,tb.c,ob))candidates.push(d.uuid??d.id);
+  // Any token intersecting the possible corner-ray corridor MAY confer
+  // cover. Without the full PF1 corner-ray test, flag uncertainty instead
+  // of claiming absence from a clear center ray.
+  const corridor={l:Math.min(ab.l,tb.l),r:Math.max(ab.r,tb.r),
+   t:Math.min(ab.t,tb.t),b:Math.max(ab.b,tb.b)};
+  const intersects=ob.r>corridor.l&&ob.l<corridor.r&&
+   ob.b>corridor.t&&ob.t<corridor.b;
+  if(intersects)candidates.push(d.uuid??d.id);
  }
  if(candidates.length)return cvResult(null,'uncertain',
   'possible-soft-cover-requires-corner-rays',{
