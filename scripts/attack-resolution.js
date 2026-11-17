@@ -151,7 +151,8 @@ async function arResolve(context={}){
  const api=game.modules.get(AR_NS)?.api;
  const modifiers=(selected.type&&selected.type!=='cmd'&&selected.type!=='manual'&&
   targetActor?.uuid)?api?.defenseModifiers?.evaluate?.({
-   defenderUuid:targetActor.uuid,attackerUuid:actor?.uuid??null,
+   defenderActor:targetActor,defenderUuid:targetActor.uuid,
+   attackerUuid:actor?.uuid??null,
    defense:selected.type,nativeTypes:context.nativeBonusTypes,
    nativeTypesComplete:context.nativeTypesComplete===true
   })??null:null;
