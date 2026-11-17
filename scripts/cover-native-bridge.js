@@ -76,20 +76,22 @@ function cbTotalBlocked(actionUse){
  return assessment?.status==="confirmed"&&assessment?.type==="total"&&
   assessment?.preventsDirectAttack===true;
 }
-function cbOutOfReach(actionUse){
+function cbOutOfRange(actionUse){
  if(!cbEnable())return false;
- const api=game.modules.get(CB_NS)?.api?.meleeReach;
+ const api=game.modules.get(CB_NS)?.api?.actionRange;
  if(typeof api?.inspectActionUse!=="function")return false;
- try{return api.inspectActionUse(actionUse)?.status==="out-of-reach"}
+ try{return ["out-of-reach","out-of-range"].includes(
+  api.inspectActionUse(actionUse)?.status)}
  catch(error){
-  console.warn("[PF1AE][MeleeReach] Conservative check unavailable",error);
+  console.warn("[PF1AE][ActionRange] Conservative check unavailable",error);
   return false;
  }
 }
-function cbNotifyOutOfReach(){
- const localized=game.i18n?.localize?.("PF1AE.MeleeReach.OutOfReach");
- ui.notifications?.warn?.(localized&&localized!=="PF1AE.MeleeReach.OutOfReach"?
-  localized:"Target is beyond this melee attack's reach.");
+function cbNotifyOutOfRange(){
+ const key="PF1AE.ActionRange.OutOfRange";
+ const localized=game.i18n?.localize?.(key);
+ ui.notifications?.warn?.(localized&&localized!==key?
+  localized:"Target is beyond this action's maximum range. Action cancelled.");
 }
 function cbNotifyBlocked(){
  const message=game.i18n?.localize?.("PF1AE.Cover.TotalBlocked")??
@@ -114,7 +116,7 @@ function cbInstallEarlyGate(){
     "pf1.actionUse.ActionUse.prototype.process",
     async function(wrapped,...args){
      if(cbTotalBlocked(this)){cbNotifyBlocked();return undefined}
-     if(cbOutOfReach(this)){cbNotifyOutOfReach();return undefined}
+     if(cbOutOfRange(this)){cbNotifyOutOfRange();return undefined}
      return wrapped(...args);
     },"WRAPPER");
    cbGateInstallation="lib-wrapper";
@@ -133,7 +135,7 @@ function cbInstallEarlyGate(){
  }
  const guard=async function(...args){
   if(cbTotalBlocked(this)){cbNotifyBlocked();return undefined}
-  if(cbOutOfReach(this)){cbNotifyOutOfReach();return undefined}
+  if(cbOutOfRange(this)){cbNotifyOutOfRange();return undefined}
   return original.apply(this,args);
  };
  try{
@@ -149,8 +151,8 @@ function cbPreActionUse(actionUse){
   cbNotifyBlocked();
   return false;
  }
- if(cbOutOfReach(actionUse)){
-  cbNotifyOutOfReach();
+ if(cbOutOfRange(actionUse)){
+  cbNotifyOutOfRange();
   return false;
  }
 }
@@ -210,6 +212,8 @@ Hooks.once("ready",()=>{
   preview:actionUse=>cbGeometry(actionUse)?.assessment??null,
   earlyGateMode:()=>cbGateInstallation,
   previewReach:actionUse=>game.modules.get(CB_NS)?.api?.meleeReach?.
+   inspectActionUse?.(actionUse)??null,
+  previewRange:actionUse=>game.modules.get(CB_NS)?.api?.actionRange?.
    inspectActionUse?.(actionUse)??null,
   cardSection:event=>cbPresentation(event)
  });
