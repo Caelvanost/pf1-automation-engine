@@ -26,7 +26,7 @@ jobs:
             for (const branch of branches) {
               const name = branch.name;
               if (name === base || branch.protected) continue;
-              if (!/^(feat|feature|fix|docs|chore|test)\//.test(name)) continue;
+              if (!/^(feat|feature|fix|docs|chore|test|release)\//.test(name)) continue;
               const head = owner + ':' + name;
               const closed = await github.paginate(
                 github.rest.pulls.list,
