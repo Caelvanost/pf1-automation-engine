@@ -258,5 +258,52 @@ after(base);
   ...base,targetResults:[{...base.targetResults[0],
    coverDiagnosis:{status:'uncertain'}}]}),null);
  assert.equal(actor.uuid,'Actor.a');
+
+ // libWrapper must receive MIXED, because a confirmed invalid attack
+ // deliberately skips the next wrapper and native ActionUse.process.
+ let registration=null,forwarded=0;
+ const lwMod={active:true,api:{
+  coverPF1:{inspect:()=>({status:'confirmed',type:'total',preventsDirectAttack:true})},
+  actionRange:{inspectActionUse:()=>({status:'uncertain'})}
+ }};
+ const lwActor={uuid:'Actor.source',getActiveTokens:()=>[lwSource]};
+ const lwSource={document:{uuid:'Scene.s.Token.lwsource',parent:{id:'s'},
+  x:0,y:0,width:1,height:1,elevation:0},actor:lwActor};
+ const lwTarget={document:{uuid:'Scene.s.Token.lwtarget',parent:{id:'s'},
+  x:300,y:0,width:1,height:1,elevation:0},actor:{uuid:'Actor.target'}};
+ const lwGame={modules:new Map([
+  ['pf1-automation-engine',lwMod],['lib-wrapper',{active:true}]
+ ]),settings:{get(){return true}},
+  user:{targets:new Set([lwTarget])},i18n:{localize:k=>k}};
+ const lwReady=[];
+ const lwCtx={console,game:lwGame,
+  pf1:{actionUse:{ActionUse:class{async process(){return 'native'}}},
+   config:{maneuverActionTypes:new Set()}},
+  libWrapper:{register(namespace,path,fn,type){
+   registration={namespace,path,fn,type};
+  }},
+  Hooks:{once(name,fn){if(name==='ready')lwReady.push(fn)},
+   on(){}},ui:{notifications:{warn(){}}},
+  Set,Map,Object,Number,Math};
+ lwCtx.globalThis=lwCtx;
+ vm.createContext(lwCtx);
+ vm.runInContext(fs.readFileSync(path.resolve(__dirname,
+  '../scripts/cover-native-bridge.js'),'utf8'),lwCtx);
+ for(const callback of lwReady)callback();
+ assert.equal(registration?.type,'MIXED',
+  'early cancellation must use libWrapper MIXED, never WRAPPER');
+ assert.equal(lwMod.api.coverNativeBridge.earlyGateMode(),'lib-wrapper');
+ const lwUse={actor:lwActor,
+  action:{actionType:'rwak',hasAttack:true,isCombatManeuver:false,
+   actor:lwActor},token:lwSource,shared:{targets:[lwTarget]}};
+ const lwNext=async()=>{forwarded++;return 'next-wrapper'};
+ assert.equal(await registration.fn.call(lwUse,lwNext),undefined,
+  'confirmed total cover deliberately stops libWrapper chain');
+ assert.equal(forwarded,0,'cancelled action never calls next wrapper');
+ lwMod.api.coverPF1.inspect=()=>({status:'confirmed',type:'none',
+  preventsDirectAttack:false});
+ assert.equal(await registration.fn.call(lwUse,lwNext),'next-wrapper',
+  'valid action forwards to next wrapper');
+ assert.equal(forwarded,1);
  console.log('PASS native cover bridge and universal action range: melee, targeted spells, abilities, ranged weapons, template safety, no resource usage');
 })().catch(error=>{console.error(error);process.exitCode=1});

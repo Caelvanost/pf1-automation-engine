@@ -107,8 +107,10 @@ function cbInstallEarlyGate(){
   console.warn("[PF1AE][CoverBridge] PF1 ActionUse.process unavailable; early cover gate disabled");
   return;
  }
- // Prefer libWrapper for composition with other modules; use a guarded
- // prototype fallback when libWrapper is not present.
+ // MIXED may intentionally stop the call chain when an action is forbidden.
+ // WRAPPER would require wrapped() on every path and libWrapper unregisters it
+ // for our deliberate early cancellations. Prefer libWrapper when available;
+ // use a guarded prototype fallback only when it is absent.
  if(game.modules?.get?.("lib-wrapper")?.active&&
     typeof globalThis.libWrapper?.register==="function"){
   try{
@@ -118,7 +120,7 @@ function cbInstallEarlyGate(){
      if(cbTotalBlocked(this)){cbNotifyBlocked();return undefined}
      if(cbOutOfRange(this)){cbNotifyOutOfRange();return undefined}
      return wrapped(...args);
-    },"WRAPPER");
+    },"MIXED");
    cbGateInstallation="lib-wrapper";
    return;
   }catch(error){

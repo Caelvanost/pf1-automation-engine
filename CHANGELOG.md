@@ -1,3 +1,10 @@
+## v1.38.1 — libWrapper MIXED chain-safe action cancellation (experimental)
+
+- Fix libWrapper registration of `pf1.actionUse.ActionUse.prototype.process`: switch from `WRAPPER` (requires every invocation to call the next function) to `MIXED` (supports intentional short-circuit on verified forbidden actions).
+- Retain early cancellation of proven total-cover and out-of-range actions before native PF1 attack modifier dialogs, resource expenditure or chat cards. Valid and uncertain actions continue through the next wrapper normally.
+- Add regression coverage for the real libWrapper registration type, cancelled-call short-circuit and valid-action forwarding in the maintained native bridge suite. Existing prototype fallback remains unchanged.
+- Experimental: test in Foundry VTT 13.351 / PF1 11.11 with libWrapper enabled and report any competing overrides.
+
 ## v1.38.0 — Generic action range gate for spells and other abilities (experimental)
 
 - Extend the existing `ActionUse.process()` pre-dialog range gate to all **single-target actions with a native measurable range**, including targeted spells, non-attack abilities and ranged attacks. Continue supporting ordinary melee reach and the existing total-cover gate.
