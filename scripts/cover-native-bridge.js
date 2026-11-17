@@ -1,9 +1,10 @@
 /**
  * PF1AE native cover bridge for PF1 11.11.
  *
- * Gate each newly-created ActionUse instance BEFORE checkRequirements(), autoSelectAmmo(),
- * attack-dialog construction and all expenditure. Native pf1PreActionUse
- * remains a secondary safety gate; it occurs AFTER the attack is rolled.
+ * Intercept createAttackDialog on each ActionUse via pf1CreateActionUse,
+ * so forbidden uses exit before attack rolls and resource expenditure.
+ * PF1 11.11 triggers that hook inside process, after autoSelectAmmo.
+ * Native pf1PreActionUse remains a secondary post-dialog safety gate.
  * Cancel ONLY proven single-target direct attacks. Never guess uncertainty.
  *
  * Post-action: annotate the existing PF1 ChatMessage with the evaluated
@@ -64,8 +65,8 @@ function cbGeometry(actionUse){
 /**
  * PF1 11.11 calls pf1CreateActionUse via callAll (not cancellable), then
  * opens AttackDialog, rolls attacks, and only then calls pf1PreActionUse.
- * Install an instance-local process guard via pf1CreateActionUse, before
- * PF1 checks requirements, auto-selects ammo or displays its dialog.
+ * Attach an instance-local createAttackDialog guard via pf1CreateActionUse.
+ * The system has already entered process() by the time this hook runs.
  * Never replace ActionUse.prototype.process, which other modules wrap.
  *
  * Return undefined, the same return shape as cancelling the native dialog.
@@ -99,40 +100,39 @@ function cbNotifyBlocked(){
   "Total cover: no direct line of effect. Attack cancelled.";
  ui.notifications?.warn?.(message);
 }
-// Register on the native PF1 instance creation hook, not on the
-// ActionUse.prototype.process libWrapper chain.  If an action is refused,
-// no process invocation occurs at all, and no other module's wrapper is cut.
+// PF1 11.11 raises pf1CreateActionUse INSIDE process(), after autoSelectAmmo
+// and immediately before generateAttacks and createAttackDialog.
+// Replacing process here is too late. Replace only createAttackDialog on the
+// instance so a rejected action returns null (native 'dialog cancelled') before
+// rolls, post-use scripts and resource deductions. Never change the prototype
+// or register a libWrapper wrapper on ActionUse.process.
 const CB_INSTANCE_GUARDS=new WeakSet();
 let cbGateInstallation=null;
 function cbAttachEarlyGate(actionUse){
  if(!actionUse||typeof actionUse!=="object"||
   CB_INSTANCE_GUARDS.has(actionUse)||
-  typeof actionUse.process!=="function")return false;
- // Preserve an explicit per-instance method supplied by another module:
- // permitted actions continue through the method that existed at creation.
- const native=actionUse.process;
+  typeof actionUse.createAttackDialog!=="function")return false;
+ const native=actionUse.createAttackDialog;
  const guarded=async function(...args){
-  if(cbTotalBlocked(this)){cbNotifyBlocked();return undefined}
-  if(cbOutOfRange(this)){cbNotifyOutOfRange();return undefined}
+  if(cbTotalBlocked(this)){cbNotifyBlocked();return null}
+  if(cbOutOfRange(this)){cbNotifyOutOfRange();return null}
   return native.apply(this,args);
  };
  try{
-  Object.defineProperty(actionUse,"process",{
+  Object.defineProperty(actionUse,"createAttackDialog",{
    value:guarded,writable:true,configurable:true,enumerable:false
   });
   CB_INSTANCE_GUARDS.add(actionUse);
   return true;
  }catch(error){
-  console.warn("[PF1AE][EarlyGate] ActionUse instance could not be guarded",error);
+  console.warn("[PF1AE][EarlyGate] ActionUse dialog could not be guarded",error);
   return false;
  }
 }
 function cbInstallEarlyGate(){
  if(cbGateInstallation)return;
- // PF1 fires pf1CreateActionUse before ActionUse.process is invoked.
- // This does not register any libWrapper or replace a prototype method.
  Hooks.on("pf1CreateActionUse",cbAttachEarlyGate);
- cbGateInstallation="instance-hook";
+ cbGateInstallation="native-dialog-hook";
 }
 function cbPreActionUse(actionUse){
  // Fallback safety check for integrations bypassing ActionUse.process.

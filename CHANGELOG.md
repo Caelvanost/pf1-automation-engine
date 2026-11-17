@@ -1,3 +1,11 @@
+## v1.38.3 — Block before PF1 attack dialog using native hook timing (experimental)
+
+- Correct the actual PF1 11.11 lifecycle: `pf1CreateActionUse` executes **inside** `ActionUse.process()`, after initial requirements/ammo auto-selection but before the attack dialog. Wrapping `process` from that hook (v1.38.2) is too late to stop its current invocation.
+- Attach an idempotent instance-local `createAttackDialog()` guard from the same hook. For confirmed total cover or out-of-range target, return `null`, the native dialog-cancel result that causes PF1 `process()` to exit before attack rolls, ammo/charge expenditure, Script Calls and chat publication.
+- Preserve all ActionUse prototype methods and libWrapper chains, including PF1 Improved Conditions. Authorized and uncertain actions use the original dialog.
+- Update maintained native bridge regression to simulate the real system's hook-inside-process ordering, no dialog display, no ammo/magazine consumption, and other modules' native call chain.
+- Caveat: `skipDialog: true` bypasses `createAttackDialog()`; these uses still rely on the native `pf1PreActionUse` fallback. `autoSelectAmmo()` precedes the hook and may select a default ammunition item, but no ammo quantity is spent on rejected dialog actions.
+
 ## v1.38.2 — Instance-local pre-use gate avoids libWrapper conflict (experimental)
 
 - Fix live warning when PF1 Improved Conditions and PF1AE both wrap `ActionUse.prototype.process`: PF1AE no longer registers WRAPPER/MIXED or modifies that shared prototype at all. The previous intentional early cancellation broke competing wrapper chaining.
