@@ -42,15 +42,28 @@ function cpSpace(token,scene,size){
  const d=cpDoc(token);
  if(!d||d.parent?.id!==scene.id||!cpFinite(size)||size<=0||
   !cpFinite(d.x)||!cpFinite(d.y)||!cpFinite(d.elevation)||
-  !cpFinite(d.width)||!cpFinite(d.height)||d.width!==1||d.height!==1)
+  !cpFinite(d.width)||!cpFinite(d.height)||
+  !Number.isInteger(d.width)||!Number.isInteger(d.height)||
+  d.width<1||d.height<1||d.width>8||d.height>8)
   return null;
  return {id:d.uuid??d.id,x:d.x,y:d.y,
-  x2:d.x+size,y2:d.y+size,elevation:d.elevation};
+  x2:d.x+size*d.width,y2:d.y+size*d.height,
+  width:d.width,height:d.height,size,elevation:d.elevation};
 }
 function cpCorners(s){
- // PF1 corners are actual grid intersections, not inset sample points.
+ // Outer corners of the target's entire occupied PF1 space.
  return [{x:s.x,y:s.y},{x:s.x2,y:s.y},
   {x:s.x2,y:s.y2},{x:s.x,y:s.y2}];
+}
+function cpOriginCorners(s){
+ // PF1: a Large or larger attacker may choose a corner of ANY square
+ // it occupies. Unique grid intersections, including internal vertices.
+ const list=[];
+ for(let row=0;row<=s.height;row++)
+  for(let col=0;col<=s.width;col++)
+   list.push({x:s.x+col*s.size,y:s.y+row*s.size,
+    gridCol:col,gridRow:row});
+ return list;
 }
 function cpOrientation(a,b,c){
  return (b.x-a.x)*(c.y-a.y)-(b.y-a.y)*(c.x-a.x);
@@ -126,14 +139,19 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   return cpResult("uncertain","attack-type-unavailable");
  const a=cpSpace(attacker,s,grid?.size),t=cpSpace(target,s,grid?.size);
  if(!a||!t)return cpResult("uncertain","multi-square-or-invalid-token-space");
- if(a.elevation!==t.elevation)
-  return cpResult("uncertain","vertical-shot-requires-3d-adjudication");
- const height=cpFinite(projectileHeight)?projectileHeight:
-  cpFinite(attacker?.losHeight)&&
-  cpFinite(target?.losHeight)&&
-  attacker.losHeight===target.losHeight?
-   attacker.losHeight:null;
- if(height===null)return cpResult("uncertain","projectile-height-unverified");
+ const multilevel=a.elevation!==t.elevation;
+ const levelsApi=globalThis.CONFIG?.Levels?.API;
+ const levelsActive=game.modules?.get?.("levels")?.active===true;
+ if(multilevel&&(!levelsActive||typeof levelsApi?.testCollision!=="function"))
+  return cpResult("uncertain","multilevel-levels-api-required");
+ const sourceHeight=cpFinite(projectileHeight)?projectileHeight:
+  cpFinite(attacker?.losHeight)?attacker.losHeight:null;
+ const targetHeight=cpFinite(projectileHeight)?projectileHeight:
+  cpFinite(target?.losHeight)?target.losHeight:null;
+ if(sourceHeight===null||targetHeight===null)
+  return cpResult("uncertain","projectile-height-unverified");
+ if(!multilevel&&sourceHeight!==targetHeight)
+  return cpResult("uncertain","different-sampled-attack-heights");
  const walls=cpCollection(s.walls),tiles=cpCollection(s.tiles);
  const regions=cpCollection(s.regions);
  const all=tokens??globalThis.canvas?.tokens?.placeables;
@@ -148,7 +166,13 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  const blockingWalls=[];
  const ambiguousWalls=[];
  for(const wall of walls){
-  const value=cpWallData(wall,height);
+  const value=cpWallData(wall,sourceHeight);
+  // A varying ray height cannot use a single fixed-height wall test.
+  if(sourceHeight!==targetHeight&&value.kind==="solid"){
+   ambiguousWalls.push({kind:"unknown",reason:"sloping-ray-wall-intersection",
+    id:cpDoc(wall)?.uuid??cpDoc(wall)?.id});
+   continue;
+  }
   if(value.kind==="solid")blockingWalls.push(value);
   else if(value.kind==="unknown")ambiguousWalls.push({...value,id:cpDoc(wall)?.uuid??cpDoc(wall)?.id});
  }
@@ -169,14 +193,34 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  const dy=Math.max(a.y-t.y,t.y-a.y2,0);
  const adjacent=dx<=CP_EPS&&dy<=CP_EPS;
  const method=attackType==="melee"&&adjacent?"adjacent-melee":"ranged-or-reach";
+ if(method==="adjacent-melee"&&
+  (a.width>1||a.height>1||t.width>1||t.height>1)&&
+  walls.length>0)
+  return cpResult("uncertain","large-creature-adjacent-melee-square-selection");
  const cornerResults=[];
- const as=cpCorners(a),ts=cpCorners(t);
+ const as=cpOriginCorners(a),ts=cpCorners(t);
  for(let i=0;i<4;i++){
   const traces=[];
   for(let j=0;j<4;j++){
    const from=as[i],to=ts[j];
    const crossed=[];
+   let nativeSurfaceState="not-requested";
+   if(multilevel){
+    try{
+     const native=levelsApi.testCollision(
+      {x:from.x,y:from.y,z:sourceHeight},
+      {x:to.x,y:to.y,z:targetHeight},"collision");
+     if(native===false||native===null)nativeSurfaceState="clear";
+     else if(native===true||
+       (native&&Number.isFinite(native.x)&&
+        Number.isFinite(native.y)&&Number.isFinite(native.z)))
+      nativeSurfaceState="collision";
+     else nativeSurfaceState="unknown";
+    }catch(_){nativeSurfaceState="unknown"}
+   }
    const uncertainty=[];
+   if(nativeSurfaceState==="collision")uncertainty.push("levels-3d-collision");
+   if(nativeSurfaceState==="unknown")uncertainty.push("levels-collision-unknown");
    for(const w of blockingWalls){
     const cross=cpSegment(from,to,w.a,w.b);
     if(cross==="cross")crossed.push({kind:"solid",id:w.id});
@@ -197,7 +241,8 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
      if(cross==="cross")crossed.push({kind:"soft",id:cr.id});
      if(cross==="ambiguous")uncertainty.push("creature-grazed:"+cr.id);
     }
-   traces.push({targetCorner:j,blocked:crossed,uncertain:uncertainty});
+   traces.push({targetCorner:j,blocked:crossed,uncertain:uncertainty,
+    nativeSurfaceState});
   }
   const unknown=traces.some(r=>r.uncertain.length);
   const solid=traces.some(r=>r.blocked.some(x=>x.kind==="solid"));
@@ -211,10 +256,12 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   cornerResults;
  if(method!=="adjacent-melee"&&considered.some(r=>r.clear))
   return cpResult("confirmed","attacker-selected-clear-corner",{
-   type:"none",method,origins:cornerResults});
+   type:"none",method,origins:cornerResults,
+   multilevel,sourceHeight,targetHeight});
  if(method==="adjacent-melee"&&considered.every(r=>r.clear))
   return cpResult("confirmed","all-adjacent-melee-rays-clear",{
-   type:"none",method,origins:cornerResults});
+   type:"none",method,origins:cornerResults,
+   multilevel,sourceHeight,targetHeight});
  // A solid obstruction along every ray may indicate total cover,
  // but PF1 total cover depends on line of effect, not a ray count.
  // Equally, an unknown/grazing ray may be the only clear option.
@@ -228,7 +275,8 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  const selected=best[0];
  if(!selected?.solid&&!selected?.soft)
   return cpResult("confirmed","no-cover",{
-   type:"none",method,origins:cornerResults});
+   type:"none",method,origins:cornerResults,
+   multilevel,sourceHeight,targetHeight});
  // A wall that obstructs ALL rays at EVERY permitted origin could
  // eliminate line of effect entirely: don't downgrade to +4 CA.
  if(considered.every(o=>o.traces.every(r=>
@@ -237,7 +285,8 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
    method,origins:cornerResults});
  return cpResult("confirmed","pf1-corner-rays-obstructed",{
   type:selected.solid?"normal":"soft",method,
-  selectedOrigin:selected.originCorner,origins:cornerResults});
+  selectedOrigin:selected.originCorner,origins:cornerResults,
+  multilevel,sourceHeight,targetHeight});
 }
 Hooks.once("ready",()=>{
  const module=game.modules.get(CP_NS);
