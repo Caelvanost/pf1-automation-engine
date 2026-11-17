@@ -131,10 +131,33 @@ The adapter checks 4 inset corners of the attacker's **occupied rectangle** agai
 
 **Testing limitations:** The upstream source tags include code identified by release names; their embedded manifests have sometimes differed from release numbers. The exact installed runtime versions and any differences in the packaged code must still be validated in a live Foundry 13.351 / PF1 11.11 world. No automatic bonus application or 3D overlay is enabled by this adapter.
 
+## PF1e cover interpretation and attack-resolution bridge
+
+The new **`api.coverPF1.inspect({attacker,target,attackType})`** service interprets rays from the four corners of the attacker's square to all four corners of the defender's square. In the ranged/reach case, it checks every attacker-origin choice and accepts a fully clear origin; for adjacent melee, it considers all attacker origins. It examines native wall segments, documented Wall Height vertical bounds and door states, and interposed square tokens as potential soft cover.
+
+This is a **conservative first rules pass**, not full 3D line of effect: only same-elevation **1×1** token squares and known, uniform sampling heights can return `confirmed` classifications. Large/rectangular tokens, raised/lowered positions, roofs/physical tiles, ambiguous wall contacts, invalid/missing heights, wall restrictions and possible total cover remain `uncertain`. `coverPF1.inspect` can output `none` (+0), `normal` (+4 CA / +2 Ref in eligible circumstances), or `soft` (+4 CA / no Ref) if it can prove the relevant geometry. It does not automatically classify improved or partial cover.
+
+```js
+const api=game.modules.get('pf1-automation-engine').api.coverPF1;
+const result=api.inspect({
+ attacker:canvas.tokens.controlled[0],
+ target:[...game.user.targets][0],
+ attackType:'ranged' // ranged | melee | reach
+});
+// {status:'confirmed',type:'normal',acBonus:4,reflexBonus:2,origins:[...]}
+// or {status:'uncertain',type:null,acBonus:null,reason:'...'}
+```
+
+**Native attack integration:** the existing `attack-events.js` now obtains the exact source and target token in a single-target attack. Where the rules service reports `confirmed`, it passes the assessment to `attackResolution.resolveAttack` and publishes its diagnosis in the existing `pf1aeAttackResolution` event as `targetResults[].coverDiagnosis`. No extra attack roll or chat card is created. This does not retroactively alter Foundry's native attack formula.
+
+**Cover baseline is an absolute safety gate.** A confirmed +4 cannot automatically be applied to a native AC total without checking whether that total already includes a cover bonus. For callers with a **verified** `nativeBonusTypes:{cover:0}`, `resolveAttack` can calculate CA+4 immediately. If it receives `{cover:4}`, no bonus is duplicated. Without verified native breakdown, the outcome is `indeterminate` rather than claiming an incorrect hit or miss. Consequently, this branch **does not yet deliver universal automatic CA** on all native PF1 character sheets; reliable extraction of native cover provenance remains a publication blocker.
+
+No active item feat or class rule is implemented in this new service.
+
 ## Remaining required work before publication
 
 1. Verify and integrate the native PF1 11.11 attack dialogue's actual lifecycle for automatic/manual cover selection without race conditions.
-2. Implement the full PF1 corner-ray/wall/line-of-effect algorithms for ranged, adjacent melee, reach attacks, large/rectangular tokens, and soft cover.
+2. Expand the new conservative PF1 corner-ray engine to full PF1 wall/line-of-effect algorithms for ranged, adjacent melee, reach attacks, large/rectangular tokens, and soft cover, with verified 3D collision semantics.
 3. Verify the native AC breakdown to support safe application of typed conditional modifiers without requiring external `nativeTypes` input.
 4. Add source-specific results and reproducible provenance to native attack and saving throw chat cards, without spawning extra rolls or chat messages.
 5. Develop and test source-dependent improved-cover evasion messaging, full expiry on verified resource-restoring rests, multisession and multiclient ownership; enforce all remaining permission cases.
