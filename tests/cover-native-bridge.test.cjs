@@ -189,6 +189,59 @@ after(base);
  assert.equal(reachApi.inspectActionUse(actionUse).status,'uncertain');
  assert.deepEqual(await actionUse.process(),{used:true});
  action.actionType='mwak';
+ // Generic ranged spells and abilities use their PF1-native maximum range.
+ const actionRange=pf1aeModule.api.actionRange;
+ target.document.x=300;
+ action.actionType='save';
+ action.hasAttack=false;
+ action.hasRange=true;
+ action.hasTemplate=false;
+ action.getRange=({type})=>type==='max'?10:0;
+ const beforeSpell={...native};
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'out-of-range');
+ assert.equal(await actionUse.process(),undefined,
+  'targeted spell outside 10 ft is rejected before native processing');
+ assert.deepEqual(native,beforeSpell,
+  'rejected spell spends no slots/charges and posts no card');
+ assert.equal(before(actionUse),false,'late safety gate also rejects distant spells');
+ target.document.x=200;
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'in-range');
+ assert.deepEqual(await actionUse.process(),{used:true},
+  'targeted spell at exactly maximum range proceeds');
+ target.document.x=300;
+ action.actionType='ability';
+ action.getRange=({type})=>type==='max'?20:0;
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'in-range');
+ assert.deepEqual(await actionUse.process(),{used:true},
+  'ability with its own larger maximum range proceeds');
+ action.actionType='rwak';
+ action.hasAttack=true;
+ action.getRange=({type})=>type==='max'?10:0;
+ const priorRanged={...native};
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'out-of-range');
+ assert.equal(await actionUse.process(),undefined,
+  'ranged weapon outside full native maximum distance is rejected');
+ assert.deepEqual(native,priorRanged,'out of range does not consume ammunition');
+ // Personal, template, and unbounded/unknown ranges cannot be inferred.
+ action.actionType='save';
+ action.hasAttack=false;
+ action.hasRange=false;
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'uncertain');
+ assert.deepEqual(await actionUse.process(),{used:true},
+  'personal/non-ranged action is never cancelled by target proximity');
+ action.hasRange=true;
+ action.hasTemplate=true;
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'uncertain');
+ assert.deepEqual(await actionUse.process(),{used:true},
+  'template location is not interchangeable with selected token');
+ action.hasTemplate=false;
+ action.getRange=()=>Infinity;
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'uncertain');
+ assert.deepEqual(await actionUse.process(),{used:true},
+  'unbounded action range remains unrestricted');
+ action.actionType='mwak';
+ action.hasAttack=true;
+ action.hasRange=false;
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(cards.length,1);
  assert.ok(card.content.startsWith('<article class="pf1-chat">'));
@@ -205,5 +258,5 @@ after(base);
   ...base,targetResults:[{...base.targetResults[0],
    coverDiagnosis:{status:'uncertain'}}]}),null);
  assert.equal(actor.uuid,'Actor.a');
- console.log('PASS native cover bridge and melee reach: early cancellation, native range, adjacent, large footprint, uncertain, ammo/dialog safety');
+ console.log('PASS native cover bridge and universal action range: melee, targeted spells, abilities, ranged weapons, template safety, no resource usage');
 })().catch(error=>{console.error(error);process.exitCode=1});
