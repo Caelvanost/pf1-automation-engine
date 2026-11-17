@@ -50,6 +50,7 @@
     "scripts/bleed-display.js",
     "scripts/defense-modifiers.js",
     "scripts/cover-detection.js",
+    "scripts/cover-3d-diagnostics.js",
     "scripts/cover-saves.js",
     "scripts/attack-resolution.js",
     "scripts/attack-events.js",
