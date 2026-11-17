@@ -1,7 +1,7 @@
 /**
  * PF1AE native cover bridge for PF1 11.11.
  *
- * Gate ActionUse.process() BEFORE checkRequirements(), autoSelectAmmo(),
+ * Gate each newly-created ActionUse instance BEFORE checkRequirements(), autoSelectAmmo(),
  * attack-dialog construction and all expenditure. Native pf1PreActionUse
  * remains a secondary safety gate; it occurs AFTER the attack is rolled.
  * Cancel ONLY proven single-target direct attacks. Never guess uncertainty.
@@ -64,8 +64,9 @@ function cbGeometry(actionUse){
 /**
  * PF1 11.11 calls pf1CreateActionUse via callAll (not cancellable), then
  * opens AttackDialog, rolls attacks, and only then calls pf1PreActionUse.
- * Intercept the process entry point instead, before PF1 checks requirements,
- * auto-selects ammunition or displays its dialog.
+ * Install an instance-local process guard via pf1CreateActionUse, before
+ * PF1 checks requirements, auto-selects ammo or displays its dialog.
+ * Never replace ActionUse.prototype.process, which other modules wrap.
  *
  * Return undefined, the same return shape as cancelling the native dialog.
  * Do not invoke wrapped/original: no ammo, charge, attack, or chat writes.
@@ -98,54 +99,40 @@ function cbNotifyBlocked(){
   "Total cover: no direct line of effect. Attack cancelled.";
  ui.notifications?.warn?.(message);
 }
+// Register on the native PF1 instance creation hook, not on the
+// ActionUse.prototype.process libWrapper chain.  If an action is refused,
+// no process invocation occurs at all, and no other module's wrapper is cut.
+const CB_INSTANCE_GUARDS=new WeakSet();
 let cbGateInstallation=null;
-function cbInstallEarlyGate(){
- if(cbGateInstallation)return;
- const ActionUse=globalThis.pf1?.actionUse?.ActionUse;
- const proto=ActionUse?.prototype;
- if(!proto||typeof proto.process!=="function"){
-  console.warn("[PF1AE][CoverBridge] PF1 ActionUse.process unavailable; early cover gate disabled");
-  return;
- }
- // MIXED may intentionally stop the call chain when an action is forbidden.
- // WRAPPER would require wrapped() on every path and libWrapper unregisters it
- // for our deliberate early cancellations. Prefer libWrapper when available;
- // use a guarded prototype fallback only when it is absent.
- if(game.modules?.get?.("lib-wrapper")?.active&&
-    typeof globalThis.libWrapper?.register==="function"){
-  try{
-   globalThis.libWrapper.register(CB_NS,
-    "pf1.actionUse.ActionUse.prototype.process",
-    async function(wrapped,...args){
-     if(cbTotalBlocked(this)){cbNotifyBlocked();return undefined}
-     if(cbOutOfRange(this)){cbNotifyOutOfRange();return undefined}
-     return wrapped(...args);
-    },"MIXED");
-   cbGateInstallation="lib-wrapper";
-   return;
-  }catch(error){
-   console.warn("[PF1AE][CoverBridge] libWrapper registration failed",error);
-   // Do not install a competing replacement over an unknown wrapper.
-   return;
-  }
- }
- const original=proto.process;
- const descriptor=Object.getOwnPropertyDescriptor(proto,"process");
- if(descriptor&&!descriptor.writable&&!descriptor.set){
-  console.warn("[PF1AE][CoverBridge] ActionUse.process is not writable");
-  return;
- }
- const guard=async function(...args){
+function cbAttachEarlyGate(actionUse){
+ if(!actionUse||typeof actionUse!=="object"||
+  CB_INSTANCE_GUARDS.has(actionUse)||
+  typeof actionUse.process!=="function")return false;
+ // Preserve an explicit per-instance method supplied by another module:
+ // permitted actions continue through the method that existed at creation.
+ const native=actionUse.process;
+ const guarded=async function(...args){
   if(cbTotalBlocked(this)){cbNotifyBlocked();return undefined}
   if(cbOutOfRange(this)){cbNotifyOutOfRange();return undefined}
-  return original.apply(this,args);
+  return native.apply(this,args);
  };
  try{
-  proto.process=guard;
-  if(proto.process===guard)cbGateInstallation="prototype";
+  Object.defineProperty(actionUse,"process",{
+   value:guarded,writable:true,configurable:true,enumerable:false
+  });
+  CB_INSTANCE_GUARDS.add(actionUse);
+  return true;
  }catch(error){
-  console.warn("[PF1AE][CoverBridge] Early gate installation failed",error);
+  console.warn("[PF1AE][EarlyGate] ActionUse instance could not be guarded",error);
+  return false;
  }
+}
+function cbInstallEarlyGate(){
+ if(cbGateInstallation)return;
+ // PF1 fires pf1CreateActionUse before ActionUse.process is invoked.
+ // This does not register any libWrapper or replace a prototype method.
+ Hooks.on("pf1CreateActionUse",cbAttachEarlyGate);
+ cbGateInstallation="instance-hook";
 }
 function cbPreActionUse(actionUse){
  // Fallback safety check for integrations bypassing ActionUse.process.
@@ -204,10 +191,10 @@ async function cbOnResolved(event){
  try{await card.update({content:source+section})}
  catch(error){console.warn("[PF1AE][CoverBridge] Card annotation unavailable",error)}
 }
+Hooks.once("init",cbInstallEarlyGate);
 Hooks.on("pf1PreActionUse",cbPreActionUse);
 Hooks.on("pf1aeAttackResolution",event=>{void cbOnResolved(event)});
 Hooks.once("ready",()=>{
- cbInstallEarlyGate();
  const mod=game.modules?.get?.(CB_NS);
  if(!mod)return;mod.api??={};
  mod.api.coverNativeBridge=Object.freeze({

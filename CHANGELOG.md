@@ -1,3 +1,11 @@
+## v1.38.2 — Instance-local pre-use gate avoids libWrapper conflict (experimental)
+
+- Fix live warning when PF1 Improved Conditions and PF1AE both wrap `ActionUse.prototype.process`: PF1AE no longer registers WRAPPER/MIXED or modifies that shared prototype at all. The previous intentional early cancellation broke competing wrapper chaining.
+- Attach an idempotent per-ActionUse `process` guard on the PF1 11.11 `pf1CreateActionUse` hook. A confirmed impossible action is stopped before the native process begins; allowed/uncertain actions call the already-installed native/third-party method chain unchanged.
+- Preserve total-cover, melee reach and targeted spell/ability range checks, early cancellation before modifier dialogs, ammunition/charges, dice and chat, plus the existing late native pre-use safety fallback.
+- Add maintained regression coverage with simulated libWrapper and PF1 Improved Conditions, asserting no process prototype patch, no libWrapper registration, idempotent instance-local guards, safe early rejection and forwarding of legitimate attacks.
+- Experimental: verify in live Foundry 13.351/PF1 11.11; execution paths that do not raise the native creation hook remain guarded only by the existing native pre-use fallback.
+
 ## v1.38.1 — libWrapper MIXED chain-safe action cancellation (experimental)
 
 - Fix libWrapper registration of `pf1.actionUse.ActionUse.prototype.process`: switch from `WRAPPER` (requires every invocation to call the next function) to `MIXED` (supports intentional short-circuit on verified forbidden actions).

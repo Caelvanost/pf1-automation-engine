@@ -1,7 +1,7 @@
 'use strict';
 const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
-const callbacks=new Map(),ready=[],alerts=[],cards=[];
+const callbacks=new Map(),ready=[],init=[],alerts=[],cards=[];
 const pf1aeModule={active:true,api:{}};
 const scene={id:'s',grid:{type:1,units:'ft'},walls:{contents:[]},tiles:{contents:[]},regions:{contents:[]}};
 const tokens=[],system={modules:new Map([['pf1-automation-engine',pf1aeModule]]),
@@ -42,19 +42,28 @@ const ctx={console,game:system,canvas:{scene,grid:{size:100,measurePath([a,b]){
   actionUse:{ActionUse:NativeActionUse}},
  foundry:{utils:{deepClone:structuredClone}},
  CONST:{WALL_MOVEMENT_TYPES:{NONE:0,NORMAL:20}},
- Hooks:{on(n,fn){callbacks.set(n,fn)},once(n,fn){if(n==='ready')ready.push(fn)}},
+ Hooks:{on(n,fn){callbacks.set(n,fn)},once(n,fn){if(n==='ready')ready.push(fn);else if(n==='init')init.push(fn)}},
  ui:{notifications:{warn(msg){alerts.push(msg)}}},
  Set,Map,Object,Number,Math};
 ctx.globalThis=ctx;vm.createContext(ctx);
 for(const filename of ['cover-pf1-rules.js','melee-reach.js','cover-native-bridge.js'])
  vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../scripts/'+filename),'utf8'),
   ctx,{filename});
+for(const fn of init)fn();
 for(const fn of ready)fn();
+assert.equal(typeof callbacks.get('pf1CreateActionUse'),'function');
 const before=callbacks.get('pf1PreActionUse');
 const after=callbacks.get('pf1aeAttackResolution');
 assert.equal(typeof before,'function');
 assert.equal(typeof after,'function');
-assert.equal(pf1aeModule.api.coverNativeBridge.earlyGateMode(),'prototype');
+assert.equal(pf1aeModule.api.coverNativeBridge.earlyGateMode(),'instance-hook');
+const originalPrototypeProcess=NativeActionUse.prototype.process;
+callbacks.get('pf1CreateActionUse')(actionUse);
+assert.equal(NativeActionUse.prototype.process,originalPrototypeProcess,
+ 'the native ActionUse prototype must never be modified');
+const onceGuard=actionUse.process;
+callbacks.get('pf1CreateActionUse')(actionUse);
+assert.equal(actionUse.process,onceGuard,'instance guard is idempotent');
 assert.equal(before(actionUse),undefined,'empty battlefield does not block');
 scene.walls.contents.push({id:'wall',c:[200,-200,200,300],
  uuid:'Scene.s.Wall.w',move:20,door:0,ds:0});
@@ -259,9 +268,14 @@ after(base);
    coverDiagnosis:{status:'uncertain'}}]}),null);
  assert.equal(actor.uuid,'Actor.a');
 
- // libWrapper must receive MIXED, because a confirmed invalid attack
- // deliberately skips the next wrapper and native ActionUse.process.
- let registration=null,forwarded=0;
+ // With libWrapper + PF1 Improved Conditions simulated as a
+ // prototype chain, the instance gate never registers with libWrapper,
+ // and it never cuts an already-started prototype wrapper call.
+ let registrationCount=0,nextCalls=0;
+ class WrappedActionUse{
+  async process(){nextCalls++;return 'next-wrapper'}
+ }
+ const originalMethod=WrappedActionUse.prototype.process;
  const lwMod={active:true,api:{
   coverPF1:{inspect:()=>({status:'confirmed',type:'total',preventsDirectAttack:true})},
   actionRange:{inspectActionUse:()=>({status:'uncertain'})}
@@ -272,38 +286,51 @@ after(base);
  const lwTarget={document:{uuid:'Scene.s.Token.lwtarget',parent:{id:'s'},
   x:300,y:0,width:1,height:1,elevation:0},actor:{uuid:'Actor.target'}};
  const lwGame={modules:new Map([
-  ['pf1-automation-engine',lwMod],['lib-wrapper',{active:true}]
+  ['pf1-automation-engine',lwMod],['lib-wrapper',{active:true}],
+  ['pf1-improved-conditions',{active:true}]
  ]),settings:{get(){return true}},
   user:{targets:new Set([lwTarget])},i18n:{localize:k=>k}};
- const lwReady=[];
+ const lwReady=[],lwInit=[],lwHooks=new Map();
  const lwCtx={console,game:lwGame,
-  pf1:{actionUse:{ActionUse:class{async process(){return 'native'}}},
+  pf1:{actionUse:{ActionUse:WrappedActionUse},
    config:{maneuverActionTypes:new Set()}},
-  libWrapper:{register(namespace,path,fn,type){
-   registration={namespace,path,fn,type};
-  }},
-  Hooks:{once(name,fn){if(name==='ready')lwReady.push(fn)},
-   on(){}},ui:{notifications:{warn(){}}},
-  Set,Map,Object,Number,Math};
+  libWrapper:{register(){registrationCount++}},
+  Hooks:{once(name,fn){if(name==='ready')lwReady.push(fn);
+   else if(name==='init')lwInit.push(fn)},
+   on(name,fn){lwHooks.set(name,fn)}},
+  ui:{notifications:{warn(){}}},
+  Set,WeakSet,Map,Object,Number,Math};
  lwCtx.globalThis=lwCtx;
  vm.createContext(lwCtx);
  vm.runInContext(fs.readFileSync(path.resolve(__dirname,
   '../scripts/cover-native-bridge.js'),'utf8'),lwCtx);
+ for(const callback of lwInit)callback();
  for(const callback of lwReady)callback();
- assert.equal(registration?.type,'MIXED',
-  'early cancellation must use libWrapper MIXED, never WRAPPER');
- assert.equal(lwMod.api.coverNativeBridge.earlyGateMode(),'lib-wrapper');
- const lwUse={actor:lwActor,
+ assert.equal(registrationCount,0,
+  'PF1AE must not register any libWrapper process wrapper');
+ assert.equal(WrappedActionUse.prototype.process,originalMethod,
+  'other modules retain the full prototype process chain');
+ assert.equal(lwMod.api.coverNativeBridge.earlyGateMode(),'instance-hook');
+ const lwUse=Object.assign(new WrappedActionUse(),{
+  actor:lwActor,
   action:{actionType:'rwak',hasAttack:true,isCombatManeuver:false,
-   actor:lwActor},token:lwSource,shared:{targets:[lwTarget]}};
- const lwNext=async()=>{forwarded++;return 'next-wrapper'};
- assert.equal(await registration.fn.call(lwUse,lwNext),undefined,
-  'confirmed total cover deliberately stops libWrapper chain');
- assert.equal(forwarded,0,'cancelled action never calls next wrapper');
+   actor:lwActor},token:lwSource,shared:{targets:[lwTarget]}
+ });
+ lwHooks.get('pf1CreateActionUse')(lwUse);
+ assert.equal(await lwUse.process(),undefined,
+  'confirmed total cover skips prototype chain before it starts');
+ assert.equal(nextCalls,0,'forbidden use never invokes modifier dialog');
  lwMod.api.coverPF1.inspect=()=>({status:'confirmed',type:'none',
   preventsDirectAttack:false});
- assert.equal(await registration.fn.call(lwUse,lwNext),'next-wrapper',
-  'valid action forwards to next wrapper');
- assert.equal(forwarded,1);
+ assert.equal(await lwUse.process(),'next-wrapper',
+  'valid use calls the pre-existing prototype chain');
+ assert.equal(nextCalls,1);
+ const another=Object.assign(new WrappedActionUse(),{
+  actor:lwActor,action:lwUse.action,token:lwSource,
+  shared:{targets:[lwTarget]}});
+ lwHooks.get('pf1CreateActionUse')(another);
+ assert.equal(await another.process(),'next-wrapper',
+  'new instance always receives its own guard');
+ assert.equal(nextCalls,2);
  console.log('PASS native cover bridge and universal action range: melee, targeted spells, abilities, ranged weapons, template safety, no resource usage');
 })().catch(error=>{console.error(error);process.exitCode=1});
