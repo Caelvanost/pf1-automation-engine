@@ -7,7 +7,7 @@ const mod={active:true,api};
 const target={documentName:'Actor',uuid:'Actor.target',sourceInfo:{},
  system:{attributes:{ac:{
   normal:{total:20},touch:{total:12},flatFooted:{total:18}
- }}}},
+ }}},
  getSourceDetails(path){return this.sourceInfo[path]??[]}};
 const attacker={documentName:'Actor',uuid:'Actor.attacker'};
 const item={documentName:'Item',uuid:'Actor.attacker.Item.bow',actor:attacker};
