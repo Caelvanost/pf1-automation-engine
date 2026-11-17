@@ -47,7 +47,8 @@ scene.walls.contents.push({id:'wall',uuid:'Scene.test.Wall.w',
  flags:{'wall-height':{bottom:100,top:110}}});
 let r=inspect();
 assert.equal(r.mode,'2d');
-assert.equal(r.reason,'possible-total-cover');
+assert.equal(r.type,'total');
+assert.equal(r.preventsDirectAttack,true);
 assert.equal(calls,0,'2D never accesses Levels collision API');
 scene.walls.contents.length=0;
 scene.tiles.contents.push({id:'roof',overhead:true,flags:{betterroofs:{brMode:1}}});

@@ -36,8 +36,10 @@ const wall=(id,x1,y1,x2,y2,{bottom=0,top=10,move=1,door=0,ds=0}={})=>({
 });
 scene.walls.contents.push(wall('full',200,-200,200,300));
 result=check();
-assert.equal(result.status,'uncertain','complete wall may block line of effect');
-assert.equal(result.reason,'possible-total-cover');
+assert.equal(result.status,'confirmed','complete wall proves no direct line of effect');
+assert.equal(result.type,'total');
+assert.equal(result.preventsDirectAttack,true);
+assert.equal(result.acBonus,null);
 scene.walls.contents.length=0;
 scene.walls.contents.push(wall('partial',200,25,200,120));
 result=check();

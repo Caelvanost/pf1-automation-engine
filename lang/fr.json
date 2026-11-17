@@ -154,6 +154,14 @@
       "Approved": "Autorisé",
       "Save": "Enregistrer les modifications",
       "Saved": "Autorisations de scripts mises à jour."
+    },
+    "Cover": {
+      "CardTitle": "PF1AE — abri contre cette attaque",
+      "NativeAC": "CA native",
+      "EffectiveAC": "CA effective",
+      "PendingAC": "Indéterminée (contrôle du MJ)",
+      "TotalBlocked": "Abri total : aucune ligne d'effet directe. Attaque directe annulée.",
+      "TotalCardWarning": "Abri total détecté après le jet : cette attaque directe ne devrait pas être appliquée (contrôle du MJ)."
     }
   }
 }
