@@ -106,8 +106,18 @@ async function aeDeliver(source,results,actionUse,message) {
   const targets = aeTargets(null,actionUse);
   const attackerTokens = source.actor.getActiveTokens?.() ?? [];
   const attackerToken = attackerTokens.length === 1 ? aeToken(attackerTokens[0])?.tokenUuid ?? null : null;
-  const resolutionApi=game.modules.get(AE_NS)?.api?.attackResolution;
+  const moduleApi=game.modules.get(AE_NS)?.api;
+  const resolutionApi=moduleApi?.attackResolution;
   const action=actionUse?.action??actionUse?.shared?.action;
+  // Target-linked cover diagnostic is deliberately read-only. A +4 candidate
+  // is only effective when resolveAttack receives a VERIFIED native cover
+  // breakdown. Without it, resolution fails closed rather than double-apply.
+  let attackTokenDocument=null;
+  try{
+    if(attackerToken&&typeof fromUuid==='function')
+      attackTokenDocument=await fromUuid(attackerToken);
+  }catch(error){aeLog('Attacker token unavailable for cover',{error:String(error)});}
+  const attackPlaceable=attackTokenDocument?.object??attackTokenDocument;
   const nativeChatAttacks=actionUse?.shared?.chatAttacks;
   const nativeIndicesKnown=Array.isArray(nativeChatAttacks)&&
     nativeChatAttacks.length===results.length;
@@ -132,14 +142,30 @@ async function aeDeliver(source,results,actionUse,message) {
       }
       if(!resolutionApi?.resolveAttack)continue;
       try{
-        paired.push(await resolutionApi.resolveAttack({
+        const kind=['rwak','rsak','twak'].includes(action?.actionType)?'ranged':
+          ['mwak','msak'].includes(action?.actionType)?'melee':null;
+        let coverDiagnosis=null;
+        if(kind&&attackPlaceable&&token?.object&&
+           moduleApi?.coverPF1?.inspect){
+          try{
+            coverDiagnosis=moduleApi.coverPF1.inspect({
+              attacker:attackPlaceable,target:token.object,attackType:kind
+            });
+          }catch(error){
+            aeLog('PF1 cover assessment failed',{error:String(error)});
+          }
+        }
+        const resolved=await resolutionApi.resolveAttack({
           actor:source.actor,item:source.item,action,actionUse,roll:result.nativeRoll,
           natural:result.natural,total:result.total,attackerToken,
           targetToken:token,targetActor:actor,attackIndex,
           sourceMessageId:msg?.id??null,
+          ...(coverDiagnosis?.status==='confirmed'?{
+            coverAssessment:coverDiagnosis}:{}),
           // Never silently assert concealment was checked.
           // Visibility/concealment is separate from the AC comparison.
-        }));
+        });
+        paired.push({...resolved,coverDiagnosis});
       }catch(error){
         paired.push({targetTokenUuid:target.tokenUuid,targetActorUuid:actor?.uuid??target.actorUuid,
           resolution:'indeterminate',hit:null,reason:'resolution error: '+String(error?.message??error),
