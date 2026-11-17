@@ -1,9 +1,10 @@
 /**
  * PF1AE native cover bridge for PF1 11.11.
  *
- * Pre-action: cancel ONLY a single-target DIRECT attack with proven
- * geometric total cover. PF1 invokes pf1PreActionUse before item/ammo
- * changes. No guessed target/multitarget, no guessing on uncertain rays.
+ * Gate ActionUse.process() BEFORE checkRequirements(), autoSelectAmmo(),
+ * attack-dialog construction and all expenditure. Native pf1PreActionUse
+ * remains a secondary safety gate; it occurs AFTER the attack is rolled.
+ * Cancel ONLY proven single-target direct attacks. Never guess uncertainty.
  *
  * Post-action: annotate the existing PF1 ChatMessage with the evaluated
  * target-specific effective AC, never alter the Actor's native AC and
@@ -60,16 +61,76 @@ function cbGeometry(actionUse){
  catch(error){console.warn("[PF1AE][CoverBridge] Pre-attack assessment error",error);return null}
  return {assessment,attacker,target,kind};
 }
-function cbPreActionUse(actionUse){
- if(!cbEnable())return;
- const check=cbGeometry(actionUse);
- if(check?.assessment?.status!=="confirmed"||
-    check.assessment?.type!=="total"||
-    check.assessment?.preventsDirectAttack!==true)return;
+/**
+ * PF1 11.11 calls pf1CreateActionUse via callAll (not cancellable), then
+ * opens AttackDialog, rolls attacks, and only then calls pf1PreActionUse.
+ * Intercept the process entry point instead, before PF1 checks requirements,
+ * auto-selects ammunition or displays its dialog.
+ *
+ * Return undefined, the same return shape as cancelling the native dialog.
+ * Do not invoke wrapped/original: no ammo, charge, attack, or chat writes.
+ */
+function cbTotalBlocked(actionUse){
+ if(!cbEnable())return false;
+ const assessment=cbGeometry(actionUse)?.assessment;
+ return assessment?.status==="confirmed"&&assessment?.type==="total"&&
+  assessment?.preventsDirectAttack===true;
+}
+function cbNotifyBlocked(){
  const message=game.i18n?.localize?.("PF1AE.Cover.TotalBlocked")??
   "Total cover: no direct line of effect. Attack cancelled.";
  ui.notifications?.warn?.(message);
- return false; // documented PF1 11.11 cancellable hook
+}
+let cbGateInstallation=null;
+function cbInstallEarlyGate(){
+ if(cbGateInstallation)return;
+ const ActionUse=globalThis.pf1?.actionUse?.ActionUse;
+ const proto=ActionUse?.prototype;
+ if(!proto||typeof proto.process!=="function"){
+  console.warn("[PF1AE][CoverBridge] PF1 ActionUse.process unavailable; early cover gate disabled");
+  return;
+ }
+ // Prefer libWrapper for composition with other modules; use a guarded
+ // prototype fallback when libWrapper is not present.
+ if(game.modules?.get?.("lib-wrapper")?.active&&
+    typeof globalThis.libWrapper?.register==="function"){
+  try{
+   globalThis.libWrapper.register(CB_NS,
+    "pf1.actionUse.ActionUse.prototype.process",
+    async function(wrapped,...args){
+     if(cbTotalBlocked(this)){cbNotifyBlocked();return undefined}
+     return wrapped(...args);
+    },"WRAPPER");
+   cbGateInstallation="lib-wrapper";
+   return;
+  }catch(error){
+   console.warn("[PF1AE][CoverBridge] libWrapper registration failed",error);
+   // Do not install a competing replacement over an unknown wrapper.
+   return;
+  }
+ }
+ const original=proto.process;
+ const descriptor=Object.getOwnPropertyDescriptor(proto,"process");
+ if(descriptor&&!descriptor.writable&&!descriptor.set){
+  console.warn("[PF1AE][CoverBridge] ActionUse.process is not writable");
+  return;
+ }
+ const guard=async function(...args){
+  if(cbTotalBlocked(this)){cbNotifyBlocked();return undefined}
+  return original.apply(this,args);
+ };
+ try{
+  proto.process=guard;
+  if(proto.process===guard)cbGateInstallation="prototype";
+ }catch(error){
+  console.warn("[PF1AE][CoverBridge] Early gate installation failed",error);
+ }
+}
+function cbPreActionUse(actionUse){
+ // Fallback safety check for integrations bypassing ActionUse.process.
+ if(!cbTotalBlocked(actionUse))return;
+ cbNotifyBlocked();
+ return false;
 }
 const cbNumber=n=>typeof n==="number"&&Number.isFinite(n)?n:null;
 function cbPresentation(event){
@@ -120,10 +181,12 @@ async function cbOnResolved(event){
 Hooks.on("pf1PreActionUse",cbPreActionUse);
 Hooks.on("pf1aeAttackResolution",event=>{void cbOnResolved(event)});
 Hooks.once("ready",()=>{
+ cbInstallEarlyGate();
  const mod=game.modules?.get?.(CB_NS);
  if(!mod)return;mod.api??={};
  mod.api.coverNativeBridge=Object.freeze({
   preview:actionUse=>cbGeometry(actionUse)?.assessment??null,
+  earlyGateMode:()=>cbGateInstallation,
   cardSection:event=>cbPresentation(event)
  });
 });
