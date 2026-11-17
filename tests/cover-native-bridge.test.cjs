@@ -277,8 +277,8 @@ after(base);
   user:{targets:new Set([lwTarget])},i18n:{localize:k=>k}};
  const lwReady=[];
  const lwCtx={console,game:lwGame,
-  pf1:{actionUse:{ActionUse:class{async process(){return 'native'}}}},
-  config:{maneuverActionTypes:new Set()}},
+  pf1:{actionUse:{ActionUse:class{async process(){return 'native'}}},
+   config:{maneuverActionTypes:new Set()}},
   libWrapper:{register(namespace,path,fn,type){
    registration={namespace,path,fn,type};
   }},
