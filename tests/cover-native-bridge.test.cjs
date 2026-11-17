@@ -21,8 +21,21 @@ const action={actionType:'rwak',hasAttack:true,isCombatManeuver:false,
  actor,item:{actor}};
 const actionUse={action,actor,token:attacker.document,
  shared:{targets:[target]}};
+const native={process:0,dialog:0,ammo:8,magazine:6,posts:0};
+class NativeActionUse {
+ async process(){
+  native.process++;
+  native.dialog++;
+  native.ammo--;
+  native.magazine--;
+  native.posts++;
+  return {used:true};
+ }
+}
+Object.setPrototypeOf(actionUse,NativeActionUse.prototype);
 const ctx={console,game:system,canvas:{scene,grid:{size:100},tokens:{placeables:tokens}},
- pf1:{config:{maneuverActionTypes:new Set(['cmb'])}},
+ pf1:{config:{maneuverActionTypes:new Set(['cmb'])},
+  actionUse:{ActionUse:NativeActionUse}},
  foundry:{utils:{deepClone:structuredClone}},
  CONST:{WALL_MOVEMENT_TYPES:{NONE:0,NORMAL:20}},
  Hooks:{on(n,fn){callbacks.set(n,fn)},once(n,fn){if(n==='ready')ready.push(fn)}},
@@ -37,6 +50,7 @@ const before=callbacks.get('pf1PreActionUse');
 const after=callbacks.get('pf1aeAttackResolution');
 assert.equal(typeof before,'function');
 assert.equal(typeof after,'function');
+assert.equal(pf1aeModule.api.coverNativeBridge.earlyGateMode(),'prototype');
 assert.equal(before(actionUse),undefined,'empty battlefield does not block');
 scene.walls.contents.push({id:'wall',c:[200,-200,200,300],
  uuid:'Scene.s.Wall.w',move:20,door:0,ds:0});
@@ -81,6 +95,41 @@ assert.ok(html.includes('21'));
 assert.ok(html.includes('17'));
 after(base);
 (async()=>{
+ // Native ActionUse.process must be short-circuited before ANY dialog,
+ // ammo/magazine consumption, native roll or message.
+ scene.walls.contents.push({id:'blocked',c:[200,-200,200,300],
+  uuid:'Scene.s.Wall.early',move:20,door:0,ds:0});
+ actionUse.shared.targets=[target];
+ system.user.targets.add(target);
+ const initial={...native};
+ assert.equal(await actionUse.process(),undefined,
+  'total-cover interception returns native cancellation shape');
+ assert.deepEqual(native,initial,
+  'no native processing, modifier dialog, ammo, magazine or message');
+ assert.equal(alerts.length,4,'one early cancellation warning');
+ // Open door lets native pipeline execute normally and consume one shot.
+ scene.walls.contents[0].door=1;
+ scene.walls.contents[0].ds=1;
+ assert.deepEqual(await actionUse.process(),{used:true});
+ assert.equal(native.process,1);
+ assert.equal(native.dialog,1);
+ assert.equal(native.ammo,initial.ammo-1);
+ assert.equal(native.magazine,initial.magazine-1);
+ assert.equal(native.posts,1);
+ // Multi-target and uncertain geometry also retain native behavior.
+ scene.walls.contents[0].door=0;
+ scene.walls.contents[0].ds=0;
+ actionUse.shared.targets=[target,{document:{
+  id:'third',uuid:'Scene.s.Token.third',parent:{id:'s'},
+  x:400,y:0,width:1,height:1,elevation:0},actor:{uuid:'Actor.third'}}];
+ assert.deepEqual(await actionUse.process(),{used:true});
+ assert.equal(native.process,2);
+ actionUse.shared.targets=[target];
+ scene.walls.contents[0].move=1;
+ assert.deepEqual(await actionUse.process(),{used:true});
+ assert.equal(native.process,3);
+ scene.walls.contents.length=0;
+ system.user.targets.clear();
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(cards.length,1);
  assert.ok(card.content.startsWith('<article class="pf1-chat">'));
@@ -97,5 +146,5 @@ after(base);
   ...base,targetResults:[{...base.targetResults[0],
    coverDiagnosis:{status:'uncertain'}}]}),null);
  assert.equal(actor.uuid,'Actor.a');
- console.log('PASS native cover bridge: pre-use total-cover cancellation, direct-only, multi-target safety, native chat effective AC annotation');
+ console.log('PASS native cover bridge: early process cancellation with no dialog/ammo/magazine, native fallback, multi-target safety, card annotation');
 })().catch(error=>{console.error(error);process.exitCode=1});
