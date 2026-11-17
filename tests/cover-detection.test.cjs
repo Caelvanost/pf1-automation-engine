@@ -5,7 +5,7 @@ const code=fs.readFileSync(path.resolve(__dirname,'../scripts/cover-detection.js
 const ready=[];
 const pf1aeModule={api:{}};
 const game={modules:new Map([['pf1-automation-engine',pf1aeModule]])};
-const scene={id:'s',grid:{type:1},walls:{contents:[]},regions:{contents:[]}};
+const scene={id:'s',grid:{type:1},walls:{contents:[]},regions:{contents:[]},tiles:{contents:[]}};
 const grid={size:100};
 const all=[];
 function token(id,x,y,{w=1,h=1,z=0,sceneId='s'}={}){
