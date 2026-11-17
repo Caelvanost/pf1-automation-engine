@@ -94,6 +94,28 @@ const run=(natural,total,options={})=>ar.resolveAttack({
  assert.equal(r.defense.coverBonus,4);
  assert.equal(r.defense.conditionalBonus,4);
  assert.equal(target.system.attributes.ac.normal.total,20,'no sheet AC mutation');
+ r=await run(10,23,{
+  coverAssessment:{status:'confirmed',type:'normal',acBonus:4,
+   source:'pf1-corner-rays'}
+ });
+ assert.equal(r.resolution,'indeterminate',
+  'automatic cover cannot assume native PF1 AC contains no cover');
+ assert.equal(r.defense.value,null);
+ r=await run(10,23,{
+  nativeBonusTypes:{cover:0},
+  coverAssessment:{status:'confirmed',type:'normal',acBonus:4,
+   source:'pf1-corner-rays'}
+ });
+ assert.equal(r.defense.value,28,
+  'automatic cover uses verified baseline and separate conditional bonus');
+ r=await run(10,23,{
+  nativeBonusTypes:{cover:4},
+  coverAssessment:{status:'confirmed',type:'normal',acBonus:4,
+   source:'pf1-corner-rays'}
+ });
+ assert.equal(r.defense.value,24,
+  'native cover already included is never added twice');
+
  r=await run(10,99,{coverAssessment:{type:'total',status:'manual',
   acBonus:null,preventsDirectAttack:true}});
  assert.equal(r.resolution,'indeterminate','total cover blocks AC comparison');
