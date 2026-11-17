@@ -16,6 +16,7 @@ const game={modules,settings:{
  get(_ns,key){return key==='coverGeometryMode'?mode:null}
 }};
 const ctx={console,game,foundry:{utils:{deepClone:structuredClone}},
+ CONST:{WALL_MOVEMENT_TYPES:{NONE:0,NORMAL:20}},
  Hooks:{once(name,fn){(name==='init'?init:ready).push(fn)}},
  canvas:{scene,grid:{size:100},tokens:{placeables:[]}},
  CONFIG:{Levels:{API:{testCollision(){calls++;return collision}}}},
