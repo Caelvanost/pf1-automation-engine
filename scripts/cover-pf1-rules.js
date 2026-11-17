@@ -168,7 +168,10 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  for(const wall of walls){
   const value=cpWallData(wall,sourceHeight);
   // A varying ray height cannot use a single fixed-height wall test.
-  if(sourceHeight!==targetHeight&&value.kind==="solid"){
+  if(sourceHeight!==targetHeight&&value.reason!=="door-open"){
+   // A wall clear at the source Z may still intersect a sloping shot
+   // farther along the ray. Model this conservatively until full 3D
+   // wall/surface intersection classification is validated.
    ambiguousWalls.push({kind:"unknown",reason:"sloping-ray-wall-intersection",
     id:cpDoc(wall)?.uuid??cpDoc(wall)?.id});
    continue;
@@ -199,7 +202,7 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   return cpResult("uncertain","large-creature-adjacent-melee-square-selection");
  const cornerResults=[];
  const as=cpOriginCorners(a),ts=cpCorners(t);
- for(let i=0;i<4;i++){
+ for(let i=0;i<as.length;i++){
   const traces=[];
   for(let j=0;j<4;j++){
    const from=as[i],to=ts[j];
