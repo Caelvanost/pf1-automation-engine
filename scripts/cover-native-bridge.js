@@ -91,7 +91,7 @@ function cbPresentation(event){
  const nativeLabel=game.i18n?.localize?.("PF1AE.Cover.NativeAC")??"Native AC";
  const effectiveLabel=game.i18n?.localize?.("PF1AE.Cover.EffectiveAC")??"Effective AC";
  const pending=game.i18n?.localize?.("PF1AE.Cover.PendingAC")??"Unverified (GM review)";
- const blocked=game.i18n?.localize?.("PF1AE.Cover.TotalBlocked")??"Total cover: no direct line of effect. Attack cancelled.";
+ const blocked=game.i18n?.localize?.("PF1AE.Cover.TotalCardWarning")??"Total cover detected after the roll: review and disregard this direct attack.";
  const bonus=added===null?"?":added>0?"+"+safe(added):safe(added);
  const content=isTotal?
   '<strong>'+blocked+'</strong>':
