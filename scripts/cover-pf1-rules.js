@@ -111,10 +111,16 @@ function cpWallData(wall,height,mode){
   if(d.ds===1)return {kind:"open",reason:"door-open"};
   if(d.ds!==0&&d.ds!==2)return {kind:"unknown",reason:"door-state"};
  }
- // Foundry v13 move restriction: NONE=0, NORMAL=1.
- // A non-physical or movement-passable wall is not inferred as ballistic.
- if(d.move===0)return {kind:"unknown",reason:"movement-passable-wall"};
- if(d.move!==1)return {kind:"unknown",reason:"wall-movement-restriction"};
+ // Foundry v13 uses WALL_MOVEMENT_TYPES.NORMAL=20 (not 1).
+ // Read the runtime constants instead of accepting obsolete numeric fixtures.
+ // A passable wall may still block projectiles; keep that case uncertain.
+ const movement=globalThis.CONST?.WALL_MOVEMENT_TYPES;
+ if(!movement||!cpFinite(movement.NONE)||!cpFinite(movement.NORMAL))
+  return {kind:"unknown",reason:"wall-movement-constants-unavailable"};
+ if(d.move===movement.NONE)
+  return {kind:"unknown",reason:"movement-passable-wall"};
+ if(d.move!==movement.NORMAL)
+  return {kind:"unknown",reason:"wall-movement-restriction"};
  if(mode==="2d")return {kind:"solid",
   a:{x:coords[0],y:coords[1]},b:{x:coords[2],y:coords[3]},
   id:d.uuid??d.id};
