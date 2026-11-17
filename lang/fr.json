@@ -155,6 +155,9 @@
       "Save": "Enregistrer les modifications",
       "Saved": "Autorisations de scripts mises à jour."
     },
+    "ActionRange": {
+      "OutOfRange": "Cible hors de portée de cette action. Action annulée."
+    },
     "MeleeReach": {
       "OutOfReach": "Cible hors d’allonge pour cette attaque au corps à corps. Attaque annulée."
     },
