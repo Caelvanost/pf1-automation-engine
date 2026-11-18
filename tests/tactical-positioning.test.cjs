@@ -70,6 +70,40 @@ const diagonal=token('diagonal',2,2,1);
  assert.equal(center.actor.system.attributes.hp.value,15,
   'read-only: actor data is unchanged');
  assert.equal(api.lastDiagnostic().reason,'opposite-borders');
+ // Regression in Foundry 13 / PF1 11.11 metric scene: native
+ // Actor.getRollData().range.melee is already 1.5 m, even when the
+ // optional pf1.settings.distance.metric flag is undefined.
+ const originalMeasure=grid.measurePath;
+ const originalSceneUnits=scene.grid.units;
+ const originalMetric=ctx.pf1.settings.distance.metric;
+ const nativeReachLeft=left.actor.getRollData;
+ const nativeReachRight=right.actor.getRollData;
+ scene.grid.units='m';
+ ctx.pf1.settings.distance.metric=undefined;
+ grid.measurePath=(points)=>({
+  distance:originalMeasure(points).distance*0.3
+ });
+ left.actor.getRollData=()=>({range:{melee:1.5}});
+ right.actor.getRollData=()=>({range:{melee:1.5}});
+ value=check(left,center,[right]);
+ assert.equal(value.status,'flanking',
+  'opposite adjacent allies with native 1.5m reach flank in metric scene');
+ assert.equal(value.bonus,2);
+ // Native PF1's metric setting is not required for legal flanking.
+ ctx.pf1.settings.distance.metric=false;
+ value=check(left,center,[right]);
+ assert.equal(value.status,'flanking',
+  'PF1 metric preference false must not convert 1.5m to 0.45m');
+ // Only a genuinely insufficient native reach rejects a flank.
+ right.actor.getRollData=()=>({range:{melee:0.3}});
+ value=check(left,center,[right]);
+ assert.equal(value.status,'not-flanking');
+ assert.equal(value.reason,'no-qualified-opposite-ally');
+ right.actor.getRollData=nativeReachRight;
+ left.actor.getRollData=nativeReachLeft;
+ grid.measurePath=originalMeasure;
+ scene.grid.units=originalSceneUnits;
+ ctx.pf1.settings.distance.metric=originalMetric;
  value=check(left,center,[up]);
  assert.equal(value.status,'not-flanking','adjacent but not opposite fails');
  assert.equal(value.bonus,0);
@@ -211,5 +245,5 @@ const diagonal=token('diagonal',2,2,1);
  use.shared.useOptions.flanking=false;
  assert.equal(use.shared.useOptions.flanking,false,
   'user remains able to uncheck the native option');
- console.log('PASS tactical-positioning: PF1 geometry, corners, large targets, reach, uncertainty, native checkbox preselection');
+ console.log('PASS tactical-positioning: PF1 geometry, metric-scene native 1.5m reach, corners, large targets, uncertainty, native checkbox preselection');
 })().catch(error=>{console.error(error);process.exitCode=1});
