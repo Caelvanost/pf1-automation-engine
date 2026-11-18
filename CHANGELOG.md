@@ -1,3 +1,10 @@
+## v1.38.7 — Synchronize native flanking checkbox with verified geometry (experimental)
+
+- Fix the false-positive native attack-dialog checkbox: even when PF1AE diagnosed `not-flanking / no-qualified-opposite-ally`, a preexisting `shared.useOptions.flanking=true` could remain checked because the tactical-positioning hook only handled positive flanking.
+- At `pf1CreateActionUse`, synchronize the checkbox to true for verified flanking and to false for verified nonflanking, **before the dialog opens**. Keep unknown geometry/status unchanged; preserve manual player edits inside the dialog and let native PF1 own the +2 bonus (no second modifier).
+- Add regression with confirmed no opposite ally, preexisting checked option and uncertain geometry, plus existing valid flanking and user-override tests.
+- Scope limitation: if another module checks flanking **after** PF1AE's creation hook or native dialog initializes it independently, a subsequent live diagnostic is needed to identify that conflicting owner; this patch never modifies the open dialog.
+
 ## v1.38.6 — Correct metric-scene flanking threat reach (experimental)
 
 - Fix incorrect flanking denial on metric Foundry scenes when native PF1 melee threat reach is already expressed in scene units (e.g. 1.5 m). The tactical positioning engine previously inferred imperial units whenever `pf1.settings.distance.metric` was false or unavailable, converting legal 1.5 m reach to 0.45 m.
