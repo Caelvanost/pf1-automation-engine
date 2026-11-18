@@ -1,3 +1,10 @@
+## v1.38.5 — Correct native melee reach on metric scenes (experimental)
+
+- Fix incorrect rejection of standard melee actions such as Zether's rapier on scenes measured in meters. Native PF1 melee `getRange({type:"max"})` already provides effective melee reach in scene units (1.5 m for adjacent standard-sized attacks), but PF1AE previously assumed feet if `pf1.settings.distance.metric` was unset, reducing the limit to 0.45 m.
+- Use the scene's configured units for native melee reach when the action does not specify a numeric explicit distance in feet/meters. Explicit numeric feet/meters ranges (including Bharrik's Cold Blast) still convert from their own declared units; other ranged ability/spell formulas keep their existing behavior.
+- Add a maintained native-dialog regression: rapier at 1.5 m allowed with unchanged native dialog; at 3 m rejected without resource cost, even when global metric mode is unavailable.
+- Experimental: verify in live Foundry VTT 13.351 / PF1 11.11 with different token sizes and modules.
+
 ## v1.38.4 — Correct explicit feet/meters action range on mixed-unit scenes (experimental)
 
 - Fix false out-of-range cancellation for actions such as Bharrik's **Cold Blast**, configured at 30 ft on a metric scene: a numeric `action.range.value` with an explicit `range.units` is now converted directly from those declared action units into scene units, without assuming `getRange({type:"max"})` uses the same units.
