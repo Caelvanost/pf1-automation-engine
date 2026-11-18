@@ -78,7 +78,7 @@ function mrInspect({attacker,target,action,actor,scene,grid}={}){
  const declared=mrUnits(action.range?.units);
  const raw=action.range?.value;
  const literal=(typeof raw==="number"&&mrFinite(raw))||
-  (typeof raw==="string"&&/^(?:\\d+(?:\\.\\d*)?|\\.\\d+)$/.test(raw.trim()));
+  (typeof raw==="string"&&/^(?:[0-9]+(?:[.][0-9]*)?|[.][0-9]+)$/.test(raw.trim()));
  let max,minimum=0,rangeUnit=systemUnit,rangeSource="action.getRange";
  if(literal&&declared){
   max=Number(raw);rangeUnit=declared;rangeSource="action.range.value";
