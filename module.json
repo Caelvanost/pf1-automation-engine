@@ -2,7 +2,7 @@
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
   "description": "A modular Pathfinder 1e automation engine for attacks, range and melee-engagement penalties, damage, saves, bleeding, effects, rests, persistent scripts, and secure multiplayer chat actions.",
-  "version": "1.38.6",
+  "version": "1.39.0",
   "authors": [
     {
       "name": "Caelvanost"
@@ -66,6 +66,7 @@
     "scripts/range-automation.js",
     "scripts/ranged-melee.js",
     "scripts/tactical-positioning.js",
+    "scripts/high-ground.js",
     "scripts/reload-adapter.js"
   ],
   "url": "https://github.com/Caelvanost/pf1-automation-engine",
@@ -85,5 +86,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.38.6/pf1-automation-engine-v1.38.6.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.39.0/pf1-automation-engine-v1.39.0.zip"
 }

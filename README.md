@@ -1,8 +1,22 @@
 # PF1 Automation Engine
 
-**Version 1.38.6 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.39.0 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Higher ground for melee attacks (v1.39.0)
+
+Enable **Automatic higher-ground melee bonus (+1)** in PF1AE world settings and **disable the corresponding high-ground feature in Roll Bonuses** to avoid double counting. The engine uses native `pf1CreateActionUse` and adds one `1[PF1AE Higher Ground]` part to `shared.attackBonus`; native PF1 performs the roll. No ranged, multi-target or combat-maneuver bonuses.
+
+Safe mode (default) requires the GM to confirm the elevated, supported **attacker token** once via the console or a trusted GM macro:
+
+```js
+const token = canvas.tokens.controlled[0];
+if (!game.user.isGM || !token) ui.notifications.warn("Select an attacker token as GM.");
+else await token.document.setFlag("pf1-automation-engine", "highGroundSupported", true);
+```
+
+To remove that confirmation, use `unsetFlag("pf1-automation-engine","highGroundSupported")`. A separate world setting **Require GM-confirmed supporting terrain** can be turned off for campaigns that treat positive token elevation (up to one square height difference) as supported higher ground, at the GM's discretion. Both modes avoid injecting when attacker is not higher, attack is not melee, reach or terrain is uncertain, or an existing higher-ground modifier is detected. The native attack-dialog checkbox must remain unchecked when the PF1AE bonus is applied; this feature does not control the checkbox because the native option key is not yet verified for PF1 11.11.
 
 ## Shooting into melee (v1.33.6)
 

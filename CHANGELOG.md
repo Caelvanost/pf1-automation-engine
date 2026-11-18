@@ -1,3 +1,11 @@
+## v1.39.0 — Higher-ground melee attack automation (experimental)
+
+- Add an opt-in +1 higher-ground modifier for verified single-target melee attacks in Pathfinder 1e. It injects a single labeled native `shared.attackBonus` part on `pf1CreateActionUse`, without extra attack rolls, card edits, actor mutation or weapon changes. Ranged attacks and maneuvers do not gain this bonus.
+- Compare attacker/target elevation, grid-square geometry, native effective melee reach and a bounded one-square vertical difference. The safer default also requires an explicit GM token flag `pf1-automation-engine.highGroundSupported=true` as proof of supported terrain, to avoid granting +1 to a creature simply flying above an enemy. A separate opt-out setting permits elevation-only adjudication when the GM chooses.
+- Preserve unknown or conflicting situations without guessing, do not inject a duplicate higher-ground modifier when a recognized native/external bonus exists, and leave other combat modules' native roll workflow untouched. Disable Roll Bonuses higher-ground automation when enabling this module.
+- Export `game.modules.get("pf1-automation-engine").api.highGround.inspect`, `inspectActionUse`, `prepare`, and `lastDiagnostic`; add dedicated regression covering metric scenes, verified terrain, unconfirmed terrain, flying, overreach, ranged attacks, disabled settings and no duplicates.
+- Experimental compatibility: native dialog higher-ground checkbox integration and special 3D support surfaces require live PF1 11.11 validation; this version does **not** set that checkbox. Manual use of the native higher-ground checkbox at the same time as this injected bonus would double count.
+
 ## v1.38.6 — Correct metric-scene flanking threat reach (experimental)
 
 - Fix incorrect flanking denial on metric Foundry scenes when native PF1 melee threat reach is already expressed in scene units (e.g. 1.5 m). The tactical positioning engine previously inferred imperial units whenever `pf1.settings.distance.metric` was false or unavailable, converting legal 1.5 m reach to 0.45 m.
