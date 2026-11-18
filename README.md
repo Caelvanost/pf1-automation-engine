@@ -1,6 +1,6 @@
 # PF1 Automation Engine
 
-**Version 1.39.0 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.39.1 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
@@ -8,7 +8,7 @@ Generic, rules-neutral automation services for native PF1 Item Script Calls. Thi
 
 Enable **Automatic higher-ground melee bonus (+1)** in PF1AE world settings and **disable the corresponding high-ground feature in Roll Bonuses** to avoid double counting. The engine uses native `pf1CreateActionUse` and adds one `1[PF1AE Higher Ground]` part to `shared.attackBonus`; native PF1 performs the roll. No ranged, multi-target or combat-maneuver bonuses.
 
-Safe mode (default) requires the GM to confirm the elevated, supported **attacker token** once via the console or a trusted GM macro:
+In **Trusted Table Mode**, no GM confirmation or per-token support flag is required. The engine still checks melee attack type, range, elevation and airborne statuses. Outside Trusted Table Mode, safe mode (default) requires the GM to confirm the elevated, supported **attacker token** once:
 
 ```js
 const token = canvas.tokens.controlled[0];
