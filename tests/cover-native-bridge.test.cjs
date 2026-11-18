@@ -154,8 +154,45 @@ after(base);
  action.actionType='mwak';
  action.testMaxRange=5;
  actionUse.shared.targets=[target];
- const meleeInitial={...native};
  const reachApi=pf1aeModule.api.meleeReach;
+ // Zether's rapier regression: native melee range is 1.5 on a metric
+ // scene, regardless of a missing/false PF1 global metric preference.
+ const previousUnits=scene.grid.units;
+ const previousMeasure=ctx.canvas.grid.measurePath;
+ const previousMetric=ctx.pf1.settings.distance.metric;
+ const previousRange=action.range;
+ const previousGetRange=action.getRange;
+ scene.grid.units='m';
+ ctx.canvas.grid.measurePath=([a,b])=>({
+  distance:Math.hypot(b.x-a.x,b.y-a.y)/100*1.5
+ });
+ ctx.pf1.settings.distance.metric=undefined;
+ action.range={value:0,units:'melee'};
+ action.getRange=({type})=>type==='max'?1.5:0;
+ target.document.x=100;
+ let rapier=reachApi.inspectActionUse(actionUse);
+ assert.equal(rapier.status,'in-reach',
+  'rapier adjacent at 1.5 m must be allowed');
+ assert.equal(rapier.maximumReach,1.5,
+  'native melee 1.5 must not be interpreted as feet');
+ assert.equal(rapier.rangeUnit,'m');
+ assert.deepEqual(await actionUse.process(),{used:true},
+  'rapier at 1.5 m must open native dialog and proceed');
+ target.document.x=200;
+ rapier=reachApi.inspectActionUse(actionUse);
+ assert.equal(rapier.status,'out-of-reach',
+  'rapier at 3 m must remain outside normal reach');
+ const rapierSnapshot={...native};
+ assert.equal(await actionUse.process(),undefined,
+  'out-of-reach rapier must cancel before native dialog');
+ assert.deepEqual(native,rapierSnapshot);
+ scene.grid.units=previousUnits;
+ ctx.canvas.grid.measurePath=previousMeasure;
+ ctx.pf1.settings.distance.metric=previousMetric;
+ action.range=previousRange;
+ action.getRange=previousGetRange;
+ target.document.x=300;
+ const meleeInitial={...native};
  let reach=reachApi.inspectActionUse(actionUse);
  assert.equal(reach.status,'out-of-reach');
  assert.equal(reach.distance,15);
