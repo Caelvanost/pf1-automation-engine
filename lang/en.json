@@ -45,6 +45,14 @@
         "Name": "Automatic flanking detection",
         "Hint": "Precheck the native Flanking option for melee attacks when positioning, reach and threat are verified. Players may change the checkbox in the attack dialog; PF1 applies its own +2, without stacking."
       },
+      "HighGround": {
+        "Name": "Automatic higher-ground melee bonus (+1)",
+        "Hint": "Opt-in. Apply +1 to a single-target native melee attack on demonstrably higher ground. Disable high-ground automation in Roll Bonuses first."
+      },
+      "HighGroundRequireSupport": {
+        "Name": "Require GM-confirmed supporting terrain",
+        "Hint": "Recommended. Only award +1 when the attacker token's pf1-automation-engine.highGroundSupported flag is true; elevation alone can mean flying."
+      },
       "CoverGeometryMode": {
         "Name": "Cover detection geometry",
         "Hint": "2D (default) uses the tactical map and ignores elevations, Wall Height and roof layers. 3D requires tested versions of Levels and Wall Height; Better Roofs is optional. When 3D data cannot be verified, no cover is guessed.",
