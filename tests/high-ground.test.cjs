@@ -42,6 +42,27 @@ assert.equal(r.status,'uncertain','elevation alone does not prove a platform');
 assert.equal(r.reason,'terrain-support-not-confirmed');
 hooks.get('pf1CreateActionUse')(u);
 assert.equal(u.shared.attackBonus.length,0,'unconfirmed terrain injects no bonus');
+// Trusted Table Mode is the GM's world opt-in and bypasses only the
+// per-token terrain confirmation; no other melee eligibility check.
+settings.set('trustedTableMode',true);
+u=use();
+r=api.inspectActionUse(u);
+assert.equal(r.status,'confirmed',
+ 'trusted table allows supported-height detection without token flag');
+hooks.get('pf1CreateActionUse')(u);
+assert.deepEqual(Array.from(u.shared.attackBonus),['1[PF1AE Higher Ground]'],
+ 'trusted-table mode permits one native +1 attack part');
+attacker.actor.statuses.add('flying');
+assert.equal(api.inspectActionUse(use()).reason,'airborne-attacker',
+ 'trusted table cannot bypass airborne safeguard');
+attacker.actor.statuses.clear();
+target.document.x=200;
+assert.equal(api.inspectActionUse(use()).reason,'melee-target-out-of-reach',
+ 'trusted table cannot bypass reach');
+target.document.x=100;
+settings.set('trustedTableMode',false);
+assert.equal(api.inspectActionUse(use()).reason,'terrain-support-not-confirmed',
+ 'disabling trusted table restores GM confirmation requirement');
 attacker.document.flags['pf1-automation-engine']={highGroundSupported:true};
 u=use();r=api.inspectActionUse(u);
 assert.equal(r.status,'confirmed');
@@ -83,4 +104,4 @@ assert.equal(api.inspectActionUse(use()).status,'confirmed',
  'GM may explicitly opt into elevation-only mode');
 settings.set('autoHighGround',false);
 assert.equal(api.inspectActionUse(use()).status,'skipped');
-console.log('PASS high-ground: grounded confirmation, meter scene, melee-only +1, no stacking, terrain uncertainty, disabled and vertical bounds');
+console.log('PASS high-ground: trusted table bypasses token confirmation only, metric melee +1, no stacking, airborne and reach safety');
