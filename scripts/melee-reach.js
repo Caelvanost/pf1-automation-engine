@@ -79,7 +79,13 @@ function mrInspect({attacker,target,action,actor,scene,grid}={}){
  const raw=action.range?.value;
  const literal=(typeof raw==="number"&&mrFinite(raw))||
   (typeof raw==="string"&&/^(?:[0-9]+(?:[.][0-9]*)?|[.][0-9]+)$/.test(raw.trim()));
- let max,minimum=0,rangeUnit=systemUnit,rangeSource="action.getRange";
+ // For native melee/reach actions PF1 returns effective reach in the
+ // active scene's distance units (e.g. 1.5 on an m scene). The former
+ // system-distance preference fallback treated that as 1.5 ft and reduced
+ // a rapier's normal reach to 0.45 m.
+ // Only explicit numeric values with explicit ft/m units bypass this rule.
+ let max,minimum=0,rangeUnit=isMelee?unit:systemUnit,
+  rangeSource="action.getRange";
  if(literal&&declared){
   max=Number(raw);rangeUnit=declared;rangeSource="action.range.value";
   // A ranged WEAPON's numeric range is one increment, not its total range.
