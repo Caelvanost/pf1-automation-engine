@@ -5,9 +5,9 @@
  * A confirmed out-of-range single-target action may be rejected
  * by the existing ActionUse.process early gate.
  *
- * PF1 action.getRange({type:"max"}) determines action-specific maximum
- * reach (including polearms and natural reach), in PF1 system distance
- * units. Native square-grid measurePath checks the closest occupied
+ * For explicit numeric ranges, action.range.value and range.units are
+ * authoritative; formulaic ranges use native getRange() in system units.
+ * Native square-grid measurePath checks the closest occupied
  * square centres, including large and rectangular tokens.
  *
  * Unverifiable geometry/range never blocks an action.
@@ -71,18 +71,37 @@ function mrInspect({attacker,target,action,actor,scene,grid}={}){
  if(!aa||!bb)return mrUncertain("token-footprint-unverified");
  if(a.x===t.x&&a.y===t.y)
   return mrUncertain("overlapping-tokens");
- // The native action determines its maximum usable range (including
- // ranged-weapon increments and spell level scaling). No default guessed.
- let max;
- try{max=action.getRange?.({type:"max"})}
- catch(_){return mrUncertain("native-range-evaluation-failed")}
+ // A literal range has its own units. Do not infer them from the
+ // world/system metric preference: a 30 ft spell on a metric scene is 9 m.
+ // Native getRange() is retained for formulaic/PF1-calculated ranges, where
+ // its result is expressed in the PF1 configured system distance units.
+ const declared=mrUnits(action.range?.units);
+ const raw=action.range?.value;
+ const literal=(typeof raw==="number"&&mrFinite(raw))||
+  (typeof raw==="string"&&/^(?:\\d+(?:\\.\\d*)?|\\.\\d+)$/.test(raw.trim()));
+ let max,minimum=0,rangeUnit=systemUnit,rangeSource="action.getRange";
+ if(literal&&declared){
+  max=Number(raw);rangeUnit=declared;rangeSource="action.range.value";
+  // A ranged WEAPON's numeric range is one increment, not its total range.
+  // Only multiply when the native increment count is explicitly available.
+  if(["rwak","twak"].includes(action.actionType)&&action.isRanged===true){
+   const increments=action.range?.maxIncrements;
+   if(!Number.isSafeInteger(increments)||increments<1)
+    return mrUncertain("ranged-weapon-max-increments-unverified");
+   max*=increments;
+  }
+ }else{
+  try{max=action.getRange?.({type:"max"})}
+  catch(_){return mrUncertain("native-range-evaluation-failed")}
+  if(!mrFinite(max)||max<=0)
+   return mrUncertain("native-maximum-range-unavailable");
+  try{
+   const m=action.getRange?.({type:"min"});
+   if(mrFinite(m)&&m>=0)minimum=m;
+  }catch(_){/* an absent minimum does not affect maximum-range checks */}
+ }
  if(!mrFinite(max)||max<=0)return mrUncertain("native-maximum-range-unavailable");
- let minimum=0;
- try{
-  const m=action.getRange?.({type:"min"});
-  if(mrFinite(m)&&m>=0)minimum=m;
- }catch(_){/* min is optional and does not affect out-of-range validation */}
- const scale=systemUnit===unit?1:systemUnit==="ft"?0.3:1/0.3;
+ const scale=rangeUnit===unit?1:rangeUnit==="ft"?0.3:1/0.3;
  const maxScene=max*scale,minScene=minimum*scale;
  if(!mrFinite(maxScene)||maxScene<=0)
   return mrUncertain("invalid-range-conversion");
@@ -105,7 +124,7 @@ function mrInspect({attacker,target,action,actor,scene,grid}={}){
   status,outOfReach:tooFar,outOfRange:tooFar,
   reason:tooFar?"beyond-native-action-range":"within-native-action-range",
   distance,maximumReach:maxScene,minimumReach:minScene,unit,
-  source:"pf1-action-getRange-max",actionType:action.actionType??null,
+  source:rangeSource,rangeUnit,actionType:action.actionType??null,
   attackerTokenUuid:a.uuid,
   targetTokenUuid:t.uuid
  });
