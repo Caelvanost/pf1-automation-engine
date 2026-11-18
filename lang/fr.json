@@ -51,7 +51,7 @@
       },
       "HighGroundRequireSupport": {
         "Name": "Exiger la confirmation du terrain surélevé par le MJ",
-        "Hint": "Recommandé : +1 seulement si le token attaquant possède le drapeau pf1-automation-engine.highGroundSupported=true. L'élévation seule peut correspondre au vol."
+        "Hint": "Hors mode Table de confiance : +1 seulement si le token possède pf1-automation-engine.highGroundSupported=true. La Table de confiance dispense de cette confirmation, sans désactiver les contrôles de portée et de vol."
       },
       "CoverGeometryMode": {
         "Name": "Géométrie de détection des abris",
