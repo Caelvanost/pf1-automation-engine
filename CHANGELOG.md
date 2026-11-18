@@ -1,3 +1,11 @@
+## v1.38.4 — Correct explicit feet/meters action range on mixed-unit scenes (experimental)
+
+- Fix false out-of-range cancellation for actions such as Bharrik's **Cold Blast**, configured at 30 ft on a metric scene: a numeric `action.range.value` with an explicit `range.units` is now converted directly from those declared action units into scene units, without assuming `getRange({type:"max"})` uses the same units.
+- Retain PF1's native `getRange({type:"max"})` for formulaic/calculated ranges in system-configured units (including variable spell ranges), and retain native melee reach behavior where no numeric action range is configured.
+- For ranged weapons with a numeric first increment, require a valid native `range.maxIncrements` and multiply to obtain the full legal maximum; unknown increment count returns uncertain rather than incorrectly cancelling.
+- Add regression tests for 30 ft = 9 m, the exact boundary and 10.5 m rejection; reverse meter-to-feet conversion; independent system metric preference; and ranged-weapon increments. Preserve early dialog cancellation and libWrapper coexistence.
+- Experimental: verify live PF1 11.11 behavior with action-specific formulae, dynamic bonuses and unusual target geometries.
+
 ## v1.38.3 — Block before PF1 attack dialog using native hook timing (experimental)
 
 - Correct the actual PF1 11.11 lifecycle: `pf1CreateActionUse` executes **inside** `ActionUse.process()`, after initial requirements/ammo auto-selection but before the attack dialog. Wrapping `process` from that hook (v1.38.2) is too late to stop its current invocation.
