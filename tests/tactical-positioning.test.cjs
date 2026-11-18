@@ -225,6 +225,25 @@ const diagonal=token('diagonal',2,2,1);
  precheckHook(use);
  assert.equal(use.shared.useOptions.flanking,false,
   'uncertain threat must not check the native option');
+ // Regression: diagnostic confirms no qualified opposite ally, but PF1
+ // previously retained an unrelated/pre-existing true checkbox value.
+ // Clear it before dialog creation rather than incorrectly granting +2.
+ right.document.disposition=0;
+ use=makeUse({flanking:true});
+ assert.equal(api.checkFlanking({attacker:left,target:center}).status,
+  'not-flanking');
+ assert.equal(api.precheck(use),true,
+  'verified invalid flank clears stale checked checkbox');
+ assert.equal(use.shared.useOptions.flanking,false);
+ // Uncertain observations must never overwrite a pre-existing option.
+ const originalMeasureForUncertain=grid.measurePath;
+ grid.measurePath=null;
+ use=makeUse({flanking:true});
+ assert.equal(api.precheck(use),false);
+ assert.equal(use.shared.useOptions.flanking,true,
+  'unknown geometry must not silently uncheck an existing option');
+ grid.measurePath=originalMeasureForUncertain;
+ right.document.disposition=1;
  right.actor.items.contents.push({type:'attack',actions:{contents:[{actionType:'mwak'}]}});
  for(const t of tokens)if(![left,center,right].includes(t))
   t.document.disposition=t===otherSide?-1:1;
@@ -245,5 +264,5 @@ const diagonal=token('diagonal',2,2,1);
  use.shared.useOptions.flanking=false;
  assert.equal(use.shared.useOptions.flanking,false,
   'user remains able to uncheck the native option');
- console.log('PASS tactical-positioning: PF1 geometry, metric-scene native 1.5m reach, corners, large targets, uncertainty, native checkbox preselection');
+ console.log('PASS tactical-positioning: PF1 geometry, metric reach, stale checkbox reset for verified nonflanking, uncertain/manual preservation');
 })().catch(error=>{console.error(error);process.exitCode=1});
