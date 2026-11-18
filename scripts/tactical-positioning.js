@@ -224,10 +224,11 @@ function tpCheckFlanking({attacker,target,allies}={}){
  return tpOut('no-qualified-opposite-ally',{candidates:eligible});
 }
 /**
- * Preselect PF1's existing Attack Dialog "Flanking" checkbox, never add a
- * second +2. The option is passed through by native ActionUse: users can
- * change it in the attack dialog before rolling. Roll Bonuses uses this
- * precise native extension point and shared.useOptions.flanking contract.
+ * Synchronize PF1's existing Attack Dialog "Flanking" checkbox only when
+ * the native geometry returns a definite true/false. An old preset true must
+ * not survive a confirmed not-flanking position. Uncertain results remain
+ * untouched, and players can still change the value inside the dialog.
+ * No independent +2 bonus is applied by PF1AE.
  */
 function tpPrecheck(use){
  if(!tpEnabled())return false;
@@ -237,17 +238,19 @@ function tpPrecheck(use){
     !['mwak','msak'].includes(use.action?.actionType)||
     use.action?.hasAttack!==true||
     !use.shared?.useOptions||typeof use.shared.useOptions!=='object')return false;
- if(use.shared.useOptions.flanking===true)return false;
  const targets=[...(game.user?.targets??[])];
  if(targets.length!==1)return false;
  const attacker=use.token?.object??use.token;
  if(!attacker||attacker.actor?.uuid!==use.actor.uuid)return false;
  const result=tpCheckFlanking({attacker,target:targets[0]});
- if(result.flanking!==true)return false;
- // This hook runs when ActionUse is created, before the player edits the
- // attack dialog. PF1 may initialize the checkbox to false by default.
- // The attack dialog still owns the final user selection.
- use.shared.useOptions.flanking=true;
+ // Preserve all unknown outcomes: absence of evidence is not evidence
+ // of a confirmed invalid flank and must not override another module.
+ if(result.flanking===null)return false;
+ const desired=result.flanking===true;
+ if(use.shared.useOptions.flanking===desired)return false;
+ // This hook runs before the attack dialog is shown; do not touch the
+ // checkbox or user edits once the native dialog is open.
+ use.shared.useOptions.flanking=desired;
  return true;
 }
 Hooks.once('init',()=>{
