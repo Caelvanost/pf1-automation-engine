@@ -154,7 +154,6 @@ after(base);
  action.actionType='mwak';
  action.testMaxRange=5;
  actionUse.shared.targets=[target];
- const meleeInitial={...native};
  const reachApi=pf1aeModule.api.meleeReach;
  // Zether's rapier regression: native melee range is 1.5 on a metric
  // scene, regardless of a missing/false PF1 global metric preference.
@@ -193,6 +192,7 @@ after(base);
  action.range=previousRange;
  action.getRange=previousGetRange;
  target.document.x=300;
+ const meleeInitial={...native};
  let reach=reachApi.inspectActionUse(actionUse);
  assert.equal(reach.status,'out-of-reach');
  assert.equal(reach.distance,15);
