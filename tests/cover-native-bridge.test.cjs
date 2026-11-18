@@ -255,6 +255,71 @@ after(base);
  assert.equal(actionRange.inspectActionUse(actionUse).status,'uncertain');
  assert.deepEqual(await actionUse.process(),{used:true},
   'unbounded action range remains unrestricted');
+ // Mixed units regression: Cold Blast is explicitly 30 ft, while the
+ // scene is metric and PF1 getRange may return a system-converted value.
+ const oldMeasure=ctx.canvas.grid.measurePath;
+ const oldSceneUnit=scene.grid.units;
+ const oldMetric=ctx.pf1.settings.distance.metric;
+ scene.grid.units='m';
+ ctx.canvas.grid.measurePath=([a,b])=>({
+  distance:Math.hypot(b.x-a.x,b.y-a.y)/100*1.5
+ });
+ ctx.pf1.settings.distance.metric=true;
+ action.actionType='save';
+ action.hasAttack=false;
+ action.hasRange=true;
+ action.hasTemplate=false;
+ action.range={value:30,units:'ft'};
+ action.getRange=({type})=>type==='max'?9:0;
+ target.document.x=500; // five 1.5 m squares = 7.5 m.
+ let metric=actionRange.inspectActionUse(actionUse);
+ assert.equal(metric.status,'in-range','30 ft reaches 7.5 m');
+ assert.equal(metric.maximumReach,9);
+ assert.equal(metric.rangeUnit,'ft');
+ assert.equal(metric.source,'action.range.value');
+ assert.deepEqual(await actionUse.process(),{used:true});
+ target.document.x=600; // exactly 9 m.
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'in-range',
+  '30 ft includes its exact 9 m boundary');
+ target.document.x=700; // 10.5 m, outside 30 ft.
+ const coldSnapshot={...native};
+ metric=actionRange.inspectActionUse(actionUse);
+ assert.equal(metric.status,'out-of-range');
+ assert.equal(metric.maximumReach,9);
+ assert.equal(await actionUse.process(),undefined);
+ assert.deepEqual(native,coldSnapshot,
+  'out-of-range metric scene spell does not spend resources');
+ ctx.pf1.settings.distance.metric=false;
+ assert.equal(actionRange.inspectActionUse(actionUse).maximumReach,9,
+  'literal feet must not depend on global system preference');
+ // Inverse conversion: a 9 m action on a scene measured in feet.
+ scene.grid.units='ft';
+ ctx.canvas.grid.measurePath=oldMeasure;
+ action.range={value:'9',units:'m'};
+ target.document.x=500; // 25 ft; 9 m = 30 ft PF1.
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'in-range');
+ target.document.x=700; // 35 ft.
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'out-of-range');
+ // Range increments still represent total ranged-weapon maximum.
+ scene.grid.units='m';
+ ctx.canvas.grid.measurePath=([a,b])=>({
+  distance:Math.hypot(b.x-a.x,b.y-a.y)/100*1.5
+ });
+ action.actionType='rwak';
+ action.hasAttack=true;
+ action.isRanged=true;
+ action.range={value:20,units:'ft',maxIncrements:5};
+ target.document.x=1000; // 15m < 100ft = 30m.
+ assert.equal(actionRange.inspectActionUse(actionUse).maximumReach,30);
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'in-range');
+ action.range.maxIncrements=null;
+ assert.equal(actionRange.inspectActionUse(actionUse).status,'uncertain',
+  'unknown weapon increment count must never cancel');
+ ctx.canvas.grid.measurePath=oldMeasure;
+ scene.grid.units=oldSceneUnit;
+ ctx.pf1.settings.distance.metric=oldMetric;
+ action.range=undefined;
+ action.isRanged=false;
  action.actionType='mwak';
  action.hasAttack=true;
  action.hasRange=false;
