@@ -1,3 +1,10 @@
+## v1.38.6 — Correct metric-scene flanking threat reach (experimental)
+
+- Fix incorrect flanking denial on metric Foundry scenes when native PF1 melee threat reach is already expressed in scene units (e.g. 1.5 m). The tactical positioning engine previously inferred imperial units whenever `pf1.settings.distance.metric` was false or unavailable, converting legal 1.5 m reach to 0.45 m.
+- Use the native prepared reach directly in scene units; retain strict opposite-border geometry, same elevation, valid attack/threat evidence, and the existing native flanking checkbox. Never add an independent attack bonus.
+- Add regression cases for flanking by two opposite adjacent allies at native 1.5 m on a metric scene with undefined and false global metric preferences; verify truly insufficient reach does not qualify, and preserve previous feet-grid and Large creature tests.
+- Experimental: real-world verification needed for special reach weapons and conditional threatening, which remain conservative.
+
 ## v1.38.5 — Correct native melee reach on metric scenes (experimental)
 
 - Fix incorrect rejection of standard melee actions such as Zether's rapier on scenes measured in meters. Native PF1 melee `getRange({type:"max"})` already provides effective melee reach in scene units (1.5 m for adjacent standard-sized attacks), but PF1AE previously assumed feet if `pf1.settings.distance.metric` was unset, reducing the limit to 0.45 m.
