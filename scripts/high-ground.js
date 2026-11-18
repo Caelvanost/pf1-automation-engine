@@ -7,6 +7,8 @@
  * support flag on the ATTACKER TokenDocument:
  *   token.document.setFlag("pf1-automation-engine","highGroundSupported",true)
  *
+ * Trusted Table Mode skips the per-token GM confirmation, but retains the
+ * geometric, airborne, melee-only and no-stacking safeguards.
  * "Require terrain confirmation" may be disabled in world settings to treat
  * small positive token elevations as elevated ground (a deliberate GM choice).
  * Never stack with native/other-module higher-ground bonuses.
@@ -114,7 +116,13 @@ function hgInspect({attacker,target,action,actor}={}){
  let requireEvidence=true;
  try{requireEvidence=game.settings.get(HG_NS,"highGroundRequireSupport")!==false}
  catch(_){}
- if(requireEvidence&&!hgTerrainConfirmed(attacker))
+ // Trusted Table Mode is an explicit GM world-wide opt-in: no
+ // per-token GM confirmation is required while it is enabled.
+ // Geometry, reach and airborne safeguards remain mandatory.
+ let trustedTable=false;
+ try{trustedTable=game.settings.get(HG_NS,"trustedTableMode")===true}
+ catch(_){}
+ if(requireEvidence&&!trustedTable&&!hgTerrainConfirmed(attacker))
   return hgResult("uncertain","terrain-support-not-confirmed",
    {distance,reach,elevationDifference:delta});
  return hgResult("confirmed","supported-higher-ground",

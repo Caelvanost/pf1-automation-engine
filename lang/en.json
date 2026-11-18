@@ -51,7 +51,7 @@
       },
       "HighGroundRequireSupport": {
         "Name": "Require GM-confirmed supporting terrain",
-        "Hint": "Recommended. Only award +1 when the attacker token's pf1-automation-engine.highGroundSupported flag is true; elevation alone can mean flying."
+        "Hint": "Recommended. Outside Trusted Table Mode, only award +1 when the attacker token's pf1-automation-engine.highGroundSupported flag is true; elevation alone can mean flying. Trusted Table Mode automatically bypasses the token confirmation."
       },
       "CoverGeometryMode": {
         "Name": "Cover detection geometry",
