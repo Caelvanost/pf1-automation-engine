@@ -132,6 +132,7 @@ function tpCanThreaten(actor){
  return evidence?true:null;
 }
 function tpReach(actor,sceneUnit){
+ if(sceneUnit!=='ft'&&sceneUnit!=='m')return null;
  let prepared=null;
  try{prepared=actor?.getRollData?.()?.range?.melee}
  catch(_){}
@@ -143,8 +144,11 @@ function tpReach(actor,sceneUnit){
  for(const v of values){
   const n=Number(v);
   if(v===null||v===undefined||v===''||!Number.isFinite(n)||n<=0)continue;
-  const metric=globalThis.pf1?.settings?.distance?.metric===true;
-  return sceneUnit===(metric?'m':'ft')?n:metric?n/0.3:n*0.3;
+  // PF1 prepared melee reach is already in the active scene units.
+  // Never derive its units from pf1.settings.distance.metric: that optional
+  // flag can be undefined in a metric scene. Re-conversion would reduce
+  // native 1.5 m reach to 0.45 m and incorrectly reject a legal flank.
+  return n;
  }
  return null;
 }
