@@ -1,3 +1,10 @@
+## v1.39.1 — Trusted Table Mode bypasses high-ground GM confirmation (experimental)
+
+- When the existing world setting `trustedTableMode` is explicitly enabled, the higher-ground engine no longer requires the GM's per-token `highGroundSupported` flag. In secure mode, the previous confirmation behavior remains unchanged.
+- All safety checks remain active regardless of mode: melee-only action, single target, confirmed positive elevation difference, non-flying attacker, square-grid geometry and native melee reach. The setting only affects the extra terrain-support confirmation.
+- Add regression tests for trusted-table true/false, correct no-flag +1 in trusted mode, airborne and out-of-reach rejection, and restoration of confirmation when trusted mode is disabled.
+- Native PF1 melee attack dialogs already provide a manual higher-ground checkbox. This patch **does not change that checkbox** because its internal field/ownership was not verified in PF1 11.11. Keep that manual checkbox unchecked when PF1AE has already injected its +1 modifier to avoid duplicate application; native checkbox integration is a separate compatibility change.
+
 ## v1.39.0 — Higher-ground melee attack automation (experimental)
 
 - Add an opt-in +1 higher-ground modifier for verified single-target melee attacks in Pathfinder 1e. It injects a single labeled native `shared.attackBonus` part on `pf1CreateActionUse`, without extra attack rolls, card edits, actor mutation or weapon changes. Ranged attacks and maneuvers do not gain this bonus.
