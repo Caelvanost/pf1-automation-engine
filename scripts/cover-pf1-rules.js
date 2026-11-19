@@ -138,6 +138,33 @@ function cpWallData(wall,height,mode){
  return {kind:"solid",a:{x:coords[0],y:coords[1]},
   b:{x:coords[2],y:coords[3]},id:d.uuid??d.id};
 }
+
+function cpSlopedWall(from,to,wall,startHeight,endHeight){
+ const d=cpDoc(wall),coords=d?.c;
+ if(!Array.isArray(coords)||coords.length!==4||!coords.every(cpFinite))
+  return {kind:"unknown",reason:"wall-coordinates"};
+ const a={x:coords[0],y:coords[1]},b={x:coords[2],y:coords[3]};
+ const crossing=cpSegment(from,to,a,b);
+ if(crossing==="clear")return {kind:"clear"};
+ if(crossing==="ambiguous")return {kind:"unknown",reason:"wall-grazed"};
+ const dx=to.x-from.x,dy=to.y-from.y;
+ const wx=b.x-a.x,wy=b.y-a.y;
+ const denom=dx*wy-dy*wx;
+ if(Math.abs(denom)<=CP_EPS)return {kind:"unknown",reason:"sloped-wall-parallel"};
+ const fraction=((a.x-from.x)*wy-(a.y-from.y)*wx)/denom;
+ if(!cpFinite(fraction)||fraction<=0||fraction>=1)
+  return {kind:"unknown",reason:"sloped-wall-parameter"};
+ const height=startHeight+(endHeight-startHeight)*fraction;
+ const bottom=d.flags?.["wall-height"]?.bottom??-Infinity;
+ const top=d.flags?.["wall-height"]?.top??Infinity;
+ if(typeof bottom!=="number"||typeof top!=="number"||
+    Number.isNaN(bottom)||Number.isNaN(top)||bottom>top)
+  return {kind:"unknown",reason:"wall-vertical-bounds"};
+ if(height<bottom-CP_EPS||height>top+CP_EPS)return {kind:"clear"};
+ if(Math.abs(height-bottom)<=CP_EPS||Math.abs(height-top)<=CP_EPS)
+  return {kind:"unknown",reason:"wall-height-boundary"};
+ return {kind:"solid"};
+}
 function cpInterpret({attacker,target,attackType="ranged",scene,
  tokens,projectileHeight=null,mode}={}){
  const configured=game.modules?.get?.(CP_NS)?.api?.coverMode;
@@ -173,8 +200,9 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   cpFinite(target?.losHeight)?target.losHeight:null;
  if(selectedMode==="3d"&&(sourceHeight===null||targetHeight===null))
   return cpResult("uncertain","projectile-height-unverified",{mode:selectedMode});
- if(selectedMode==="3d"&&!multilevel&&sourceHeight!==targetHeight)
-  return cpResult("uncertain","different-sampled-attack-heights",{mode:selectedMode});
+ // Tokens on equal ground elevation may have different LOS eye heights.
+ // Evaluate the sloping projectile ray at each wall intersection instead.
+ const sloped=selectedMode==="3d"&&sourceHeight!==targetHeight;
  const walls=cpCollection(s.walls),tiles=cpCollection(s.tiles);
  const regions=cpCollection(s.regions);
  const all=tokens??globalThis.canvas?.tokens?.placeables;
@@ -189,19 +217,14 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   return cpResult("uncertain","region-collision-unverified",{mode:selectedMode});
  const blockingWalls=[];
  const ambiguousWalls=[];
+ const slopedWalls=[];
  for(const wall of walls){
-  const value=cpWallData(wall,sourceHeight,selectedMode);
-  // A varying ray height cannot use a single fixed-height wall test.
-  if(selectedMode==="3d"&&sourceHeight!==targetHeight&&value.reason!=="door-open"){
-   // A wall clear at the source Z may still intersect a sloping shot
-   // farther along the ray. Model this conservatively until full 3D
-   // wall/surface intersection classification is validated.
-   ambiguousWalls.push({kind:"unknown",reason:"sloping-ray-wall-intersection",
-    id:cpDoc(wall)?.uuid??cpDoc(wall)?.id});
-   continue;
-  }
-  if(value.kind==="solid")blockingWalls.push(value);
-  else if(value.kind==="unknown")ambiguousWalls.push({...value,id:cpDoc(wall)?.uuid??cpDoc(wall)?.id});
+  const value=cpWallData(wall,sourceHeight,sloped?"2d":selectedMode);
+  if(sloped&&value.kind==="solid")slopedWalls.push(wall);
+  else if(value.kind==="solid")blockingWalls.push(value);
+  else if(value.kind==="unknown")ambiguousWalls.push({
+   ...value,id:cpDoc(wall)?.uuid??cpDoc(wall)?.id
+  });
  }
  const blockers=[];
  if(attackType!=="melee"){
@@ -253,6 +276,12 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
     const cross=cpSegment(from,to,w.a,w.b);
     if(cross==="cross")crossed.push({kind:"solid",id:w.id});
     else if(cross==="ambiguous")uncertainty.push("wall-grazed:"+w.id);
+   }
+   for(const w of slopedWalls){
+    const result=cpSlopedWall(from,to,w,sourceHeight,targetHeight);
+    const id=cpDoc(w)?.uuid??cpDoc(w)?.id;
+    if(result.kind==="solid")crossed.push({kind:"solid",id});
+    else if(result.kind==="unknown")uncertainty.push(result.reason+":"+id);
    }
    for(const w of ambiguousWalls){
     const d=walls.find(x=>(cpDoc(x)?.uuid??cpDoc(x)?.id)===w.id);
