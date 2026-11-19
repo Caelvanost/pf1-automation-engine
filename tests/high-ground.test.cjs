@@ -97,7 +97,7 @@ assert.equal(d.input.checked,false,'ranged cannot precheck melee higher ground')
 action.actionType='mwak';
 // No checkbox found -> fail open, never any bonus.
 a=use();d=checkbox();d.input.getAttribute=()=>null;d.input.id=null;
-d.input.closest=()=>({textContent:'Not high ground'});
+d.input.closest=()=>({textContent:'Other modifier'});
 render({actionUse:a},d.root);
 assert.equal(d.input.checked,false);
 assert.equal(api.lastDiagnostic().reason,'native-higher-ground-checkbox-not-found');
