@@ -374,6 +374,18 @@ after(base);
  target.document.x=600; // exactly 9 m.
  assert.equal(actionRange.inspectActionUse(actionUse).status,'in-range',
   '30 ft includes its exact 9 m boundary');
+ // Cold Blast still uses declared ft units, but vertical difference also
+ // matters. A target 2m horizontally / 10m vertically is over 30ft.
+ target.document.x=100;
+ target.document.elevation=10;
+ const coldVertical=actionRange.inspectActionUse(actionUse);
+ assert.equal(coldVertical.status,'out-of-range');
+ assert.equal(coldVertical.maximumReach,9);
+ assert.equal(coldVertical.verticalDistance,10);
+ const coldVerticalNative={...native};
+ assert.equal(await actionUse.process(),undefined);
+ assert.deepEqual(native,coldVerticalNative);
+ target.document.elevation=0;
  target.document.x=700; // 10.5 m, outside 30 ft.
  const coldSnapshot={...native};
  metric=actionRange.inspectActionUse(actionUse);
