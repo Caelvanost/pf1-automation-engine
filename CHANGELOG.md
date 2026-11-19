@@ -1,3 +1,12 @@
+## v1.39.5 — Reliable native chat-card cover AC after weapon use
+
+- Fix missing target effective AC annotations on valid native Pathfinder attack cards that do not produce a matching PF1AE `pf1AttackRoll` resolution event. The post-use chat-card route now directly inspects a single targeted attack, its geometry and target Actor defense, and displays the **confirmed cover-adjusted AC** on the existing ChatMessage.
+- Example: the target's native PF1 shield still shows **16** (unchanged character defense), while a separate **Target AC incl. cover: 20** annotation shows 16 + verified +4 against that specific attack. We do not overwrite the native target shield icon or change the Actor's sheet values.
+- Native PF1 cover already included in typed AC sources is detected and not added a second time. If the engine cannot verify the native bonus provenance or cover geometry (e.g. edge/corner rays around a dock), it shows an **Unverified** message rather than inventing a number.
+- The new direct post-use route reuses existing serialized/idempotent chat updates and coexists with the detailed per-attack event route. Cover blocking, action range, attack rolls, ammo/charges, and the underlying PF1 chat card remain untouched.
+- Add regression testing for a native chat card without any PF1AE attack-roll event and for uncertain cover geometry.
+- Experimental: verify the card update on live Foundry VTT 13 / PF1 11.11, and inspect the exact cover geometry if partial vision yields an uncertain result.
+
 ## v1.39.4 — Display the target's cover-adjusted AC in the native attack chat card
 
 - Display **Target AC incl. cover**, **Native AC**, and the confirmed cover modifier (+4 when normal/soft cover) directly on the original PF1 chat card for a single targeted attack; no new chat message, attack roll, Actor sheet mutation or additional AC modifier.
