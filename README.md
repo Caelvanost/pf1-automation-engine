@@ -4,6 +4,12 @@
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
+## Elevation-aware action range (v1.39.3)
+
+PF1AE's pre-dialog out-of-range cancellation now includes the **vertical separation** between attacker and the selected target. For instance, an adjacent target 2 m below a melee attacker with **1.5 m reach** is out of reach and the attack is stopped before the native dialog and resources. PF1 1-2-1 alternating diagonals apply in three dimensions whenever occupied grid-cell centres, square distance and vertical heights are all grid-aligned and the native 2D ruler agrees with that convention. This allows a one-square horizontal + one-square vertical diagonal, but charges two consecutive three-dimensional diagonals as three squares.
+
+When elevations are fractional or the grid convention cannot be verified, only a **conservative lower bound** (the greater of native 2D distance and vertical distance) is used, preventing false cancellations. The action-specific feet/meters conversion, closest occupied squares of Large tokens, targeted spells/abilities, native dialog cancellation, and fail-open behavior for missing geometry or multiple targets remain unchanged.
+
 ## Native higher-ground checkbox (v1.39.2)
 
 Enable **Precheck native higher-ground melee option** in PF1AE world settings and disable Roll Bonuses higher-ground automation to prevent competition over the same native PF1 attack checkbox.

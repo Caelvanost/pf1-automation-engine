@@ -1,3 +1,11 @@
+## v1.39.3 — 3D elevation-aware action range cancellation (experimental)
+
+- Correct an omission in the action range gate: v1.39.2 returned `uncertain` whenever attacker/target elevations differed, so a melee attacker with 1.5 m reach could attack a target 2 m below while standing in an adjacent square.
+- Include the absolute elevation difference in the range calculation on square grids. When all three axes are measured in whole grid-square increments and the native 2D ruler agrees with the PF1 alternating-diagonal convention, measure in three dimensions using the first diagonal = 1 square, second diagonal = 2 squares rule. One horizontal + one vertical grid step remains one diagonal; two consecutive 3D diagonals consume three grid squares.
+- For fractional or unverifiable grid distances, use a conservative lower bound `max(native horizontal distance, absolute elevation difference)` to avoid incorrectly rejecting legal moves. Unverifiable elevation remains `uncertain` and never blocks.
+- Preserve action-specific feet/meters conversions, melee reach from native PF1, ranged spell/ability/weapon ranges, closest occupied squares of Large targets, and early native dialogue cancellation without resource expenditure. Expose `distance`, `horizontalDistance`, `verticalDistance` and `distanceMode` in the existing action-range API.
+- Extend maintained regression tests for 1.5 m reach vs 2 m elevation difference (no dialog or ammo), one 3D diagonal, two 3D diagonals, fractional elevation, missing elevation, and Cold Blast 30 ft on a metric map with target vertically beyond 9 m. Verify on live PF1 11.11.
+
 ## v1.39.2 — Use PF1 native Higher Ground checkbox only (experimental)
 
 - Replace the v1.39.0/1.39.1 injected `1[PF1AE Higher Ground]` attack bonus with **native attack-dialog checkbox preselection only**. PF1 retains responsibility for its own normal +1.
