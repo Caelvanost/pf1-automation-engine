@@ -1,3 +1,11 @@
+## v1.39.7 — Prove partial cover even if some rays graze wall endpoints
+
+- Fix a confirmed live pier case: in both 2D and 3D the detector reported `uncertain / wall-or-creature-contact-ambiguous`, though ray diagnostics showed all four attacker origins had at least one definite `solid` wall crossing; other rays merely `wall-grazed`.
+- Determine cover on **all potential origin corners** before allowing an unknown tangent ray to prevent a decision. If every origin has at least one strictly proven obstruction, cover is confirmed (normal +4 for walls, soft +4 if a proven soft-only origin exists), regardless of other tangent rays. This uses the same Pathfinder 1e target-corner rule.
+- Total cover remains strictly limited to cases where every ray from every origin is solid-blocked; an uncertain ray can never be promoted into total cover. If any origin lacks a proven obstacle and has uncertain rays, keep the result uncertain; no speculative +4.
+- Add a ray-level regression with a partial pier-edge wall between token squares: at least one solid ray for every origin plus endpoint-grazing rays, which must produce normal cover +4. An isolated tangent without proven blocking does not confirm normal cover.
+- Preserve previous native-card effective AC rendering, no double-application, actor-sheet immutability, elevation and range safety.
+
 ## v1.39.6 — Fix 3D cover at different native token LOS heights
 
 - Reproduce live player diagnostic from a pier scene: both attacker and target token elevation are `0`, but PF1AE cover detection returns `uncertain / different-sampled-attack-heights` and therefore never annotates the target's effective AC on the native PF1 chat card.
