@@ -165,9 +165,13 @@ function cbPresentation(event){
  const key=cbKey(event,result);
  if(!key||!result?.coverDiagnosis)return null;
  const cover=result.coverDiagnosis,defense=result.defense;
- if(cover.status!=="confirmed"||
-    !["normal","soft","total"].includes(cover.type))return null;
- const isTotal=cover.type==="total"&&cover.preventsDirectAttack===true;
+ // Uncertain cover is displayed as a diagnostic, never as a guessed +4.
+ // This is important around dock edges, roof and wall corners where
+ // native token sight alone cannot prove a PF1 cover bonus.
+ const uncertain=cover.status==="uncertain";
+ if(!uncertain&&(cover.status!=="confirmed"||
+    !["normal","soft","total"].includes(cover.type)))return null;
+ const isTotal=!uncertain&&cover.type==="total"&&cover.preventsDirectAttack===true;
  const native=cbNumber(defense?.baseValue);
  const effective=cbNumber(defense?.value);
  const declared=cbNumber(cover.acBonus);
@@ -189,6 +193,10 @@ function cbPresentation(event){
  let content;
  if(isTotal){
   content='<strong>'+blocked+'</strong>';
+ }else if(uncertain){
+  content='<strong>'+effectiveLabel+': '+uncertainLabel+'</strong>'+
+   '<div>'+nativeLabel+': '+String(native)+
+   ' · '+cbLabel("PF1AE.Cover.UncertainGeometry","Cover geometry cannot be verified")+'</div>';
  }else{
   const actual=effective===null?uncertainLabel:String(effective);
   const bonus=declared===null?'?':'+'+String(declared);
@@ -204,7 +212,7 @@ function cbPresentation(event){
   'margin-top:0.5rem;padding-top:0.4rem">'+
   '<strong>'+title+suffix+'</strong><div>'+content+'</div></section>';
 }
-async function cbOnResolved(event){
+async function cbOnResolved(event,messageOverride=null){
  if(!cbEnable()||!event?.sourceMessageId)return;
  const section=cbPresentation(event);
  if(!section)return;
@@ -214,7 +222,8 @@ async function cbOnResolved(event){
  // callback. Serialize updates so every attack has its own CA display and
  // no two writes overwrite each other.
  const operation=prior.catch(()=>{}).then(async()=>{
-  const card=game.messages?.get?.(messageId);
+  const card=messageOverride?.id===messageId?messageOverride:
+   game.messages?.get?.(messageId);
   if(!card||card.documentName!=="ChatMessage"||
    typeof card.content!=="string"||typeof card.update!=="function")return;
   if(!game.user?.isGM&&card.user?.id!==game.user?.id&&
@@ -231,9 +240,60 @@ async function cbOnResolved(event){
  });
  await operation;
 }
+/**
+ * Direct post-use fallback for PF1 native chat cards.
+ *
+ * The previous chat display depended solely on the secondary
+ * pf1AttackRoll -> pf1aeAttackResolution event chain. Some native PF1
+ * attacks create a valid card without exposing the expected paired roll
+ * event to PF1AE, so no cover line was shown at all. This hook has the
+ * actual completed ActionUse and ChatMessage and only computes a read-only
+ * target defense. Existing detailed per-roll events still work.
+ */
+async function cbOnNativePostUse(actionUse,message){
+ if(!cbEnable()||message?.documentName!=="ChatMessage"||
+    typeof message?.id!=="string")return;
+ const action=actionUse?.action??actionUse?.shared?.action;
+ const actor=actionUse?.actor??action?.actor??action?.item?.actor;
+ if(!action||!actor?.uuid)return;
+ const geometry=cbGeometry(actionUse);
+ if(!geometry?.target?.actor?.uuid||!geometry.assessment)return;
+ const cover=geometry.assessment;
+ if(cover.status!=="confirmed"&&cover.status!=="uncertain")return;
+ if(cover.status==="confirmed"&&
+    !["normal","soft"].includes(cover.type))return;
+ const api=game.modules.get(CB_NS)?.api?.attackResolution;
+ if(typeof api?.resolveAttack!=="function")return;
+ let defense=null;
+ try{
+  const evaluated=await api.resolveAttack({
+   actor,action,actionUse,targetActor:geometry.target.actor,
+   targetToken:geometry.target,
+   ...(cover.status==="confirmed"?{coverAssessment:cover}:{})
+  });
+  defense=evaluated?.defense??null;
+ }catch(error){
+  console.warn("[PF1AE][CoverBridge] Native cover defense unavailable",error);
+  return;
+ }
+ const tokenUuid=geometry.target.document?.uuid;
+ if(!tokenUuid||!defense)return;
+ const event={
+  sourceMessageId:message.id,rollIndex:0,
+  targetResults:[{targetTokenUuid:tokenUuid,coverDiagnosis:cover,
+   defense}]
+ };
+ // Reuse the serialized, deduplicated normal chat writer. If the richer
+ // attack event was already written, this fallback does nothing.
+ await cbOnResolved(event,message);
+}
 Hooks.once("init",cbInstallEarlyGate);
 Hooks.on("pf1PreActionUse",cbPreActionUse);
 Hooks.on("pf1aeAttackResolution",event=>{void cbOnResolved(event)});
+Hooks.on("pf1PostActionUse",(use,message)=>{
+ void cbOnNativePostUse(use,message).catch(error=>
+  console.warn("[PF1AE][CoverBridge] Native post-use fallback failed",error));
+});
 Hooks.once("ready",()=>{
  const mod=game.modules?.get?.(CB_NS);
  if(!mod)return;mod.api??={};
@@ -244,6 +304,7 @@ Hooks.once("ready",()=>{
    inspectActionUse?.(actionUse)??null,
   previewRange:actionUse=>game.modules.get(CB_NS)?.api?.actionRange?.
    inspectActionUse?.(actionUse)??null,
-  cardSection:event=>cbPresentation(event)
+  cardSection:event=>cbPresentation(event),
+  annotateNativePostUse:(use,message)=>cbOnNativePostUse(use,message)
  });
 });
