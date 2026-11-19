@@ -107,7 +107,7 @@ const card={id:'message',documentName:'ChatMessage',user:{id:'player'},
  content:'<article class="pf1-chat">PF1 native attack card</article>',
  async update(value){this.content=value.content;cards.push(value.content)}};
 system.messages.set('message',card);
-const base={sourceMessageId:'message',targetResults:[{targetTokenUuid:target.document.uuid,
+const base={sourceMessageId:'message',rollIndex:0,targetResults:[{targetTokenUuid:target.document.uuid,
  coverDiagnosis:{status:'confirmed',type:'normal',acBonus:4},
  defense:{baseValue:17,value:21,coverBonus:4}}]};
 const html=pf1aeModule.api.coverNativeBridge.cardSection(base);
@@ -436,10 +436,53 @@ after(base);
  after(base);
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(cards.length,1,'do not append duplicate annotations');
+ // Attack 2 from the same full attack must append its own effective CA.
+ const second={...base,rollIndex:1,targetResults:[{
+  ...base.targetResults[0],
+  defense:{baseValue:18,value:22,coverBonus:4}
+ }]};
+ after(second);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(cards.length,2,'second full-attack result annotates same native card');
+ assert.equal((card.content.match(/data-pf1ae-cover-key=/g)??[]).length,2,
+  'each attack has a distinct cover entry');
+ assert.ok(card.content.includes('Target AC incl. cover: 22</strong>'));
+ after(second);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(cards.length,2,'duplicate attack 2 event does not reappend');
+ // Two events dispatched back-to-back must serialize message updates.
+ const third={...base,rollIndex:2,targetResults:[{
+  ...base.targetResults[0],
+  defense:{baseValue:19,value:23,coverBonus:4}
+ }]};
+ const fourth={...base,rollIndex:3,targetResults:[{
+  ...base.targetResults[0],
+  defense:{baseValue:20,value:24,coverBonus:4}
+ }]};
+ after(third);after(fourth);
+ await new Promise(resolve=>setImmediate(resolve));
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(cards.length,4,'concurrent resolution events retain both chat entries');
+ assert.equal((card.content.match(/data-pf1ae-cover-key=/g)??[]).length,4);
+ // Native typed +4 already incorporated: show the original effective AC,
+ // explain the existing cover instead of adding another 4.
+ const already={...base,rollIndex:4,targetResults:[{
+  ...base.targetResults[0],
+  defense:{baseValue:24,value:24,coverBonus:0}
+ }]};
+ assert.ok(pf1aeModule.api.coverNativeBridge.cardSection(already)
+  .includes('Already included in native AC'));
+ // Unknown native provenance must not invent a final AC.
+ const unverified={...base,rollIndex:5,targetResults:[{
+  ...base.targetResults[0],defense:{baseValue:20,value:null,coverBonus:4}
+ }]};
+ const unverifiedHtml=pf1aeModule.api.coverNativeBridge.cardSection(unverified);
+ assert.ok(unverifiedHtml.includes('Unverified (GM review)'));
+ assert.ok(!unverifiedHtml.includes('Target AC incl. cover: 24'));
  const total={...base,targetResults:[{targetTokenUuid:target.document.uuid,
   coverDiagnosis:{status:'confirmed',type:'total',
    preventsDirectAttack:true},defense:{baseValue:17,value:null}}]};
- assert.ok(pf1aeModule.api.coverNativeBridge.cardSection(total).includes('PF1AE.Cover.TotalCardWarning'));
+ assert.ok(pf1aeModule.api.coverNativeBridge.cardSection(total).includes('Total cover: direct attack is blocked'));
  assert.equal(pf1aeModule.api.coverNativeBridge.cardSection({
   ...base,targetResults:[{...base.targetResults[0],
    coverDiagnosis:{status:'uncertain'}}]}),null);

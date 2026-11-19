@@ -1,3 +1,12 @@
+## v1.39.4 — Display the target's cover-adjusted AC in the native attack chat card
+
+- Display **Target AC incl. cover**, **Native AC**, and the confirmed cover modifier (+4 when normal/soft cover) directly on the original PF1 chat card for a single targeted attack; no new chat message, attack roll, Actor sheet mutation or additional AC modifier.
+- Recognize when native PF1 AC sources already include the cover bonus (e.g. native 24 with typed +4 cover) and explicitly label it as already included, avoiding a second +4. When native AC source provenance is uncertain, show an unverified effective AC instead of displaying a guessed number.
+- For full attacks and sequential roll-resolution events, append distinct per-attack effective-AC entries and serialize asynchronous ChatMessage updates so that simultaneous events do not overwrite one another; deduplicate repeated events by attack index and target UUID.
+- Preserve early total-cover cancellation before attack rolls and other existing geometry and range checks.
+- Expand the cover-native-bridge regression suite to verify effective CA, same-card multiattack entries, duplicate events, simultaneous events, existing cover and unknown source safety.
+- Experimental: user verification required with real PF1 11.11 chat cards and specific cover layouts.
+
 ## v1.39.3 — 3D elevation-aware action range cancellation (experimental)
 
 - Correct an omission in the action range gate: v1.39.2 returned `uncertain` whenever attacker/target elevations differed, so a melee attacker with 1.5 m reach could attack a target 2 m below while standing in an adjacent square.

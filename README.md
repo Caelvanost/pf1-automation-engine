@@ -4,6 +4,12 @@
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
+## Cover-adjusted target AC shown in native chat card (v1.39.4)
+
+When a single target receives confirmed normal or soft cover in the PF1AE read-only cover evaluation, the **existing PF1 attack chat card** is annotated with the target's verified effective AC, e.g. **Target AC incl. cover: 24**, **Native AC: 20 · Cover bonus: +4**. This is a display of the defense resolution, **not** a change to the Actor's sheet or the native roll, and does not create another message.
+
+When an existing typed native cover modifier is already included in the character's AC, the annotation shows the resulting effective AC unchanged, identifies that cover is already included and never adds +4 again. When the native AC sources cannot be trusted, it explicitly displays **Unverified (GM review)**, not a fabricated effective AC. Full attacks now receive separately numbered cover results within the same chat message, serialized to prevent concurrent chat-card updates from overwriting another attack. Total cover still prevents direct attacks before the native dialog.
+
 ## Elevation-aware action range (v1.39.3)
 
 PF1AE's pre-dialog out-of-range cancellation now includes the **vertical separation** between attacker and the selected target. For instance, an adjacent target 2 m below a melee attacker with **1.5 m reach** is out of reach and the attack is stopped before the native dialog and resources. PF1 1-2-1 alternating diagonals apply in three dimensions whenever occupied grid-cell centres, square distance and vertical heights are all grid-aligned and the native 2D ruler agrees with that convention. This allows a one-square horizontal + one-square vertical diagonal, but charges two consecutive three-dimensional diagonals as three squares.
