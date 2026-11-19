@@ -146,50 +146,90 @@ function cbPreActionUse(actionUse){
  }
 }
 const cbNumber=n=>typeof n==="number"&&Number.isFinite(n)?n:null;
+const CB_CHAT_QUEUES=new Map();
+const cbLabel=(key,fallback)=>{
+ const value=game.i18n?.localize?.(key);
+ return typeof value==="string"&&value!==key?value:fallback;
+};
+function cbKey(event,result){
+ const uuid=result?.targetTokenUuid;
+ const index=event?.rollIndex;
+ if(typeof uuid!=="string"||!/^[A-Za-z0-9_.-]{1,200}$/.test(uuid)||
+  !Number.isSafeInteger(index)||index<0||index>99)return null;
+ return String(index)+":"+uuid;
+}
 function cbPresentation(event){
  if(!event||!event.sourceMessageId||
-    !Array.isArray(event.targetResults)||event.targetResults.length!==1)return null;
+   !Array.isArray(event.targetResults)||event.targetResults.length!==1)return null;
  const result=event.targetResults[0];
- if(!result?.targetTokenUuid||!result?.coverDiagnosis)return null;
- const cover=result.coverDiagnosis;
- const defense=result.defense;
- if(cover.status!=="confirmed")return null;
+ const key=cbKey(event,result);
+ if(!key||!result?.coverDiagnosis)return null;
+ const cover=result.coverDiagnosis,defense=result.defense;
+ if(cover.status!=="confirmed"||
+    !["normal","soft","total"].includes(cover.type))return null;
+ const isTotal=cover.type==="total"&&cover.preventsDirectAttack===true;
  const native=cbNumber(defense?.baseValue);
  const effective=cbNumber(defense?.value);
+ const declared=cbNumber(cover.acBonus);
  const added=cbNumber(defense?.coverBonus);
- const isTotal=cover.type==="total"&&cover.preventsDirectAttack===true;
  if(!isTotal&&native===null)return null;
- // No user-provided HTML: all text is constant and numbers verified.
- const safe=(v)=>String(v);
- const title=game.i18n?.localize?.("PF1AE.Cover.CardTitle")??"PF1AE cover";
- const nativeLabel=game.i18n?.localize?.("PF1AE.Cover.NativeAC")??"Native AC";
- const effectiveLabel=game.i18n?.localize?.("PF1AE.Cover.EffectiveAC")??"Effective AC";
- const pending=game.i18n?.localize?.("PF1AE.Cover.PendingAC")??"Unverified (GM review)";
- const blocked=game.i18n?.localize?.("PF1AE.Cover.TotalCardWarning")??"Total cover detected after the roll: review and disregard this direct attack.";
- const bonus=added===null?"?":added>0?"+"+safe(added):safe(added);
- const content=isTotal?
-  '<strong>'+blocked+'</strong>':
-  nativeLabel+': <strong>'+safe(native)+'</strong> · '+
-  effectiveLabel+': <strong>'+(effective===null?pending:safe(effective))+
-  '</strong> ('+bonus+')';
- return '<section class="pf1ae-cover-result" data-pf1ae-cover="1" style="border-top:1px solid var(--color-border-light-primary,#999);margin-top:0.5rem;padding-top:0.4rem">'+
-  '<strong>'+title+'</strong><div>'+content+'</div></section>';
+ // Display ONLY a previously evaluated defense. Never recompute a new
+ // combat outcome by adding cover to sheet AC here: native cover can
+ // already be part of the sheet total and source provenance can be unknown.
+ const title=cbLabel("PF1AE.Cover.CardTitle","PF1AE — cover");
+ const nativeLabel=cbLabel("PF1AE.Cover.NativeAC","Native AC");
+ const effectiveLabel=cbLabel("PF1AE.Cover.EffectiveAC","Target AC incl. cover");
+ const bonusLabel=cbLabel("PF1AE.Cover.CoverBonus","Cover bonus");
+ const includedLabel=cbLabel("PF1AE.Cover.AlreadyIncluded","Already included in native AC");
+ const uncertainLabel=cbLabel("PF1AE.Cover.PendingAC","Unverified (GM review)");
+ const blocked=cbLabel("PF1AE.Cover.TotalCardWarning",
+  "Total cover: direct attack is blocked");
+ const attackLabel=cbLabel("PF1AE.Cover.AttackNumber","Attack");
+ const suffix=' · '+attackLabel+' '+String(event.rollIndex+1);
+ let content;
+ if(isTotal){
+  content='<strong>'+blocked+'</strong>';
+ }else{
+  const actual=effective===null?uncertainLabel:String(effective);
+  const bonus=declared===null?'?':'+'+String(declared);
+  const included=effective!==null&&declared!==null&&added===0&&declared>0;
+  content='<strong>'+effectiveLabel+': '+actual+'</strong>'+
+   '<div>'+nativeLabel+': '+String(native)+
+   ' · '+bonusLabel+': '+bonus+
+   (included?' ('+includedLabel+')':'')+'</div>';
+ }
+ return '<section class="pf1ae-cover-result" data-pf1ae-cover="1" '+
+  'data-pf1ae-cover-key="'+key+'" '+
+  'style="border-top:1px solid var(--color-border-light-primary,#999);'+
+  'margin-top:0.5rem;padding-top:0.4rem">'+
+  '<strong>'+title+suffix+'</strong><div>'+content+'</div></section>';
 }
 async function cbOnResolved(event){
  if(!cbEnable()||!event?.sourceMessageId)return;
  const section=cbPresentation(event);
  if(!section)return;
- const card=game.messages?.get?.(event.sourceMessageId);
- if(!card||card.documentName!=="ChatMessage"||
-  typeof card.content!=="string"||typeof card.update!=="function")return;
- // Only the author (or GM) may update the original message.
- if(!game.user?.isGM&&card.user?.id!==game.user?.id&&
-   card.user!==game.user?.id)return;
- const source=card.content;
- // The event arrives after native PF1 has posted the card.
- if(source.includes('data-pf1ae-cover="1"'))return;
- try{await card.update({content:source+section})}
- catch(error){console.warn("[PF1AE][CoverBridge] Card annotation unavailable",error)}
+ const messageId=event.sourceMessageId;
+ const prior=CB_CHAT_QUEUES.get(messageId)??Promise.resolve();
+ // Full attacks dispatch multiple resolution hooks without awaiting the
+ // callback. Serialize updates so every attack has its own CA display and
+ // no two writes overwrite each other.
+ const operation=prior.catch(()=>{}).then(async()=>{
+  const card=game.messages?.get?.(messageId);
+  if(!card||card.documentName!=="ChatMessage"||
+   typeof card.content!=="string"||typeof card.update!=="function")return;
+  if(!game.user?.isGM&&card.user?.id!==game.user?.id&&
+     card.user!==game.user?.id)return;
+  const source=card.content;
+  const key=cbKey(event,event.targetResults?.[0]);
+  if(!key||source.includes('data-pf1ae-cover-key="'+key+'"'))return;
+  try{await card.update({content:source+section})}
+  catch(error){console.warn("[PF1AE][CoverBridge] Card annotation unavailable",error)}
+ });
+ CB_CHAT_QUEUES.set(messageId,operation);
+ void operation.finally(()=>{
+  if(CB_CHAT_QUEUES.get(messageId)===operation)CB_CHAT_QUEUES.delete(messageId);
+ });
+ await operation;
 }
 Hooks.once("init",cbInstallEarlyGate);
 Hooks.on("pf1PreActionUse",cbPreActionUse);
