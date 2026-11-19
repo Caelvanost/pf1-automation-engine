@@ -175,6 +175,7 @@
       "EffectiveAC": "CA cible avec abri",
       "CoverBonus": "Bonus d’abri",
       "AlreadyIncluded": "déjà inclus dans la CA native",
+      "UncertainGeometry": "Géométrie de l’abri non vérifiable",
       "AttackNumber": "Attaque",
       "PendingAC": "Indéterminée (contrôle du MJ)",
       "TotalBlocked": "Abri total : aucune ligne d'effet directe. Attaque directe annulée.",
