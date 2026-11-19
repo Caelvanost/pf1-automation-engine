@@ -172,7 +172,10 @@
     "Cover": {
       "CardTitle": "PF1AE — cover against this attack",
       "NativeAC": "Native AC",
-      "EffectiveAC": "Effective AC",
+      "EffectiveAC": "Target AC incl. cover",
+      "CoverBonus": "Cover bonus",
+      "AlreadyIncluded": "already included in native AC",
+      "AttackNumber": "Attack",
       "PendingAC": "Unverified (GM review)",
       "TotalBlocked": "Total cover: no direct line of effect. Direct attack cancelled.",
       "TotalCardWarning": "Total cover detected after the attack: review and disregard this direct attack."
