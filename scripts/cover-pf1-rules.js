@@ -319,9 +319,35 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   return cpResult("confirmed","all-adjacent-melee-rays-clear",{
    type:"none",method,origins:cornerResults,
    multilevel,sourceHeight,targetHeight,mode:selectedMode});
- // A solid obstruction along every ray may indicate total cover,
- // but PF1 total cover depends on line of effect, not a ray count.
- // Equally, an unknown/grazing ray may be the only clear option.
+ // A strict wall/creature crossing proves at least partial cover for a
+ // particular origin even if another ray only grazes a wall endpoint.
+ // Unknown rays can change an otherwise clear origin into covered, but
+ // cannot erase a proven blocking ray from that SAME origin.
+ //
+ // PF1 ranged/reach: the attacker may choose any occupied-square corner.
+ // Therefore +4 is proven only when EVERY possible origin has at least
+ // one definitively obstructed ray to a target corner.
+ //
+ // Total cover must remain strict: only fully proven solid obstruction
+ // across every ray can establish that no direct ray gets through.
+ if(considered.length>0&&considered.every(o=>o.traces.every(r=>
+    r.blocked.some(x=>x.kind==="solid"))))
+  return cpResult("confirmed","every-direct-ray-blocked-by-solid-walls",{
+   type:"total",method,origins:cornerResults,
+   multilevel,sourceHeight,targetHeight,mode:selectedMode});
+ const guaranteed=considered.length>0&&considered.every(o=>o.solid||o.soft);
+ if(guaranteed){
+  // A selected origin with a proven soft-only blocker is sufficient to
+  // establish cover, but not necessarily a solid-wall cover bonus.
+  const softOnly=considered.some(o=>!o.solid&&o.soft);
+  const type=softOnly?"soft":"normal";
+  return cpResult("confirmed","every-origin-has-proven-obstruction",{
+   type,method,origins:cornerResults,
+   multilevel,sourceHeight,targetHeight,mode:selectedMode
+  });
+ }
+ // There is an origin without a proven blocker. An ambiguous ray on
+ // that origin could still establish cover, so do not guess +0 or +4.
  if(considered.some(r=>r.unknown))
   return cpResult("uncertain","wall-or-creature-contact-ambiguous",{
    method,origins:cornerResults});
@@ -334,18 +360,11 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   return cpResult("confirmed","no-cover",{
    type:"none",method,origins:cornerResults,
    multilevel,sourceHeight,targetHeight});
- // A solid wall crossing EVERY target-corner ray from EVERY valid
- // attacker origin establishes total cover / no direct line of effect.
- // A grazing/unknown ray above already returned "uncertain".
- if(considered.length>0&&considered.every(o=>o.traces.every(r=>
-    r.blocked.some(x=>x.kind==="solid"))))
-  return cpResult("confirmed","every-direct-ray-blocked-by-solid-walls",{
-   type:"total",method,origins:cornerResults,
-   multilevel,sourceHeight,targetHeight,mode:selectedMode});
  return cpResult("confirmed","pf1-corner-rays-obstructed",{
   type:selected.solid?"normal":"soft",method,
   selectedOrigin:selected.originCorner,origins:cornerResults,
   multilevel,sourceHeight,targetHeight});
+
 }
 Hooks.once("ready",()=>{
  const module=game.modules.get(CP_NS);
