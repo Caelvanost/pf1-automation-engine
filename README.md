@@ -1,8 +1,14 @@
 # PF1 Automation Engine
 
-**Version 1.39.6 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.39.7 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Proven cover despite grazing wall endpoints (v1.39.7)
+
+In Pathfinder 1e, **ranged/reach cover** checks rays from each potential attacker-space corner to all target-space corners. PF1AE previously returned `uncertain / wall-or-creature-contact-ambiguous` whenever **any** ray grazed a wall, even if **every** possible origin also had a different, strictly obstructed ray. On the actual pier encounter, the attacker's four origins each produced at least one `solid` wall crossing while several other rays were tangent.
+
+PF1AE now confirms normal +4 cover when every possible attacker origin has a proven wall crossing (or qualified soft cover) and cannot be entirely clear, even if other rays graze an endpoint. It still rejects speculative bonuses: when an origin has no proven obstruction and only grazing rays, the result stays `uncertain`. Total cover still requires every ray to be demonstrably blocked. The original chat card continues to show native AC and verified effective cover-adjusted AC without changing the target Actor.
 
 ## 3D cover with different attacker and target LOS heights (v1.39.6)
 
