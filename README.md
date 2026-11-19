@@ -1,8 +1,14 @@
 # PF1 Automation Engine
 
-**Version 1.39.1 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.39.5 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Direct native-card cover AC delivery (v1.39.5)
+
+PF1AE now also handles the PF1 `pf1PostActionUse` event **directly**, so a native attack card can display a verified cover-adjusted target AC even if the secondary `pf1AttackRoll` / `pf1aeAttackResolution` pairing was unavailable. The new fallback obtains the actual native ActionUse, selected target and ChatMessage, recomputes only the read-only cover assessment and evaluates native AC plus cover through the existing no-double-counting defense adapter. It queues an update to the **original** native message; no actor, roll or damage value is changed.
+
+Example: native target AC **16** with verified normal cover **+4** produces an added **Target AC incl. cover: 20** row, explaining the native 16 and +4. The PF1 target shield icon may still display the unmodified native AC; PF1AE does not rewrite that system-owned icon. For uncertain corner geometry (common near docks or walls), it displays **Unverified (GM review)** instead of fabricating a +4; this separates visual token visibility from confirmed Pathfinder cover. This direct path and the original multiattack path deduplicate/serialize updates on the same message.
 
 ## Cover-adjusted target AC shown in native chat card (v1.39.4)
 
