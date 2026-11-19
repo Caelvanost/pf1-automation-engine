@@ -482,7 +482,7 @@ after(base);
  const total={...base,targetResults:[{targetTokenUuid:target.document.uuid,
   coverDiagnosis:{status:'confirmed',type:'total',
    preventsDirectAttack:true},defense:{baseValue:17,value:null}}]};
- assert.ok(pf1aeModule.api.coverNativeBridge.cardSection(total).includes('PF1AE.Cover.TotalCardWarning'));
+ assert.ok(pf1aeModule.api.coverNativeBridge.cardSection(total).includes('Total cover: direct attack is blocked'));
  assert.equal(pf1aeModule.api.coverNativeBridge.cardSection({
   ...base,targetResults:[{...base.targetResults[0],
    coverDiagnosis:{status:'uncertain'}}]}),null);
