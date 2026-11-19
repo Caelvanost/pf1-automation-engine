@@ -1,3 +1,12 @@
+## v1.39.6 — Fix 3D cover at different native token LOS heights
+
+- Reproduce live player diagnostic from a pier scene: both attacker and target token elevation are `0`, but PF1AE cover detection returns `uncertain / different-sampled-attack-heights` and therefore never annotates the target's effective AC on the native PF1 chat card.
+- In 3D cover mode, stop requiring equal attacker and target `losHeight` values when their scene elevations are equal. A difference in sampled eye height produces a sloping projectile ray, not inherently an unresolvable attack.
+- For walls whose native movement/door state is verified, calculate the ray height at each strictly crossed XY wall segment and evaluate the actual `wall-height` vertical bounds. Confirm normal cover +4 when a partial wall obstructs, no cover for a low wall below the shot, and total cover for a fully blocking wall.
+- Keep uncertain results on tangent/grazing rays, unknown bounds, roofs and unverified Levels collisions. Do not infer cover solely from Foundry partial token visibility; do not change Actor AC, native roll, resources or add a second chat message.
+- Extend maintained PF1 corner-ray tests for different token LOS heights at the same 0 elevation, partial/low/full walls and unknown wall bounds. Native chat card presentation remains provided by the v1.39.5 post-use integration.
+- Experimental: live scene with Better Roofs/Levels and wall-height flags still needs confirmation; if the new cover reason is another `uncertain` category, diagnostic will identify it.
+
 ## v1.39.5 — Reliable native chat-card cover AC after weapon use
 
 - Fix missing target effective AC annotations on valid native Pathfinder attack cards that do not produce a matching PF1AE `pf1AttackRoll` resolution event. The post-use chat-card route now directly inspects a single targeted attack, its geometry and target Actor defense, and displays the **confirmed cover-adjusted AC** on the existing ChatMessage.
