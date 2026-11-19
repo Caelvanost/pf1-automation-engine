@@ -71,6 +71,29 @@ scene.walls.contents[0].move=0;
 result=check();
 assert.equal(result.status,'uncertain','passable wall may still represent a physical obstacle');
 scene.walls.contents.length=0;
+// Live pier regression: every attacker corner has a strict wall crossing
+// to at least one target corner, while other rays graze its endpoints.
+// The grazes cannot invalidate independently proven partial cover.
+scene.walls.contents.push(wall('pier-edge',200,0,200,100));
+result=check({attackType:'ranged'});
+assert.equal(result.status,'confirmed',
+ 'proven obstruction from every origin must win over unrelated grazing rays');
+assert.equal(result.reason,'every-origin-has-proven-obstruction');
+assert.equal(result.type,'normal');
+assert.equal(result.acBonus,4);
+assert.equal(result.reflexBonus,2);
+assert.equal(result.origins.length,4);
+assert.ok(result.origins.every(o=>o.solid),
+ 'each attacker origin has at least one strict blocked ray');
+assert.ok(result.origins.some(o=>o.unknown),
+ 'the regression must include genuinely grazing rays');
+// A grazing wall with NO strict intersection from at least one possible
+// origin is still uncertain: a tangent alone does not prove +4.
+scene.walls.contents[0].c=[200,0,200,0];
+result=check({attackType:'ranged'});
+assert.notEqual(result.type,'normal',
+ 'zero-length wall endpoint must not award confirmed wall cover');
+scene.walls.contents.length=0;
 // Unknown provenance and vertical geometry must never grant +4 automatically.
 target.document.elevation=10;
 result=check();
