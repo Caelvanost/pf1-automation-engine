@@ -110,14 +110,15 @@ function hgFromUse(use){
 }
 const hgNormalize=s=>String(s??"").normalize("NFD")
  .replace(/[\u0300-\u036f]/g,"").toLowerCase();
-const HG_LABEL=/\b(?:higher[ -]?ground|high[ -]?ground|sur[eé]lev[eé]|surelev|hauteur dominante)\b/i;
+const HG_LABEL=/(?:higher[ -]?ground|high[ -]?ground|elevated[ -]?position|position[ -]?sureleve|surelev|hauteur[ -]?dominante)/i;
 function hgCheckboxText(input,root){
  // Prefer native input data/name/id, its label and surrounding form-group.
  // Do not match an arbitrary checkbox using a general 'height' substring.
  const attr=["name","id","data-flag","data-key","aria-label"].map(key=>
   input.getAttribute?.(key)??"").join(" ");
  const label=input.closest?.("label")||
-  (input.id&&root.querySelector?.('label[for="'+CSS.escape(input.id)+'"]'))||
+  (input.id&&[...(root.querySelectorAll?.("label[for]")??[])]
+   .find(label=>label.getAttribute?.("for")===input.id))||
   input.parentElement;
  const text=String(label?.textContent??"").slice(0,240);
  return hgNormalize(attr+" "+text);
