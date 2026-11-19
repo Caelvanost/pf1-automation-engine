@@ -1,164 +1,157 @@
 /**
- * PF1AE 1.39 — Higher ground (+1 melee attack), Foundry VTT 13 / PF1 11.11.
- * Read-only geometry; native PF1 rolls all attack dice. No actor/Item updates.
+ * PF1AE — PF1 11.11 native "Higher Ground" checkbox preselection.
  *
- * A higher token elevation alone does NOT prove advantageous terrain (flight,
- * hovering, multi-level interiors). Default safe mode requires a GM-confirmed
- * support flag on the ATTACKER TokenDocument:
- *   token.document.setFlag("pf1-automation-engine","highGroundSupported",true)
+ * Absolutely no attack bonus injection or Item/Actor writes.
+ * The user retains full control of the native attack dialog checkbox.
+ * A simple positive Token elevation and verified melee reach are enough.
  *
- * Trusted Table Mode skips the per-token GM confirmation, but retains the
- * geometric, airborne, melee-only and no-stacking safeguards.
- * "Require terrain confirmation" may be disabled in world settings to treat
- * small positive token elevations as elevated ground (a deliberate GM choice).
- * Never stack with native/other-module higher-ground bonuses.
+ * The checkbox is a native AttackDialog flag, not a documented UseOptions
+ * property. Locate it in the rendered dialog by its own label or attribute
+ * and invoke the real checkbox click handler so PF1 processes it normally.
  */
 const HG_NS="pf1-automation-engine";
 const HG_EPS=1e-6;
-const HG_MARKER="1[PF1AE Higher Ground]";
-const HG_APPLIED=new WeakSet();
 let hgLast=null;
-const hgNum=n=>typeof n==="number"&&Number.isFinite(n)?n:null;
+const HG_TOUCHED=new WeakSet();
+const hgFinite=n=>typeof n==="number"&&Number.isFinite(n);
 const hgDoc=t=>t?.document??t;
-const hgUnit=u=>{
- const v=String(u??"").trim().toLowerCase();
- return ["ft","feet","foot"].includes(v)?"ft":
- ["m","meter","meters","metre","metres"].includes(v)?"m":null;
-};
-const hgResult=(status,reason,extra={})=>Object.freeze({
- status,bonus:status==="confirmed"?1:0,reason,...extra
-});
-const hgReport=r=>{
- hgLast=r;
- try{if(game.settings.get(HG_NS,"genericDebug"))console.debug("[PF1AE][HighGround]",r)}
+const hgList=x=>Array.isArray(x)?x:
+ Array.isArray(x?.contents)?x.contents:
+ typeof x?.values==="function"?[...x.values()]:[];
+const hgReport=result=>{
+ hgLast=result;
+ try{if(game.settings.get(HG_NS,"genericDebug"))
+  console.debug("[PF1AE][HigherGround]",result)}
  catch(_){}
- return r;
+ return result;
 };
 const hgEnabled=()=>{
  try{return game.modules.get(HG_NS)?.active===true&&
- game.settings.get(HG_NS,"genericEnabled")===true&&
- game.settings.get(HG_NS,"autoHighGround")===true}
+  game.settings.get(HG_NS,"genericEnabled")===true&&
+  game.settings.get(HG_NS,"autoHighGround")===true}
  catch(_){return false}
 };
-const hgCollection=x=>Array.isArray(x)?x:
- Array.isArray(x?.contents)?x.contents:
- typeof x?.values==="function"?[...x.values()]:[];
-const hgPoints=(token,grid,scene)=>{
- const d=hgDoc(token),size=hgNum(grid?.size);
- if(!d||d.parent?.id!==scene?.id||size===null||size<=0||
+const hgResult=(status,reason,extra={})=>Object.freeze({
+ status,eligible:status==="eligible",reason,...extra
+});
+function hgPoints(token,grid,scene){
+ const d=hgDoc(token),size=grid?.size;
+ if(!d||d.parent?.id!==scene?.id||!hgFinite(size)||size<=0||
+  !hgFinite(d.x)||!hgFinite(d.y)||
   !Number.isInteger(d.width)||!Number.isInteger(d.height)||
   d.width<1||d.height<1||d.width>16||d.height>16||
-  hgNum(d.x)===null||hgNum(d.y)===null||
   Math.abs(d.x/size-Math.round(d.x/size))>HG_EPS||
   Math.abs(d.y/size-Math.round(d.y/size))>HG_EPS)return null;
- const result=[];
+ const pts=[];
  for(let y=0;y<d.height;y++)for(let x=0;x<d.width;x++)
-  result.push({x:d.x+(x+.5)*size,y:d.y+(y+.5)*size});
- return result;
-};
-const hgFlying=token=>{
- const a=token?.actor,d=hgDoc(token);
- return ["flying","fly","hovering","levitate","levitating"].some(s=>
-  a?.statuses?.has?.(s)===true||d?.statuses?.has?.(s)===true)||
-  a?.system?.attributes?.movement?.fly?.total>0&&
-  (d?.flags?.[HG_NS]?.currentlyFlying===true);
-};
-const hgTerrainConfirmed=token=>{
- const d=hgDoc(token);
- return d?.getFlag?.(HG_NS,"highGroundSupported")===true||
-  d?.flags?.[HG_NS]?.highGroundSupported===true;
-};
+  pts.push({x:d.x+(x+.5)*size,y:d.y+(y+.5)*size});
+ return pts;
+}
 function hgInspect({attacker,target,action,actor}={}){
  if(!hgEnabled())return hgResult("skipped","disabled");
  if(!action||!["mwak","msak"].includes(action.actionType)||
-  action.hasAttack!==true||action.isCombatManeuver===true)
+   action.hasAttack!==true||action.isCombatManeuver===true)
   return hgResult("skipped","not-melee-attack");
- const s=canvas?.scene,g=canvas?.grid;
- if(!s||!g||!["square",1].includes(s.grid?.type)||
-    !hgUnit(s.grid?.units)||typeof g.measurePath!=="function")
+ const scene=canvas?.scene,grid=canvas?.grid;
+ if(!scene||!grid||
+  ![1,"square"].includes(scene.grid?.type)||
+  typeof grid.measurePath!=="function")
   return hgResult("uncertain","grid-unavailable");
- if(!attacker||!target||!actor?.uuid||
-  attacker.actor?.uuid!==actor.uuid||
-  target.actor?.uuid===actor.uuid)
-  return hgResult("uncertain","token-actor-unverified");
+ if(!actor?.uuid||attacker?.actor?.uuid!==actor.uuid||
+  !target||attacker?.actor?.uuid===target?.actor?.uuid)
+  return hgResult("uncertain","attacker-or-target-unavailable");
  const a=hgDoc(attacker),t=hgDoc(target);
- const ae=hgNum(a?.elevation),te=hgNum(t?.elevation);
- if(ae===null||te===null)return hgResult("uncertain","elevation-unavailable");
- if(ae<=te+HG_EPS)return hgResult("not-elevated","attacker-not-higher");
- if(hgFlying(attacker))return hgResult("uncertain","airborne-attacker");
- const sceneSquare=hgNum(s.grid?.distance);
- if(sceneSquare===null||sceneSquare<=0)
-  return hgResult("uncertain","grid-distance-unavailable");
- const delta=ae-te;
- if(delta>sceneSquare+HG_EPS)
-  return hgResult("uncertain","vertical-separation-too-large");
- const aPts=hgPoints(attacker,g,s),tPts=hgPoints(target,g,s);
- if(!aPts?.length||!tPts?.length)
-  return hgResult("uncertain","occupied-squares-unavailable");
+ if(!hgFinite(a?.elevation)||!hgFinite(t?.elevation))
+  return hgResult("uncertain","elevation-unavailable");
+ const elevationDifference=a.elevation-t.elevation;
+ if(elevationDifference<=HG_EPS)
+  return hgResult("not-elevated","attacker-not-higher");
+ const aa=hgPoints(attacker,grid,scene),bb=hgPoints(target,grid,scene);
+ if(!aa?.length||!bb?.length)
+  return hgResult("uncertain","token-squares-unavailable");
  let distance=Infinity;
- for(const p of aPts)for(const q of tPts){
+ for(const p of aa)for(const q of bb){
   let n;
-  try{n=g.measurePath([p,q])?.distance}catch(_){
-   return hgResult("uncertain","measurement-failed");
-  }
-  if(hgNum(n)===null||n<0)return hgResult("uncertain","measurement-unavailable");
+  try{n=grid.measurePath([p,q])?.distance}
+  catch(_){return hgResult("uncertain","grid-measurement-failed")}
+  if(!hgFinite(n)||n<0)
+   return hgResult("uncertain","grid-measurement-unavailable");
   distance=Math.min(distance,n);
  }
- if(distance<HG_EPS)return hgResult("uncertain","overlapping-tokens");
- // PF1 native getRange(max) for melee is prepared in scene units.
+ if(!hgFinite(distance)||distance<=HG_EPS)
+  return hgResult("uncertain","overlapping-tokens");
  let reach;
- try{reach=action.getRange?.({type:"max"})}catch(_){}
- if(hgNum(reach)===null||reach<=0)
+ try{reach=action.getRange?.({type:"max"})}
+ catch(_){return hgResult("uncertain","native-reach-failed")}
+ if(!hgFinite(reach)||reach<=0)
   return hgResult("uncertain","native-reach-unavailable");
- if(distance>reach+HG_EPS)
-  return hgResult("not-eligible","melee-target-out-of-reach",
-   {distance,reach,unit:hgUnit(s.grid.units)});
- let requireEvidence=true;
- try{requireEvidence=game.settings.get(HG_NS,"highGroundRequireSupport")!==false}
- catch(_){}
- // Trusted Table Mode is an explicit GM world-wide opt-in: no
- // per-token GM confirmation is required while it is enabled.
- // Geometry, reach and airborne safeguards remain mandatory.
- let trustedTable=false;
- try{trustedTable=game.settings.get(HG_NS,"trustedTableMode")===true}
- catch(_){}
- if(requireEvidence&&!trustedTable&&!hgTerrainConfirmed(attacker))
-  return hgResult("uncertain","terrain-support-not-confirmed",
-   {distance,reach,elevationDifference:delta});
- return hgResult("confirmed","supported-higher-ground",
-  {distance,reach,elevationDifference:delta,unit:hgUnit(s.grid.units)});
+ // Native PF1 melee getRange(max) and canvas.grid.measurePath both use the
+ // scene's own distance units (not pf1.settings.distance.metric).
+ if(distance>reach+HG_EPS||elevationDifference>reach+HG_EPS)
+  return hgResult("out-of-reach","target-out-of-melee-reach",{
+   distance,reach,elevationDifference
+  });
+ return hgResult("eligible","attacker-higher-and-in-melee-reach",{
+  distance,reach,elevationDifference
+ });
 }
 function hgFromUse(use){
  const action=use?.action??use?.shared?.action;
  const actor=use?.actor??action?.actor??use?.item?.actor;
- const raw=hgCollection(use?.shared?.targets??use?.targets);
- const targets=raw.length?raw:hgCollection(game.user?.targets);
+ const list=hgList(use?.shared?.targets??use?.targets);
+ const targets=list.length?list:hgList(game.user?.targets);
  if(targets.length!==1)return hgResult("uncertain","single-target-required");
  const target=targets[0]?.object??targets[0];
- const token=use?.token?.object??use?.token;
+ const from=use?.token?.object??use?.token;
  const active=actor?.getActiveTokens?.()??[];
- const attacker=token?.actor?.uuid===actor?.uuid?token:
+ const attacker=from?.actor?.uuid===actor?.uuid?from:
   active.length===1?active[0]:null;
  return hgInspect({attacker,target,actor,action});
 }
-function hgNativeAlreadyApplied(use){
- const shared=use?.shared??{};
- const values=[...(Array.isArray(shared.attackBonus)?shared.attackBonus:[])];
- // Explicitly avoid duplicating an already prepared higher-ground bonus.
- return values.some(x=>/higher[ -]?ground|high[ -]?ground|position sur[eé]lev[eé]e/i.test(String(x)))||
-  shared.useOptions?.highGround===true||
-  shared.useOptions?.higherGround===true||
-  shared.formData?.highGround===true||
-  shared.formData?.higherGround===true;
+const hgNormalize=s=>String(s??"").normalize("NFD")
+ .replace(/[\u0300-\u036f]/g,"").toLowerCase();
+const HG_LABEL=/\b(?:higher[ -]?ground|high[ -]?ground|sur[eé]lev[eé]|surelev|hauteur dominante)\b/i;
+function hgCheckboxText(input,root){
+ // Prefer native input data/name/id, its label and surrounding form-group.
+ // Do not match an arbitrary checkbox using a general 'height' substring.
+ const attr=["name","id","data-flag","data-key","aria-label"].map(key=>
+  input.getAttribute?.(key)??"").join(" ");
+ const label=input.closest?.("label")||
+  (input.id&&root.querySelector?.('label[for="'+CSS.escape(input.id)+'"]'))||
+  input.parentElement;
+ const text=String(label?.textContent??"").slice(0,240);
+ return hgNormalize(attr+" "+text);
 }
-function hgPrepare(use){
- const result=hgReport(hgFromUse(use));
- if(result.status!=="confirmed"||HG_APPLIED.has(use))return result;
- if(!Array.isArray(use?.shared?.attackBonus))return hgReport(hgResult("uncertain","native-attack-bonus-unavailable"));
- if(hgNativeAlreadyApplied(use))return hgReport(hgResult("skipped","native-or-external-bonus-present"));
- use.shared.attackBonus.push(HG_MARKER);
- HG_APPLIED.add(use);
- return result;
+function hgFindCheckbox(root){
+ const inputs=[...(root?.querySelectorAll?.('input[type="checkbox"]')??[])];
+ const matches=inputs.filter(input=>HG_LABEL.test(hgCheckboxText(input,root)));
+ return matches.length===1?matches[0]:null;
+}
+function hgDialogRoot(html){
+ if(html?.querySelectorAll)return html;
+ if(html?.[0]?.querySelectorAll)return html[0];
+ return null;
+}
+function hgPrecheckDialog(app,html){
+ if(!hgEnabled())return hgReport(hgResult("skipped","disabled"));
+ if(!app||HG_TOUCHED.has(app))return hgReport(hgResult("skipped","already-processed"));
+ const use=app.actionUse;
+ if(!use||!use.action||!use.actor)
+  return hgReport(hgResult("uncertain","native-action-use-unavailable"));
+ const diagnosis=hgFromUse(use);
+ if(!diagnosis.eligible)return hgReport(diagnosis);
+ const root=hgDialogRoot(html);
+ const checkbox=hgFindCheckbox(root);
+ if(!checkbox)return hgReport(hgResult("uncertain","native-higher-ground-checkbox-not-found"));
+ HG_TOUCHED.add(app);
+ if(checkbox.checked)
+  return hgReport(hgResult("prechecked","already-checked",{diagnosis}));
+ if(checkbox.disabled)
+  return hgReport(hgResult("uncertain","native-higher-ground-checkbox-disabled"));
+ // Click triggers PF1's own flag handler, exactly like a player click.
+ // Never set attackBonus, rollData, shared.useOptions or app.flags.
+ checkbox.click();
+ return hgReport(hgResult("prechecked","native-checkbox-clicked",{diagnosis}));
 }
 Hooks.once("init",()=>{
  game.settings.register(HG_NS,"autoHighGround",{
@@ -166,15 +159,16 @@ Hooks.once("init",()=>{
   hint:"PF1AE.Settings.HighGround.Hint",
   scope:"world",config:true,type:Boolean,restricted:true,default:false
  });
+ // Keep the legacy world setting registered to preserve old world data,
+ // but it is deliberately not consulted by the simplified detector.
  game.settings.register(HG_NS,"highGroundRequireSupport",{
   name:"PF1AE.Settings.HighGroundRequireSupport.Name",
   hint:"PF1AE.Settings.HighGroundRequireSupport.Hint",
-  scope:"world",config:true,type:Boolean,restricted:true,default:true
+  scope:"world",config:false,type:Boolean,restricted:true,default:false
  });
- Hooks.on("pf1CreateActionUse",use=>{
-  try{hgPrepare(use)}catch(error){
-   console.warn("[PF1AE][HighGround] Native preparation skipped",error);
-  }
+ Hooks.on("renderAttackDialog",(app,html)=>{
+  try{hgPrecheckDialog(app,html)}
+  catch(error){console.warn("[PF1AE][HighGround] Dialog precheck skipped",error)}
  });
 });
 Hooks.once("ready",()=>{
@@ -183,6 +177,6 @@ Hooks.once("ready",()=>{
  mod.api??={};
  mod.api.highGround=Object.freeze({
   inspect:hgInspect,inspectActionUse:hgFromUse,
-  prepare:hgPrepare,lastDiagnostic:()=>hgLast
+  precheckDialog:hgPrecheckDialog,lastDiagnostic:()=>hgLast
  });
 });
