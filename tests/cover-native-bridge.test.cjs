@@ -446,7 +446,7 @@ after(base);
  assert.equal(cards.length,2,'second full-attack result annotates same native card');
  assert.equal((card.content.match(/data-pf1ae-cover-key=/g)??[]).length,2,
   'each attack has a distinct cover entry');
- assert.ok(card.content.includes('>22</strong>'));
+ assert.ok(card.content.includes('Target AC incl. cover: 22</strong>'));
  after(second);
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(cards.length,2,'duplicate attack 2 event does not reappend');
