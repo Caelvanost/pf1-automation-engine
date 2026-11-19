@@ -483,9 +483,55 @@ after(base);
   coverDiagnosis:{status:'confirmed',type:'total',
    preventsDirectAttack:true},defense:{baseValue:17,value:null}}]};
  assert.ok(pf1aeModule.api.coverNativeBridge.cardSection(total).includes('Total cover: direct attack is blocked'));
- assert.equal(pf1aeModule.api.coverNativeBridge.cardSection({
+ const uncertainGeometry=pf1aeModule.api.coverNativeBridge.cardSection({
   ...base,targetResults:[{...base.targetResults[0],
-   coverDiagnosis:{status:'uncertain'}}]}),null);
+   coverDiagnosis:{status:'uncertain',reason:'wall-or-creature-contact-ambiguous'},
+   defense:{baseValue:16,value:16,coverBonus:0}}]});
+ assert.ok(uncertainGeometry.includes('Unverified (GM review)'));
+ assert.ok(!uncertainGeometry.includes('Target AC incl. cover: 20'));
+ // Native card fallback: intentionally do NOT emit a pf1AttackRoll event.
+ // The actual PF1 post-use hook must still annotate verified cover CA.
+ const originalCover=pf1aeModule.api.coverPF1;
+ const originalResolution=pf1aeModule.api.attackResolution;
+ const postUseCard={id:'native-postuse',documentName:'ChatMessage',
+  user:{id:'player'},content:'<article>Native PF1 target CA: 16</article>',
+  updates:0,async update({content}){this.content=content;this.updates++}};
+ system.messages.set(postUseCard.id,postUseCard);
+ pf1aeModule.api.coverPF1={inspect:()=>({
+  status:'confirmed',type:'normal',acBonus:4
+ })};
+ pf1aeModule.api.attackResolution={async resolveAttack(){
+  return {defense:{baseValue:16,value:20,coverBonus:4}};
+ }};
+ action.actionType='mwak';
+ action.hasAttack=true;
+ action.isCombatManeuver=false;
+ actionUse.shared.targets=[target];
+ await pf1aeModule.api.coverNativeBridge.annotateNativePostUse(
+  actionUse,postUseCard);
+ assert.equal(postUseCard.updates,1,
+  'a native post-use card receives the cover result without paired roll event');
+ assert.ok(postUseCard.content.includes('Target AC incl. cover: 20'));
+ assert.ok(postUseCard.content.includes('Cover bonus: +4'));
+ assert.ok(postUseCard.content.includes('data-pf1ae-cover-key="0:'));
+ await pf1aeModule.api.coverNativeBridge.annotateNativePostUse(
+  actionUse,postUseCard);
+ assert.equal(postUseCard.updates,1,'repeated native callback is idempotent');
+ // Ambiguous corner/contact geometry displays unknown instead of +4.
+ const uncertainCard={...postUseCard,id:'uncertain-postuse',
+  content:'<article>Native PF1 target CA: 16</article>',updates:0,
+  async update({content}){this.content=content;this.updates++}};
+ system.messages.set(uncertainCard.id,uncertainCard);
+ pf1aeModule.api.coverPF1={inspect:()=>({
+  status:'uncertain',reason:'wall-or-creature-contact-ambiguous'
+ })};
+ await pf1aeModule.api.coverNativeBridge.annotateNativePostUse(
+  actionUse,uncertainCard);
+ assert.equal(uncertainCard.updates,1);
+ assert.ok(uncertainCard.content.includes('Unverified (GM review)'));
+ assert.ok(!uncertainCard.content.includes('Target AC incl. cover: 20'));
+ pf1aeModule.api.coverPF1=originalCover;
+ pf1aeModule.api.attackResolution=originalResolution;
  assert.equal(actor.uuid,'Actor.a');
 
  // With libWrapper + PF1 Improved Conditions simulated as a
