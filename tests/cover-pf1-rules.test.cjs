@@ -121,7 +121,40 @@ assert.equal(result.status,'uncertain','unknown projectile height must fail clos
 attacker.losHeight=5;
 target.losHeight=6;
 result=check();
-assert.equal(result.status,'uncertain','different sampled projectile elevations not inferred');
+assert.equal(result.status,'confirmed',
+ 'different native LOS heights must not force unknown cover on an empty scene');
+assert.equal(result.type,'none');
+assert.equal(result.sourceHeight,5);
+assert.equal(result.targetHeight,6);
+// A partial wall 2/3 of the way to the target, top 10, still protects.
+scene.walls.contents.push(wall('slope-partial',200,25,200,120,
+ {bottom:0,top:10}));
+result=check();
+assert.equal(result.status,'confirmed',
+ 'sloping shot must classify partially obstructing wall');
+assert.equal(result.type,'normal');
+assert.equal(result.acBonus,4);
+// The same wall too low for the ray must not falsely grant +4.
+scene.walls.contents[0].flags['wall-height'].top=2;
+result=check();
+assert.equal(result.status,'confirmed');
+assert.equal(result.type,'none');
+scene.walls.contents[0].flags['wall-height'].top=10;
+scene.walls.contents.length=0;
+// A full-height solid wall across the complete corridor remains total.
+scene.walls.contents.push(wall('slope-full',200,-200,200,300,
+ {bottom:0,top:10}));
+result=check();
+assert.equal(result.status,'confirmed');
+assert.equal(result.type,'total');
+scene.walls.contents.length=0;
+// An unknown wall vertical boundary is not proof of +4.
+scene.walls.contents.push(wall('slope-unknown',200,25,200,120,
+ {bottom:0,top:10}));
+scene.walls.contents[0].flags['wall-height'].top='unknown';
+result=check();
+assert.equal(result.status,'uncertain');
+scene.walls.contents.length=0;
 target.losHeight=5;
 // Ranged and reach use the same selected-corner cover algorithm.
 result=check({attackType:'reach'});
@@ -136,4 +169,4 @@ const snapshot=JSON.stringify(scene);
 api.inspect({attacker,target});
 assert.equal(JSON.stringify(scene),snapshot);
 assert.equal(Object.isFrozen(result),false,'return safe clones to callers');
-console.log('PASS cover PF1: corner selection, partial/total ambiguity, wall height, doors, reach, elevation, roof safety, no writes');
+console.log('PASS cover PF1: sloping token LOS heights, partial/full/low walls, corners, elevations, roofs and no writes');
