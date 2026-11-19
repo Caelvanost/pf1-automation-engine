@@ -1,8 +1,14 @@
 # PF1 Automation Engine
 
-**Version 1.39.5 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.39.6 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## 3D cover with different attacker and target LOS heights (v1.39.6)
+
+Foundry PF1 tokens on the same elevation may have different `losHeight` values (e.g. due to token size or other vision-height automation). Previously, 3D cover checks stopped before ray tracing with `different-sampled-attack-heights`; this prevented the target's effective AC from appearing in the native chat card at all. PF1AE now traces **sloping rays** across the battlefield and evaluates an intersected native wall at its actual crossing height, applying its verified vertical bounds and door/movement state.
+
+An unobstructed sloping shot has no cover; a partially blocking wall intersected at a valid height can produce normal cover +4; a fully blocking wall can still prevent direct attack. Walls with unknown vertical bounds or grazing geometry remain uncertain and never grant an unverified +4. This applies to world cover mode **3D**, not just 2D. Existing message-annotation and no-double-counting behavior remains.
 
 ## Direct native-card cover AC delivery (v1.39.5)
 
