@@ -8,7 +8,9 @@
  * For explicit numeric ranges, action.range.value and range.units are
  * authoritative; formulaic ranges use native getRange() in system units.
  * Native square-grid measurePath checks the closest occupied
- * square centres, including large and rectangular tokens.
+ * square centres, including large and rectangular tokens. Vertical token
+ * separation is included using Pathfinder's alternating-diagonal 3D rule
+ * when grid measurements are consistent; else a conservative lower bound.
  *
  * Unverifiable geometry/range never blocks an action.
  */
@@ -41,6 +43,34 @@ function mrOccupied(token,scene,grid){
   points.push({x:d.x+(x+0.5)*size,y:d.y+(y+0.5)*size});
  return points;
 }
+/**
+ * PF1 3D grid distance: use the alternating 1/2 square diagonal rule,
+ * including vertical diagonals, when all three axes occupy whole squares.
+ * Foundry's 2D grid ruler must agree with PF1's expected horizontal result
+ * before we extend it to 3D. Otherwise use a safe LOWER BOUND:
+ * max(native planar distance, vertical separation). This can miss some
+ * impossible 3D attacks, but can never forbid a legal diagonal.
+ */
+function mrThreeDimensional(p,q,vertical,scene,grid,planar){
+ if(vertical<=MR_EPS)return {distance:planar,mode:"planar"};
+ const lower=Math.max(planar,vertical);
+ const size=grid?.size,step=scene?.grid?.distance;
+ if(!mrFinite(step)||step<=0||!mrFinite(size)||size<=0)
+  return {distance:lower,mode:"3d-lower-bound"};
+ const x=Math.abs(p.x-q.x)/size,y=Math.abs(p.y-q.y)/size,z=vertical/step;
+ const whole=n=>Math.abs(n-Math.round(n))<=MR_EPS;
+ if(![x,y,z].every(whole))return {distance:lower,mode:"3d-lower-bound"};
+ const axes=[Math.round(x),Math.round(y),Math.round(z)];
+ const horizontal=Math.max(axes[0],axes[1])+
+  Math.floor(Math.min(axes[0],axes[1])/2);
+ // Never impose a 3D diagonal rule when the scene's native 2D grid uses
+ // another diagonal convention or custom measurement.
+ if(Math.abs(planar-horizontal*step)>MR_EPS)
+  return {distance:lower,mode:"3d-lower-bound"};
+ axes.sort((a,b)=>b-a);
+ const counted=(axes[0]+Math.floor(axes[1]/2))*step;
+ return {distance:Math.max(lower,counted),mode:"pf1-3d-grid"};
+}
 function mrInspect({attacker,target,action,actor,scene,grid}={}){
  const s=scene??globalThis.canvas?.scene;
  const g=grid??globalThis.canvas?.grid;
@@ -62,9 +92,10 @@ function mrInspect({attacker,target,action,actor,scene,grid}={}){
   attacker.actor?.uuid===target.actor?.uuid)
   return mrUncertain("actor-token-provenance-unavailable");
  const a=mrDoc(attacker),t=mrDoc(target);
- if(!mrFinite(a?.elevation)||!mrFinite(t?.elevation)||
-    a.elevation!==t.elevation)
+ if(!mrFinite(a?.elevation)||!mrFinite(t?.elevation))
   return mrUncertain("elevation-unverified");
+ // Token elevations are expressed in the scene's grid distance units.
+ const verticalDistance=Math.abs(a.elevation-t.elevation);
  const unit=mrUnits(s.grid?.units),systemUnit=mrMode();
  if(!unit)return mrUncertain("scene-distance-unit-unverified");
  const aa=mrOccupied(attacker,s,g),bb=mrOccupied(target,s,g);
@@ -111,16 +142,21 @@ function mrInspect({attacker,target,action,actor,scene,grid}={}){
  const maxScene=max*scale,minScene=minimum*scale;
  if(!mrFinite(maxScene)||maxScene<=0)
   return mrUncertain("invalid-range-conversion");
- let distance=Infinity;
- // When more than one occupied square is present, use the shortest
- // valid square-centre distance, not the centre of a Large token.
+ let distance=Infinity,horizontalDistance=Infinity,distanceMode="planar";
+ // Measure every occupied cell pair, including 3D separation, to select
+ // the closest potential melee/contact point for Large tokens.
  for(const p of aa)for(const q of bb){
   let measured;
   try{measured=g.measurePath([p,q])?.distance}
   catch(_){return mrUncertain("grid-path-measurement-failed")}
   if(!mrFinite(measured)||measured<0)
    return mrUncertain("grid-path-distance-unverified");
-  distance=Math.min(distance,measured);
+  horizontalDistance=Math.min(horizontalDistance,measured);
+  const result=mrThreeDimensional(p,q,verticalDistance,s,g,measured);
+  if(result.distance<distance-MR_EPS){
+   distance=result.distance;
+   distanceMode=result.mode;
+  }
  }
  if(!mrFinite(distance))return mrUncertain("distance-unverified");
  const tooFar=distance>maxScene+MR_EPS;
@@ -129,7 +165,8 @@ function mrInspect({attacker,target,action,actor,scene,grid}={}){
  return Object.freeze({
   status,outOfReach:tooFar,outOfRange:tooFar,
   reason:tooFar?"beyond-native-action-range":"within-native-action-range",
-  distance,maximumReach:maxScene,minimumReach:minScene,unit,
+  distance,horizontalDistance,verticalDistance,distanceMode,
+  maximumReach:maxScene,minimumReach:minScene,unit,
   source:rangeSource,rangeUnit,actionType:action.actionType??null,
   attackerTokenUuid:a.uuid,
   targetTokenUuid:t.uuid
