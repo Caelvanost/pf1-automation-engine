@@ -1,3 +1,12 @@
+## v1.39.2 — Use PF1 native Higher Ground checkbox only (experimental)
+
+- Replace the v1.39.0/1.39.1 injected `1[PF1AE Higher Ground]` attack bonus with **native attack-dialog checkbox preselection only**. PF1 retains responsibility for its own normal +1.
+- When a melee attacker has higher token elevation than one target within native PF1 melee reach, find the existing Higher Ground / Position surélevée checkbox in the native AttackDialog at render time and click it via the native handler. Leave already checked boxes as-is; preserve the player's ability to uncheck after rendering and never reapply on re-render.
+- Remove all GM terrain support confirmations, token flags, Trusted Table requirements and separate bonuses. Old `highGroundRequireSupport` setting is hidden and ignored to preserve Foundry world settings registration.
+- Keep opt-in `autoHighGround` setting (default false), melee-only and basic native reach checks. Disable Roll Bonuses handling for this checkbox to prevent competing automation.
+- Add regression verifying correct native checkbox click, no `shared.attackBonus` mutation, manual deselection persistence, unsupported actions, reach, altitude, disabled setting and fallback when checkbox cannot be recognized.
+- This version identifies the checkbox by its native attributes or displayed label, rather than guessing undocumented `shared.useOptions` fields. Verify live compatibility with PF1 11.11 dialog HTML. 
+
 ## v1.39.1 — Trusted Table Mode bypasses high-ground GM confirmation (experimental)
 
 - When the existing world setting `trustedTableMode` is explicitly enabled, the higher-ground engine no longer requires the GM's per-token `highGroundSupported` flag. In secure mode, the previous confirmation behavior remains unchanged.

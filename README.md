@@ -4,19 +4,13 @@
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
-## Higher ground for melee attacks (v1.39.0)
+## Native higher-ground checkbox (v1.39.2)
 
-Enable **Automatic higher-ground melee bonus (+1)** in PF1AE world settings and **disable the corresponding high-ground feature in Roll Bonuses** to avoid double counting. The engine uses native `pf1CreateActionUse` and adds one `1[PF1AE Higher Ground]` part to `shared.attackBonus`; native PF1 performs the roll. No ranged, multi-target or combat-maneuver bonuses.
+Enable **Precheck native higher-ground melee option** in PF1AE world settings and disable Roll Bonuses higher-ground automation to prevent competition over the same native PF1 attack checkbox.
 
-In **Trusted Table Mode**, no GM confirmation or per-token support flag is required. The engine still checks melee attack type, range, elevation and airborne statuses. Outside Trusted Table Mode, safe mode (default) requires the GM to confirm the elevated, supported **attacker token** once:
+PF1AE **does not inject any attack bonus**. When the attacker token has a strictly higher elevation than exactly one target, and the target is still within the PF1 native melee reach, PF1AE clicks the existing **Higher Ground / Position surélevée** checkbox as the attack dialog opens. PF1 itself applies the normal +1 if this option remains checked. The player can freely uncheck it; PF1AE does not recheck it after a manual change.
 
-```js
-const token = canvas.tokens.controlled[0];
-if (!game.user.isGM || !token) ui.notifications.warn("Select an attacker token as GM.");
-else await token.document.setFlag("pf1-automation-engine", "highGroundSupported", true);
-```
-
-To remove that confirmation, use `unsetFlag("pf1-automation-engine","highGroundSupported")`. A separate world setting **Require GM-confirmed supporting terrain** can be turned off for campaigns that treat positive token elevation (up to one square height difference) as supported higher ground, at the GM's discretion. Both modes avoid injecting when attacker is not higher, attack is not melee, reach or terrain is uncertain, or an existing higher-ground modifier is detected. The native attack-dialog checkbox must remain unchecked when the PF1AE bonus is applied; this feature does not control the checkbox because the native option key is not yet verified for PF1 11.11.
+There is **no GM confirmation, token flag, macro, terrain-support check, special Trusted Table requirement, or separate damage/attack roll calculation**. The old `highGroundRequireSupport` setting remains registered but is hidden and ignored for migration compatibility. Detection uses the scene's measured token heights and native melee reach; it does not infer arbitrary environmental terrain from elevation. If the native checkbox cannot be uniquely identified in the dialog, PF1AE leaves it unchanged rather than modifying a different checkbox.
 
 ## Shooting into melee (v1.33.6)
 
