@@ -158,11 +158,13 @@ after(base);
  // Zether's rapier regression: native melee range is 1.5 on a metric
  // scene, regardless of a missing/false PF1 global metric preference.
  const previousUnits=scene.grid.units;
+ const previousGridDistance=scene.grid.distance;
  const previousMeasure=ctx.canvas.grid.measurePath;
  const previousMetric=ctx.pf1.settings.distance.metric;
  const previousRange=action.range;
  const previousGetRange=action.getRange;
  scene.grid.units='m';
+ scene.grid.distance=1.5;
  ctx.canvas.grid.measurePath=([a,b])=>({
   distance:Math.hypot(b.x-a.x,b.y-a.y)/100*1.5
  });
@@ -186,8 +188,59 @@ after(base);
  assert.equal(await actionUse.process(),undefined,
   'out-of-reach rapier must cancel before native dialog');
  assert.deepEqual(native,rapierSnapshot);
+ // Different-elevation melee: x/y adjacent (1.5 m), but 2 m apart
+ // vertically is OUT of a 1.5 m reach. Block before native dialog.
+ target.document.x=100;
+ attacker.document.elevation=2;
+ let elevated=reachApi.inspectActionUse(actionUse);
+ assert.equal(elevated.status,'out-of-reach',
+  '1.5 m reach cannot strike adjacent target 2 m below');
+ assert.equal(elevated.horizontalDistance,1.5);
+ assert.equal(elevated.verticalDistance,2);
+ assert.equal(elevated.distance,2,'conservative lower bound is sufficient');
+ const elevatedNative={...native};
+ assert.equal(await actionUse.process(),undefined,
+  'vertical out-of-reach cancels before dialog, rolls and ammo');
+ assert.deepEqual(native,elevatedNative);
+ // PF1 first vertical diagonal is one square: adjacent and 1.5 m above
+ // is still within one-square reach (no Euclidean overblocking).
+ attacker.document.elevation=1.5;
+ elevated=reachApi.inspectActionUse(actionUse);
+ assert.equal(elevated.status,'in-reach');
+ assert.equal(elevated.distance,1.5);
+ assert.equal(elevated.distanceMode,'pf1-3d-grid');
+ assert.deepEqual(await actionUse.process(),{used:true});
+ // Two vertical diagonals count as 1+2 squares: 4.5 m instead of 3.
+ action.getRange=({type})=>type==='max'?3:0;
+ attacker.document.elevation=3;
+ target.document.x=200;
+ elevated=reachApi.inspectActionUse(actionUse);
+ assert.equal(elevated.horizontalDistance,3);
+ assert.equal(elevated.verticalDistance,3);
+ assert.equal(elevated.distance,4.5);
+ assert.equal(elevated.distanceMode,'pf1-3d-grid');
+ assert.equal(elevated.status,'out-of-reach');
+ const diagonalNative={...native};
+ assert.equal(await actionUse.process(),undefined);
+ assert.deepEqual(native,diagonalNative);
+ // Non-grid-aligned heights use a safe lower bound rather than a
+ // wrongly quantized diagonal: 0.75m height and 1.5m adjacent is legal.
+ target.document.x=100;
+ attacker.document.elevation=0.75;
+ action.getRange=({type})=>type==='max'?1.5:0;
+ elevated=reachApi.inspectActionUse(actionUse);
+ assert.equal(elevated.status,'in-reach');
+ assert.equal(elevated.distanceMode,'3d-lower-bound');
+ // Missing elevation must stay uncertain and never forcibly cancel.
+ attacker.document.elevation=NaN;
+ assert.equal(reachApi.inspectActionUse(actionUse).status,'uncertain');
+ attacker.document.elevation=0;
+ target.document.x=200;
+ action.getRange=({type})=>type==='max'?1.5:0;
  scene.grid.units=previousUnits;
  ctx.canvas.grid.measurePath=previousMeasure;
+ if(previousGridDistance===undefined)delete scene.grid.distance;
+ else scene.grid.distance=previousGridDistance;
  ctx.pf1.settings.distance.metric=previousMetric;
  action.range=previousRange;
  action.getRange=previousGetRange;
@@ -222,10 +275,13 @@ after(base);
  assert.deepEqual(await actionUse.process(),{used:true});
  target.document.width=1;
  target.document.x=300;
- // Different elevations, missing range and multiple targets must not block.
+ // Elevation exceeding reach must now block; unverifiable native
+ // range and multiple targets still never block.
  target.document.elevation=10;
- assert.equal(reachApi.inspectActionUse(actionUse).status,'uncertain');
- assert.deepEqual(await actionUse.process(),{used:true});
+ assert.equal(reachApi.inspectActionUse(actionUse).status,'out-of-reach');
+ const elevatedAgain={...native};
+ assert.equal(await actionUse.process(),undefined);
+ assert.deepEqual(native,elevatedAgain);
  target.document.elevation=0;
  action.testMaxRange=null;
  action.getRange=()=>null;
@@ -447,5 +503,5 @@ after(base);
  assert.equal(await another.process(),'next-wrapper',
   'new instance always receives its own guard');
  assert.equal(nextCalls,2);
- console.log('PASS native cover bridge and universal action range: melee, targeted spells, abilities, ranged weapons, template safety, no resource usage');
+ console.log('PASS native cover bridge and universal 3D action range: melee elevation, PF1 diagonals, spells, abilities, ranged weapons and no resource usage');
 })().catch(error=>{console.error(error);process.exitCode=1});
