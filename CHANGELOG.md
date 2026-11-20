@@ -1,3 +1,12 @@
+## v1.39.10 — Show cover-adjusted AC directly in the native target miniature
+
+- In response to Ezren attacking Harpy, display the effective cover-adjusted target AC inside the **native PF1 chat target shield**, changing its visible **16 to 20** when the same attack has a confirmed normal cover +4. The detail row "CA cible avec abri : 20" remains for transparency.
+- Update the existing persistent ChatMessage content, not the Actor's AC, any dice result, or the live Canvas token. The targeted replacement uses the native PF1 `.attack-targets .target[data-uuid] .ac .normal .value` structure and requires matching target UUID, original displayed AC, confirmed cover, and effective defense. Other targets and the touch/flat-footed icons (13/13 in the live report) remain unchanged.
+- For touch and flat-footed attack types, update only the corresponding native defense figure. Keep the thumbnail stable on subsequent full-attack roll outcomes, with separately numbered PF1AE cover detail for each attack.
+- Degrade safely: if target markup is unsupported or multiple candidates exist, keep the native miniature unchanged rather than replacing an arbitrary number. Verified cover geometry and no-double-counting are unchanged.
+- Extend maintained regression for the native PF1 target thumbnail, UUID scoping, other defense icons, manual notes, repeated events and existing message updates.
+- Experimental: test with live Foundry 13 / PF1 11.11 target card and verify the native target UI still behaves correctly.
+
 ## v1.39.9 — Simplify cover AC using only explicit native cover sources
 
 - Resolve the actual PF1 11.11 breakdown supplied by Harpy: `Armure de cuir` has `modifier:null` as an item header, while its +2 armor contribution has `modifier:"base"`; Dexterity and base AC also have null/undefined modifiers. These normal entries previously triggered `untyped-or-unclassified-native-ac-source` and prevented an otherwise confirmed +4 from being applied.
