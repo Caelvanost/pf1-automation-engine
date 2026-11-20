@@ -1,3 +1,12 @@
+## v1.39.13 — Best-angle attacker choice for cover
+
+- Automatically choose the **most favorable origin corner** for ranged and non-adjacent melee/reach attacks when resolving cover on the PF1 square grid.
+- If an attacker corner has no strictly blocked projectile ray and the only uncertainties are exact wall-endpoint or creature-boundary grazing contacts, treat that corner as a clear angle: confirmed **no cover**. Another origin showing blocked rays does not force +4 when the attacker has a better origin.
+- Reproduce the user's second pier diagnostic in 2D and 3D: four origins with confirmed wall crossings `[0,0,1,1]` and grazing contacts `[2,2,1,1]` now yield `attacker-selected-best-grazing-angle` and no cover. The previous case where all four origins had proven blockers still yields normal cover +4.
+- Only specific tangent/corner grazing contacts can be discounted. Unknown movement wall, wall type/height, Levels collision, roof and other unverifiable geometry remain uncertain; total cover and adjacent melee logic are unchanged.
+- Preserve the v1.39.12 native thumbnail-only AC display, typed cover nonstacking, range guards, actor-sheet immutability and roll safety.
+- Extend maintained geometry tests for the second pier's exact ray counts and for walls of unverified movement type.
+
 ## v1.39.12 — Only show cover in native target AC icons
 
 - Remove the redundant "PF1AE — abri contre cette attaque" footer from newly posted PF1 attack chat cards. The user can already see all three effective cover-adjusted AC values inside the target miniature as of v1.39.11.

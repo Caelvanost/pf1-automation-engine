@@ -1,8 +1,16 @@
 # PF1 Automation Engine
 
-**Version 1.39.12 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.39.13 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Automatically choose the attacker's best cover angle (v1.39.13)
+
+For ranged attacks and non-adjacent melee/reach attacks, PF1AE **automatically chooses the most favorable corner of the attacker's occupied square(s)**, as permitted by PF1e. When one origin has no strictly crossed wall or creature, and its only uncertain rays merely **graze wall endpoints or creature boundaries**, that origin is treated as a clean shot instead of returning `wall-or-creature-contact-ambiguous`. The target receives **no cover bonus** if the attacker can fire from that angle.
+
+This reproduces the second live pier report: four attacker corners with strict wall crossings `[0,0,1,1]` and grazing rays `[2,2,1,1]` -> the attacker chooses corner 0 or 1 and the target **does not get +4**. In the previous pier position with strict blocking from *every* corner, the +4 normal cover remains confirmed. We do not dismiss unknown wall types, Levels collisions, roofs or unverified height/surface geometry as grazing-only: those remain uncertain. Adjacent melee uses its separate native PF1 cover determination.
+
+The chat display remains unchanged from v1.39.12: only the three original target AC figures inside the native attack card are updated when cover is definitively confirmed, with no additional PF1AE footer.
 
 ## Thumbnail-only cover AC display (v1.39.12)
 
