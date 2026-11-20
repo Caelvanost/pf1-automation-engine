@@ -238,15 +238,15 @@ function cbPresentation(event){
  * Restrict to the exact UUID and to a native numeric value equal to the
  * already-resolved baseline AC. This avoids rewriting unrelated chat HTML
  * or an unrelated target (and avoids double application on repeat events).
- * First roll owns the summary thumbnail for a multiattack card; individual
- * attack outcomes keep their distinct values in the PF1AE footnotes.
+ * First roll owns the summary thumbnail for a multiattack card; later
+ * attack resolution hooks do not alter that visual summary.
  */
 /**
  * Display-only cover adjustment of the three PF1 native AC figures. Native
  * Actor values are read, never mutated. Existing explicit 'cover' entries
  * are subtracted PER defense type; the same +4 cannot be counted twice.
  * The first attack owns the target summary thumbnail. Later full-attack
- * rolls retain their individual detailed defense lines.
+ * rolls never overwrite those summary values.
  */
 function cbNativeThumbnailValues(event){
  const entry=event?.targetResults?.[0],cover=entry?.coverDiagnosis;
@@ -339,13 +339,12 @@ function cbPatchTargetAC(source,event){
 }
 async function cbOnResolved(event,messageOverride=null){
  if(!cbEnable()||!event?.sourceMessageId)return;
- const section=cbPresentation(event);
- if(!section)return;
+ // The native PF1 target thumbnail is the sole visible cover display.
+ // Do not append a redundant PF1AE footer, even for uncertain geometry.
  const messageId=event.sourceMessageId;
  const prior=CB_CHAT_QUEUES.get(messageId)??Promise.resolve();
- // Full attacks dispatch multiple resolution hooks without awaiting the
- // callback. Serialize updates so every attack has its own CA display and
- // no two writes overwrite each other.
+ // Keep concurrent hooks serialized: only the first resolved attack may
+ // adjust the native thumbnail, with no extra footer sections.
  const operation=prior.catch(()=>{}).then(async()=>{
   const card=messageOverride?.id===messageId?messageOverride:
    game.messages?.get?.(messageId);
@@ -354,13 +353,10 @@ async function cbOnResolved(event,messageOverride=null){
   if(!game.user?.isGM&&card.user?.id!==game.user?.id&&
      card.user!==game.user?.id)return;
   const source=card.content;
-  const key=cbKey(event,event.targetResults?.[0]);
-  if(!key)return;
-  const already=source.includes('data-pf1ae-cover-key="'+key+'"');
-  const content=cbPatchTargetAC(source,event)+(already?"":section);
+  const content=cbPatchTargetAC(source,event);
   if(content===source)return;
   try{await card.update({content})}
-  catch(error){console.warn("[PF1AE][CoverBridge] Card annotation unavailable",error)}
+  catch(error){console.warn("[PF1AE][CoverBridge] Target thumbnail update unavailable",error)}
  });
  CB_CHAT_QUEUES.set(messageId,operation);
  void operation.finally(()=>{
@@ -371,12 +367,9 @@ async function cbOnResolved(event,messageOverride=null){
 /**
  * Direct post-use fallback for PF1 native chat cards.
  *
- * The previous chat display depended solely on the secondary
- * pf1AttackRoll -> pf1aeAttackResolution event chain. Some native PF1
- * attacks create a valid card without exposing the expected paired roll
- * event to PF1AE, so no cover line was shown at all. This hook has the
- * actual completed ActionUse and ChatMessage and only computes a read-only
- * target defense. Existing detailed per-roll events still work.
+ * Native PF1 cards can be posted without a paired pf1AttackRoll event.
+ * The post-use fallback still updates the three target-thumbnail AC
+ * figures. It never generates or appends an additional cover section.
  */
 async function cbOnNativePostUse(actionUse,message){
  if(!cbEnable()||message?.documentName!=="ChatMessage"||
@@ -411,8 +404,8 @@ async function cbOnNativePostUse(actionUse,message){
   targetResults:[{targetTokenUuid:tokenUuid,coverDiagnosis:cover,
    defense}]
  };
- // Reuse the serialized, deduplicated normal chat writer. If the richer
- // attack event was already written, this fallback does nothing.
+ // Reuse the serialized thumbnail-only writer. If the rich attack event
+ // already adjusted the same values, the second pass is a no-op.
  await cbOnResolved(event,message);
 }
 Hooks.once("init",cbInstallEarlyGate);

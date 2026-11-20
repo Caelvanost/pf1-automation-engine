@@ -207,7 +207,12 @@ after(base);
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(thumbnailCard.updates,1);
  assert.ok(thumbnailCard.content.includes('title="AC with cover: 21"'));
- assert.ok(thumbnailCard.content.includes('Target AC incl. cover: 21'));
+ assert.ok(!thumbnailCard.content.includes('pf1ae-cover-result'),
+  'cover must be shown only in the native target thumbnail');
+ after(thumbnailEvent);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(thumbnailCard.updates,1,
+  'repeated event does not produce a second write or footer');
  // Native ActionUse.process must be short-circuited before ANY dialog,
  // ammo/magazine consumption, native roll or message.
  scene.walls.contents.push({id:'blocked',c:[200,-200,200,300],
@@ -522,13 +527,12 @@ after(base);
  action.hasAttack=true;
  action.hasRange=false;
  await new Promise(resolve=>setImmediate(resolve));
- assert.equal(cards.length,1);
- assert.ok(card.content.startsWith('<article class="pf1-chat">'));
- assert.ok(card.content.includes('data-pf1ae-cover="1"'));
- assert.ok(card.content.includes('21'));
+ assert.equal(cards.length,0,
+  'cards without a native target miniature must not gain a footer');
+ assert.equal(card.content,'<article class="pf1-chat">PF1 native attack card</article>');
  after(base);
  await new Promise(resolve=>setImmediate(resolve));
- assert.equal(cards.length,1,'do not append duplicate annotations');
+ assert.equal(cards.length,0,'repeated cover event must not add footers');
  // Attack 2 from the same full attack must append its own effective CA.
  const second={...base,rollIndex:1,targetResults:[{
   ...base.targetResults[0],
@@ -536,13 +540,11 @@ after(base);
  }]};
  after(second);
  await new Promise(resolve=>setImmediate(resolve));
- assert.equal(cards.length,2,'second full-attack result annotates same native card');
- assert.equal((card.content.match(/data-pf1ae-cover-key=/g)??[]).length,2,
-  'each attack has a distinct cover entry');
- assert.ok(card.content.includes('Target AC incl. cover: 22</strong>'));
+ assert.equal(cards.length,0,
+  'later full-attack results do not append redundant footer sections');
  after(second);
  await new Promise(resolve=>setImmediate(resolve));
- assert.equal(cards.length,2,'duplicate attack 2 event does not reappend');
+ assert.equal(cards.length,0,'duplicate attack 2 event is a no-op');
  // Two events dispatched back-to-back must serialize message updates.
  const third={...base,rollIndex:2,targetResults:[{
   ...base.targetResults[0],
@@ -555,8 +557,8 @@ after(base);
  after(third);after(fourth);
  await new Promise(resolve=>setImmediate(resolve));
  await new Promise(resolve=>setImmediate(resolve));
- assert.equal(cards.length,4,'concurrent resolution events retain both chat entries');
- assert.equal((card.content.match(/data-pf1ae-cover-key=/g)??[]).length,4);
+ assert.equal(cards.length,0,
+  'concurrent cover events do not append any chat-footer sections');
  // Native typed +4 already incorporated: show the original effective AC,
  // explain the existing cover instead of adding another 4.
  const already={...base,rollIndex:4,targetResults:[{
@@ -600,7 +602,9 @@ after(base);
  const originalCover=pf1aeModule.api.coverPF1;
  const originalResolution=pf1aeModule.api.attackResolution;
  const postUseCard={id:'native-postuse',documentName:'ChatMessage',
-  user:{id:'player'},content:'<article>Native PF1 target CA: 16</article>',
+  user:{id:'player'},content:nativeThumbnail.replace(
+   '<span class="value">17</span></div><div class="touch">',
+   '<span class="value">16</span></div><div class="touch">'),
   updates:0,async update({content}){this.content=content;this.updates++}};
  system.messages.set(postUseCard.id,postUseCard);
  pf1aeModule.api.coverPF1={inspect:()=>({
@@ -617,15 +621,18 @@ after(base);
   actionUse,postUseCard);
  assert.equal(postUseCard.updates,1,
   'a native post-use card receives the cover result without paired roll event');
- assert.ok(postUseCard.content.includes('Target AC incl. cover: 20'));
- assert.ok(postUseCard.content.includes('Cover bonus: +4'));
- assert.ok(postUseCard.content.includes('data-pf1ae-cover-key="0:'));
+ assert.ok(postUseCard.content.includes('data-pf1ae-cover-native-ac="16"'));
+ assert.ok(postUseCard.content.includes('title="AC with cover: 20"'));
+ assert.ok(!postUseCard.content.includes('pf1ae-cover-result'),
+  'no PF1AE footer appended to native card');
  await pf1aeModule.api.coverNativeBridge.annotateNativePostUse(
   actionUse,postUseCard);
  assert.equal(postUseCard.updates,1,'repeated native callback is idempotent');
  // Ambiguous corner/contact geometry displays unknown instead of +4.
  const uncertainCard={...postUseCard,id:'uncertain-postuse',
-  content:'<article>Native PF1 target CA: 16</article>',updates:0,
+  content:nativeThumbnail.replace(
+   '<span class="value">17</span></div><div class="touch">',
+   '<span class="value">16</span></div><div class="touch">'),updates:0,
   async update({content}){this.content=content;this.updates++}};
  system.messages.set(uncertainCard.id,uncertainCard);
  pf1aeModule.api.coverPF1={inspect:()=>({
@@ -633,9 +640,9 @@ after(base);
  })};
  await pf1aeModule.api.coverNativeBridge.annotateNativePostUse(
   actionUse,uncertainCard);
- assert.equal(uncertainCard.updates,1);
- assert.ok(uncertainCard.content.includes('Unverified (GM review)'));
- assert.ok(!uncertainCard.content.includes('Target AC incl. cover: 20'));
+ assert.equal(uncertainCard.updates,0,
+  'uncertain cover leaves native thumbnail unchanged, no footer');
+ assert.ok(!uncertainCard.content.includes('pf1ae-cover-result'));
  pf1aeModule.api.coverPF1=originalCover;
  pf1aeModule.api.attackResolution=originalResolution;
  assert.equal(actor.uuid,'Actor.a');

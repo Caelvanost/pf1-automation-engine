@@ -1,3 +1,11 @@
+## v1.39.12 — Only show cover in native target AC icons
+
+- Remove the redundant "PF1AE — abri contre cette attaque" footer from newly posted PF1 attack chat cards. The user can already see all three effective cover-adjusted AC values inside the target miniature as of v1.39.11.
+- Preserve the native target thumbnail-only display: normal, touch and flat-footed AC, with per-type explicit cover nonstacking. Do not mutate the Actor, token, rolls or damage.
+- Native post-use fallback and paired attack-resolution events use the same serialized thumbnail writer and no longer append separate cover sections, including on full attacks or when cover geometry cannot be verified. If no matching native target markup exists, leave the original ChatMessage untouched.
+- Retain the internal formatting helper as a diagnostic API only; it is never inserted into the chat card. Test no-footer behavior for verified and uncertain cover, repeated events, a card without target markup and native post-use without a paired roll event.
+- Keep all proven cover geometry, reach and total-cover cancellation unchanged.
+
 ## v1.39.11 — Include cover in all three native PF1 target miniature AC figures
 
 - Fix v1.39.10's overly limited display: confirmed normal/soft cover applies to normal, touch and flat-footed AC. The original PF1 target chat miniature now shows **Harpy 20 / 17 / 17** rather than 20 / 13 / 13 when native AC is 16 / 13 / 13 and none of the three figures already includes cover.
