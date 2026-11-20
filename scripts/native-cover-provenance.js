@@ -3,12 +3,12 @@
  *
  * PF1 ActorPF.getSourceDetails("system.attributes.ac.TYPE.total")
  * returns the source breakdown used by the system's sheet tooltip.
- * A missing/non-numeric or ambiguous entry makes cover baseline unknown.
- * A typed 'cover' source is read ONLY, never applied to an Actor.
+ * Only explicit native 'cover' modifiers are considered pre-existing
+ * cover. Ordinary base, armor, Dodge and untyped AC breakdown entries are
+ * not cover: do not reject them. This is read-only, never changes Actor AC.
  *
- * The native adapter deliberately cannot prove semantic intent of
- * custom untyped bonuses, manual sheet edits or third-party overrides.
- * It declines uncertain categories rather than double adding cover.
+ * Custom bonuses entered as untyped might already include cover; such
+ * custom world overrides are outside this simple integration's scope.
  */
 const NC_NS="pf1-automation-engine";
 const NC_PATHS=Object.freeze({
@@ -43,23 +43,15 @@ function ncInspect({actor,defense="normal"}={}){
   error:String(error?.message??error).slice(0,150)})}
  if(!Array.isArray(entries))
   return ncResult("uncertain","native-source-details-invalid");
+ // Only explicit PF1 `modifier: "cover"` sources can count as already
+ // applied cover. PF1 11.11 represents ordinary base AC, armor metadata,
+ // dodge caps and other sources with null / undefined / "untyped"
+ // modifiers. Those are not evidence of cover and must not block +4.
  const cover=[];
  for(const entry of entries){
   if(!entry||typeof entry!=="object")
    return ncResult("uncertain","invalid-native-source-entry");
-  const type=entry.modifier;
-  const name=typeof entry.name==="string"?entry.name:"";
-  // A bonus with no reliable type could represent cover,
-  // regardless of its apparent label. Do not infer the answer.
-  if(type==null||type==="untyped"||type==="misc"){
-   if(typeof entry.value==="number"&&entry.value===0)continue;
-   return ncResult("uncertain","untyped-or-unclassified-native-ac-source",{
-    ambiguousSource:name.slice(0,120)});
-  }
-  if(typeof type!=="string"||!NC_KNOWN.has(type))
-   return ncResult("uncertain","unknown-native-ac-modifier-type",{
-    modifier:String(type).slice(0,70)});
-  if(type!=="cover")continue;
+  if(entry.modifier!=="cover")continue;
   if(entry.disabled===true)continue;
   if(typeof entry.value!=="number"||!Number.isFinite(entry.value))
    return ncResult("uncertain","non-numeric-native-cover-source");

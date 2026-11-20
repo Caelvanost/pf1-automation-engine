@@ -1,8 +1,16 @@
 # PF1 Automation Engine
 
-**Version 1.39.8 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.39.9 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Simple cover-adjusted AC (v1.39.9)
+
+For a confirmed normal or soft cover attack, PF1AE now computes the effective target AC from the native PF1 armor class and the **missing cover bonus**. It scans only native AC entries explicitly labelled `modifier: "cover"`; normal baseline, leather armor, Dexterity, Dodge, and entries marked `null`, `undefined` or `untyped` no longer prevent application.
+
+Example from a live PF1 11.11 world: Harpy AC 16 with no explicit pre-existing cover + confirmed normal cover +4 results in **effective AC 20** on the native chat card (not merely an indicative value). If an explicit +4 cover modifier is already part of native AC, no second +4 is added. If typed cover source data is malformed or there are competing explicit cover entries, the outcome stays uncertain. A custom **untyped** bonus secretly intended to represent cover cannot be identified as cover automatically; in that unusual case, the GM must avoid applying it twice.
+
+This remains a temporary, target-specific calculation. **The Actor's AC stays unchanged**, the PF1 attack roll is untouched, and no duplicate chat card or bonus is created. The existing proven 2D/3D ray geometry, total-cover cancellation, and early range cancellation are unchanged.
 
 ## Indicative cover AC when native breakdown is ambiguous (v1.39.8)
 

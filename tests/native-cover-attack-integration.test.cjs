@@ -48,13 +48,30 @@ const resolve=()=>api.attackResolution.resolveAttack({
  assert.equal(result.defense.coverBonus,0);
  assert.equal(result.hit,true);
  target.sourceInfo['system.attributes.ac.normal.total']=[
-  {name:'Homebrew nontyped bonus',modifier:null,value:4}];
+  {name:'Leather Armor',value:'Max. Dex +6',modifier:null},
+  {name:'Dodge',modifier:'dodge',value:1},
+  {name:'Leather Armor (Armor)',modifier:'base',value:2},
+  {name:'Misc Notes',modifier:'untyped',value:1},
+  {name:'Dexterity',modifier:null,value:2},
+  {name:'Base',modifier:undefined,value:10}
+ ];
+ target.system.attributes.ac.normal.total=16;
  result=await resolve();
- assert.equal(result.resolution,'indeterminate');
- assert.equal(result.hit,null);
- assert.equal(result.defense.value,null);
+ assert.equal(result.defense.value,20,
+  'native AC 16 + confirmed cover 4 with ordinary untyped entries');
+ assert.equal(result.defense.coverBonus,4);
+ assert.equal(result.defense.nativeCoverProvenance.nativeCover,0);
+ assert.equal(result.hit,true,'23 hits AC20 with confirmed cover');
+ assert.equal(target.system.attributes.ac.normal.total,16,
+  'no actor AC mutation');
+ target.sourceInfo['system.attributes.ac.normal.total']=[
+  {name:'Broken typed cover',modifier:'cover',value:'4'}];
+ result=await resolve();
+ assert.equal(result.resolution,'indeterminate',
+  'malformed explicit cover still fails closed');
  assert.equal(result.defense.nativeCoverProvenance.status,'uncertain');
+ target.system.attributes.ac.normal.total=20;
  target.sourceInfo['system.attributes.ac.normal.total']=[];
  assert.equal((await resolve()).defense.value,24);
- console.log('PASS native cover + attack resolution integration: CA 20+4, already-included cover, unknown native sources, no actor mutation');
+ console.log('PASS native cover + attack resolution integration: CA 20+4, already-included cover, Harpy-like native entries, malformed cover, no actor mutation');
 })().catch(e=>{console.error(e);process.exitCode=1});
