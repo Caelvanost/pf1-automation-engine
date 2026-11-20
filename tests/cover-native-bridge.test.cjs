@@ -113,8 +113,56 @@ const base={sourceMessageId:'message',rollIndex:0,targetResults:[{targetTokenUui
 const html=pf1aeModule.api.coverNativeBridge.cardSection(base);
 assert.ok(html.includes('21'));
 assert.ok(html.includes('17'));
+// PF1 11.x native target thumbnail: only the correct target's NORMAL
+// shield is updated; touch and flat-footed 13, and other targets, stay.
+const nativeThumbnail='<div class="attack-targets">'+
+ '<div class="target" data-uuid="'+target.document.uuid+'">'+
+ '<img class="target-image" src="harpy.webp">'+
+ '<div class="ac"><div class="normal" data-tooltip="PF1.ACNormal">'+
+ '<i class="fa-solid fa-shield-alt" inert></i><span class="value">17</span></div>'+
+ '<div class="touch"><i class="fa-solid fa-hand-point-up"></i>'+
+ '<span class="value">13</span></div>'+
+ '<div class="flatFooted"><span class="value">13</span></div></div></div>'+
+ '<div class="target" data-uuid="Scene.s.Token.else">'+
+ '<div class="ac"><div class="normal"><span class="value">17</span>'+
+ '</div></div></div></div>';
+const patch=pf1aeModule.api.coverNativeBridge.patchTargetAC;
+const altered=patch(nativeThumbnail,base);
+assert.ok(altered.includes('data-pf1ae-cover-native-ac="17"'));
+assert.ok(altered.includes('title="AC with cover: 21"'));
+assert.equal((altered.match(/>21<\/span>/g)??[]).length,1);
+assert.equal((altered.match(/>13<\/span>/g)??[]).length,2);
+assert.equal((altered.match(/>17<\/span>/g)??[]).length,1,
+ 'another target with same AC must stay unchanged');
+assert.equal(patch(altered,base),altered,
+ 'already adjusted target thumbnail cannot be modified again');
+assert.equal(patch(nativeThumbnail,{...base,rollIndex:1}),nativeThumbnail,
+ 'different full-attack rolls cannot overwrite summary thumbnail');
+const wrongDef={...base,targetResults:[{...base.targetResults[0],
+ defense:{baseValue:18,value:22,coverBonus:4}}]};
+assert.equal(patch(nativeThumbnail,wrongDef),nativeThumbnail,
+ 'must not replace native AC when the baseline differs');
+const unknown={...base,targetResults:[{...base.targetResults[0],
+ defense:{baseValue:17,value:null,coverBonus:4}}]};
+assert.equal(patch(nativeThumbnail,unknown),nativeThumbnail,
+ 'unknown effective AC cannot overwrite shield');
+const noCover={...base,targetResults:[{...base.targetResults[0],
+ coverDiagnosis:{status:'uncertain',reason:'unknown-geometry'}}]};
+assert.equal(patch(nativeThumbnail,noCover),nativeThumbnail,
+ 'unverified cover cannot overwrite shield');
+// Update the persisted native message itself, not only the visible DOM.
+const thumbnailCard={id:'thumbnail-card',documentName:'ChatMessage',
+ user:{id:'player'},content:nativeThumbnail,updates:0,
+ async update({content}){this.content=content;this.updates++}};
+system.messages.set(thumbnailCard.id,thumbnailCard);
+const thumbnailEvent={...base,sourceMessageId:thumbnailCard.id};
+after(thumbnailEvent);
 after(base);
 (async()=>{
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(thumbnailCard.updates,1);
+ assert.ok(thumbnailCard.content.includes('title="AC with cover: 21"'));
+ assert.ok(thumbnailCard.content.includes('Target AC incl. cover: 21'));
  // Native ActionUse.process must be short-circuited before ANY dialog,
  // ammo/magazine consumption, native roll or message.
  scene.walls.contents.push({id:'blocked',c:[200,-200,200,300],
