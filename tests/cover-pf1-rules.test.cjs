@@ -111,6 +111,7 @@ assert.equal(result.type,'none','low wall below sample height cannot cover high 
 // wall, and the defender must lie within the low-obstacle PF1 limit.
 scene.grid.units='ft';
 scene.grid.distance=5;
+attacker.document.x=-100; // Attacker farther from the wall than defender
 target.actor={system:{traits:{size:'med'}}};
 result=check({mode:'3d'});
 assert.equal(result.type,'partial','2ft wall vs Medium grants partial cover');
@@ -124,6 +125,7 @@ target.actor.system.traits.size='lg';
 result=check({mode:'3d'});
 assert.equal(result.type,'none','unclassified size must not infer M/P grade');
 target.actor=null;
+attacker.document.x=0;
 delete scene.grid.units;
 delete scene.grid.distance;
 scene.walls.contents[0].flags['wall-height'].top=10;
