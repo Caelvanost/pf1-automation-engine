@@ -1,8 +1,14 @@
 # PF1 Automation Engine
 
-**Version 1.39.11 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.39.12 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Thumbnail-only cover AC display (v1.39.12)
+
+PF1AE now displays confirmed cover **only in the three existing PF1 target AC icons** inside the native chat card. It does not append a second "PF1AE — abri contre cette attaque" section below the roll. For Harpy, native AC 16 / touch 13 / flat-footed 13 with confirmed normal cover +4 displays **20 / 17 / 17** in the miniature.
+
+The displayed AC values remain target-specific; the Actor's permanent AC, native attack/damage rolls and the canvas token are unchanged. Existing explicit typed cover is not added twice. Without confirmed cover or without identifiable target miniature HTML, PF1AE leaves the native card alone; it no longer inserts an "unverified" footer. In full attacks, the first attack's cover state owns the single target-summary thumbnail, with no extra per-roll cover section.
 
 ## Normal, touch and flat-footed cover AC in target thumbnail (v1.39.11)
 
