@@ -94,6 +94,32 @@ result=check({attackType:'ranged'});
 assert.notEqual(result.type,'normal',
  'zero-length wall endpoint must not award confirmed wall cover');
 scene.walls.contents.length=0;
+// Actual second pier diagnostic: origin solid rays [0,0,1,1],
+// endpoint-grazing rays [2,2,1,1]. The attacker automatically chooses
+// corner 0 or 1: no strictly blocked ray => no cover.
+scene.walls.contents.push(wall('pier-best-angle',300,0,300,50));
+for(const mode of ['2d','3d']){
+ result=check({attackType:'ranged',mode});
+ assert.equal(result.status,'confirmed',
+  mode+': best attacker angle should resolve tangent-only origins');
+ assert.equal(result.reason,'attacker-selected-best-grazing-angle');
+ assert.equal(result.type,'none',mode+': do not award +4 for optional worse angle');
+ assert.equal(result.acBonus,0);
+ assert.ok([0,1].includes(result.selectedOrigin));
+ assert.equal(JSON.stringify(result.origins.map(o=>o.traces.filter(t=>
+  t.blocked.some(b=>b.kind==='solid')).length)),
+  '[0,0,1,1]','matches actual pier solid ray counts');
+ assert.equal(JSON.stringify(result.origins.map(o=>o.traces.filter(t=>
+  t.uncertain.some(u=>u.startsWith('wall-grazed:'))).length)),
+  '[2,2,1,1]','matches actual pier grazing ray counts');
+}
+// Unverified movement/door/surface geometry must NOT turn into a
+// favorable clear origin merely because there is no proven crossing.
+scene.walls.contents[0].move=0;
+result=check({attackType:'ranged',mode:'2d'});
+assert.equal(result.status,'uncertain',
+ 'unclassified wall still needs GM review');
+scene.walls.contents.length=0;
 // Unknown provenance and vertical geometry must never grant +4 automatically.
 target.document.elevation=10;
 result=check();
