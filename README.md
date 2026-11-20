@@ -1,8 +1,14 @@
 # PF1 Automation Engine
 
-**Version 1.39.10 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.39.11 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Normal, touch and flat-footed cover AC in target thumbnail (v1.39.11)
+
+The existing PF1 target miniature now presents **all three target AC figures adjusted for confirmed cover**: for Harpy, normal AC **16 → 20**, touch **13 → 17**, and flat-footed **13 → 17** when a +4 normal-cover bonus applies. The change only modifies the original chat-card HTML display; **the target Actor's AC totals and all native attack rolls remain unchanged**.
+
+Each AC figure is calculated independently from the native target Actor total and only the missing explicit native `cover` bonus for its type (`normal`, `touch`, `flatFooted`). If a native type already includes +4 cover, that figure is not increased again. If the cover source breakdown for one type is uncertain, that figure stays unchanged while other supported types can be adjusted. Missing target markup or unverifiable cover keeps the miniature untouched. The summary reflects the first attack of a full attack; individual attack outcomes remain documented below.
 
 ## Cover-adjusted AC inside the native target thumbnail (v1.39.10)
 
