@@ -1,3 +1,11 @@
+## v1.39.11 — Include cover in all three native PF1 target miniature AC figures
+
+- Fix v1.39.10's overly limited display: confirmed normal/soft cover applies to normal, touch and flat-footed AC. The original PF1 target chat miniature now shows **Harpy 20 / 17 / 17** rather than 20 / 13 / 13 when native AC is 16 / 13 / 13 and none of the three figures already includes cover.
+- Read all three native target Actor AC totals without changing documents. Inspect explicit native cover sources independently for normal/touch/flatFooted and add only the missing amount to the corresponding displayed figure; never stack the same explicit cover twice.
+- Preserve the actual attack's authoritative resolved defense when available. A missing or ambiguous cover breakdown for one AC does not cause an unverified number to be displayed for that type.
+- Continue changing only the original persisted ChatMessage target-thumbnail values scoped by Token UUID; do not change the target Actor, roll results, damage, token, or other target miniatures. Keep per-attack details on full attacks.
+- Extend the native-cover bridge regression with Harpy 16/13/13 -> 20/17/17 and a per-type already-covered and uncertain-case guard; preserve prior range/geometry, chat and deduplication tests.
+
 ## v1.39.10 — Show cover-adjusted AC directly in the native target miniature
 
 - In response to Ezren attacking Harpy, display the effective cover-adjusted target AC inside the **native PF1 chat target shield**, changing its visible **16 to 20** when the same attack has a confirmed normal cover +4. The detail row "CA cible avec abri : 20" remains for transparency.
