@@ -35,9 +35,24 @@ set([{name:'Cover 1',modifier:'cover',value:2},
 assert.equal(api.inspect({actor}).status,'uncertain','two cover sources not automatically summed');
 set([{name:'Custom bonus',modifier:null,value:2}]);
 r=api.inspect({actor});
-assert.equal(r.status,'uncertain','untyped bonus might already represent cover');
+assert.equal(r.status,'resolved',
+ 'untyped native AC source does not imply a cover modifier');
+assert.equal(r.nativeCover,0);
 set([{name:'Other',modifier:'mystery',value:3}]);
-assert.equal(api.inspect({actor}).status,'uncertain');
+assert.equal(api.inspect({actor}).status,'resolved',
+ 'only explicitly cover-typed native sources affect cover baseline');
+set([
+ {name:'Armure de cuir',value:'Max. Dex +6',modifier:null},
+ {name:'Dodge (Don)',value:1,modifier:'dodge'},
+ {name:'Armure de cuir (Armure)',value:2,modifier:'base',disabled:false},
+ {name:'Miscellaneous Notes (Divers)',value:1,modifier:'untyped'},
+ {name:'Dextérité',value:2,modifier:null},
+ {name:'Base',value:10,modifier:undefined}
+]);
+r=api.inspect({actor});
+assert.equal(r.status,'resolved',
+ 'real Harpy PF1 native source details should be supported');
+assert.equal(r.nativeCover,0,'no explicit cover entry in Harpy AC');
 set([{name:'Manual typed cover',modifier:'cover',value:'4'}]);
 assert.equal(api.inspect({actor}).status,'uncertain');
 set([{name:'Suppressed',modifier:'cover',value:4,disabled:true}]);
@@ -50,4 +65,4 @@ assert.equal(api.inspect({actor,defense:'cmd'}).status,'uncertain');
 assert.equal(api.inspect({actor:{system:actor.system}}).status,'uncertain');
 assert.equal(api.lastDiagnostic().status,'uncertain');
 assert.equal(actor.system.attributes.ac.normal.total,21,'never modify native sheet AC');
-console.log('PASS native-cover provenance: PF1 typed breakdown, zero, existing cover, ambiguous sources, disabled and no document writes');
+console.log('PASS native-cover provenance: PF1 normal and untyped AC details, typed cover deduplication, malformed cover and no writes');
