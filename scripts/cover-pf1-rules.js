@@ -106,10 +106,73 @@ function cpTokenCross(a,b,rect){
 }
 // Only GM-classified wall grades; never guess cover from token visibility.
 function cpWallGrade(wall){
- const grade=cpDoc(wall)?.flags?.[CP_NS]?.coverGrade;
- return grade==="partial"||grade==="improved"?grade:"solid";
+ const d=cpDoc(wall),grade=d?.flags?.[CP_NS]?.coverGrade;
+ if(grade==="partial"||grade==="improved"||grade==="window")return grade;
+ // Foundry v13's native Window preset: blocks movement but explicitly
+ // allows sight and light. An invisible movement wall is geometrically
+ // identical; a GM may override its treatment via the coverGrade flag.
+ const movement=globalThis.CONST?.WALL_MOVEMENT_TYPES;
+ const sense=globalThis.CONST?.WALL_SENSE_TYPES;
+ if(cpFinite(movement?.NORMAL)&&cpFinite(sense?.NONE)&&
+    d?.move===movement.NORMAL&&d.sight===sense.NONE&&
+    d.light===sense.NONE)return "window";
+ return "solid";
 }
-function cpWallData(wall,height,mode){
+function cpWallSegment(wall){
+ const c=cpDoc(wall)?.c;
+ return Array.isArray(c)&&c.length===4&&c.every(cpFinite)?
+  [{x:c[0],y:c[1]},{x:c[2],y:c[3]}]:null;
+}
+function cpDistanceToSegment(point,a,b){
+ const dx=b.x-a.x,dy=b.y-a.y,den=dx*dx+dy*dy;
+ const k=den>0?Math.max(0,Math.min(1,
+  ((point.x-a.x)*dx+(point.y-a.y)*dy)/den)):0;
+ return Math.hypot(point.x-a.x-k*dx,point.y-a.y-k*dy);
+}
+function cpDistanceToWall(space,wall){
+ const seg=cpWallSegment(wall);
+ if(!seg)return Infinity;
+ const center={x:(space.x+space.x2)/2,y:(space.y+space.y2)/2};
+ return cpDistanceToSegment(center,...seg);
+}
+function cpWindowAdjacent(attacker,wall){
+ // Center-to-window <= 0.75 square: adjacent cardinal and diagonal squares.
+ return cpDistanceToWall(attacker,wall)<=attacker.size*0.75+CP_EPS;
+}
+function cpSizeGrade(target){
+ const d=cpDoc(target);
+ const size=target?.actor?.system?.traits?.size??
+  target?.actor?.system?.details?.size??
+  d?.actor?.system?.traits?.size;
+ const code=String(size?.value??size??"").toLowerCase();
+ if(["med","medium","m"].includes(code))return "partial";
+ if(["sm","small","s"].includes(code))return "solid";
+ return null;
+}
+function cpLowWallGrade(wall,attacker,target,targetToken,scene,grid){
+ const d=cpDoc(wall),bounds=d?.flags?.["wall-height"];
+ if(!cpFinite(bounds?.bottom)||!cpFinite(bounds?.top)||
+    bounds.top<bounds.bottom)return null;
+ const units=String(scene?.grid?.units??"").toLowerCase();
+ // Scene distances and wall-height elevations share the scene's units.
+ const threshold=["m","meter","meters","metre","metres"].includes(units)?1:
+  ["ft","feet","foot","pieds"].includes(units)?3:null;
+ if(threshold===null)return null;
+ const height=bounds.top-bounds.bottom;
+ if(height>=threshold-CP_EPS||height<=CP_EPS||
+   Math.abs(bounds.bottom-target.elevation)>CP_EPS)return null;
+ // PF1 low obstacles only protect creatures sufficiently close to them,
+ // and not when the attacker is closer to the obstacle than the defender.
+ const dt=cpDistanceToWall(target,wall);
+ const da=cpDistanceToWall(attacker,wall);
+ const distanceUnits=cpFinite(scene.grid.distance)&&scene.grid.distance>0?
+  scene.grid.distance:null;
+ if(distanceUnits===null)return null;
+ const maxSquares=6;
+ if(dt>maxSquares*grid.size+CP_EPS||da<=dt+CP_EPS)return null;
+ return cpSizeGrade(targetToken);
+}
+function cpWallData(wall,height,mode,{grade=null,lowCover=false}={}){
  const d=cpDoc(wall);
  const coords=d?.c;
  if(!Array.isArray(coords)||coords.length!==4||
@@ -130,7 +193,10 @@ function cpWallData(wall,height,mode){
   return {kind:"unknown",reason:"wall-movement-restriction"};
  if(mode==="2d")return {kind:"solid",
   a:{x:coords[0],y:coords[1]},b:{x:coords[2],y:coords[3]},
-  id:d.uuid??d.id,grade:cpWallGrade(d)};
+  id:d.uuid??d.id,grade:grade??cpWallGrade(d)};
+ if(lowCover)return {kind:"solid",
+  a:{x:coords[0],y:coords[1]},b:{x:coords[2],y:coords[3]},
+  id:d.uuid??d.id,grade:grade??cpWallGrade(d)};
  const bounds=d.flags?.["wall-height"];
  const bottom=bounds?.bottom??-Infinity;
  const top=bounds?.top??Infinity;
@@ -143,10 +209,10 @@ function cpWallData(wall,height,mode){
  if(Math.abs(height-bottom)<CP_EPS||Math.abs(height-top)<CP_EPS)
   return {kind:"unknown",reason:"wall-height-boundary"};
  return {kind:"solid",a:{x:coords[0],y:coords[1]},
-  b:{x:coords[2],y:coords[3]},id:d.uuid??d.id,grade:cpWallGrade(d)};
+  b:{x:coords[2],y:coords[3]},id:d.uuid??d.id,grade:grade??cpWallGrade(d)};
 }
 
-function cpSlopedWall(from,to,wall,startHeight,endHeight){
+function cpSlopedWall(from,to,wall,startHeight,endHeight,{grade=null,lowCover=false}={}){
  const d=cpDoc(wall),coords=d?.c;
  if(!Array.isArray(coords)||coords.length!==4||!coords.every(cpFinite))
   return {kind:"unknown",reason:"wall-coordinates"};
@@ -154,6 +220,7 @@ function cpSlopedWall(from,to,wall,startHeight,endHeight){
  const crossing=cpSegment(from,to,a,b);
  if(crossing==="clear")return {kind:"clear"};
  if(crossing==="ambiguous")return {kind:"unknown",reason:"wall-grazed"};
+ if(lowCover)return {kind:"solid",grade:grade??cpWallGrade(d)};
  const dx=to.x-from.x,dy=to.y-from.y;
  const wx=b.x-a.x,wy=b.y-a.y;
  const denom=dx*wy-dy*wx;
@@ -170,7 +237,7 @@ function cpSlopedWall(from,to,wall,startHeight,endHeight){
  if(height<bottom-CP_EPS||height>top+CP_EPS)return {kind:"clear"};
  if(Math.abs(height-bottom)<=CP_EPS||Math.abs(height-top)<=CP_EPS)
   return {kind:"unknown",reason:"wall-height-boundary"};
- return {kind:"solid",grade:cpWallGrade(d)};
+ return {kind:"solid",grade:grade??cpWallGrade(d)};
 }
 function cpInterpret({attacker,target,attackType="ranged",scene,
  tokens,projectileHeight=null,mode}={}){
@@ -225,8 +292,19 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  const blockingWalls=[];
  const ambiguousWalls=[];
  const slopedWalls=[];
+ const wallOptions=new Map();
  for(const wall of walls){
-  const value=cpWallData(wall,sourceHeight,sloped?"2d":selectedMode);
+  const explicit=cpWallGrade(wall);
+  const low=selectedMode==="3d"&&explicit==="solid"?
+   cpLowWallGrade(wall,a,t,target,s,grid):null;
+  const grade=low??(explicit==="window"&&cpWindowAdjacent(a,wall)?
+   "adjacent-window":explicit);
+  const options={grade,lowCover:low!==null};
+  wallOptions.set(wall,options);
+  // An adjacent window does not confer improved cover. Any other wall
+  // on the same ray continues to be considered independently.
+  if(grade==="adjacent-window")continue;
+  const value=cpWallData(wall,sourceHeight,sloped?"2d":selectedMode,options);
   if(sloped&&value.kind==="solid")slopedWalls.push(wall);
   else if(value.kind==="solid")blockingWalls.push(value);
   else if(value.kind==="unknown")ambiguousWalls.push({
@@ -285,7 +363,8 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
     else if(cross==="ambiguous")uncertainty.push("wall-grazed:"+w.id);
    }
    for(const w of slopedWalls){
-    const result=cpSlopedWall(from,to,w,sourceHeight,targetHeight);
+    const result=cpSlopedWall(from,to,w,sourceHeight,targetHeight,
+     wallOptions.get(w));
     const id=cpDoc(w)?.uuid??cpDoc(w)?.id;
     if(result.kind==="solid")crossed.push({kind:result.grade??"solid",id});
     else if(result.kind==="unknown")uncertainty.push(result.reason+":"+id);
@@ -313,7 +392,7 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   const soft=traces.some(r=>r.blocked.some(x=>x.kind==="soft"));
   const partial=traces.some(r=>r.blocked.some(x=>x.kind==="partial"));
   const improved=traces.some(r=>r.blocked.some(x=>x.kind==="improved"));
-  const rank={partial:2,soft:4,solid:4,improved:8};
+  const rank={partial:2,soft:4,solid:4,improved:8,window:8};
   const grade=traces.flatMap(r=>r.blocked).reduce((value,hit)=>
    Math.max(value,rank[hit.kind]??0),0);
   const coverType=grade===8?"improved":grade===4?(solid?"normal":"soft"):
@@ -411,7 +490,7 @@ Hooks.once("ready",()=>{
    if(!game.user?.isGM)throw Error("GM required to classify a wall");
    const doc=cpDoc(wall);
    if(doc?.documentName!=="Wall")throw Error("Wall document required");
-   if(![null,"partial","normal","improved"].includes(grade))
+   if(![null,"partial","normal","improved","window"].includes(grade))
     throw Error("Unsupported wall cover grade");
    return grade===null||grade==="normal"?
     doc.unsetFlag(CP_NS,"coverGrade"):

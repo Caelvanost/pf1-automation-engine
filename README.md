@@ -1,8 +1,17 @@
 # PF1 Automation Engine
 
-**Version 1.40.0 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.40.1 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Opaque 2D walls, windows and low 3D obstacles (v1.40.1)
+
+- **2D standard walls:** an ordinary wall has no finite height in the 2D model; every strictly crossed corner ray is considered solid. If *all* rays are blocked, the target has **total cover** and the native direct attack is cancelled. A shorter wall segment that blocks only some rays still grants normal cover +4 by the existing best-angle rule. A mere endpoint graze is not a proven wall crossing.
+- **Native Foundry windows:** movement-blocking walls with explicitly unrestricted **sight and light** are treated as windows, giving **improved cover +8 AC / +4 qualifying Reflex** when a valid line crosses the segment. If the attacker occupies a square immediately adjacent to that window, the window supplies **no cover** (other intervening walls still count). Native window and an invisible movement-blocking wall with identical sense settings cannot be distinguished; use a regular wall or explicit cover grade when they should behave differently. A GM may explicitly classify a wall as `window` with `coverPF1.setWallGrade(wall.document, "window")`.
+- **3D low walls:** a wall whose known `wall-height` upper and lower bounds form a height strictly **less than 3 ft** (feet scenes), or **less than 1 m** (metric scenes), grants **partial cover +2 AC / +1 qualifying Reflex** to a **Medium** target or **normal cover +4 AC / +2 qualifying Reflex** to a **Small** target when its projected corner rays intersect. The wall bottom must be at the target's elevation, the target must be within six squares (30 ft in a standard five-foot grid), and the attacker must be farther from the wall than the target. Unknown size/units/height or unverified geometry is not guessed. A low wall can still provide its cover grade when a sampled eye-height projectile ray passes over it.
+- Pre-existing GM-classified `partial`/`improved` walls, native AC anti-stacking, best-angle selection, conditional Reflex-save source approval, and the single native chat thumbnail remain unchanged.
+
+**GM macro:** select the relevant wall segments and use the existing README macro with `const grade = "window";` to override the automatic classification. Use `"normal"` to remove an override. A transparent native window is recognized only when both native **sight** and **light** restrictions are explicitly set to **None**.
 
 ## Explicit partial / improved wall cover (development branch)
 
