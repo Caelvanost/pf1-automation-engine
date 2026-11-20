@@ -479,6 +479,19 @@ after(base);
  const unverifiedHtml=pf1aeModule.api.coverNativeBridge.cardSection(unverified);
  assert.ok(unverifiedHtml.includes('Unverified (GM review)'));
  assert.ok(!unverifiedHtml.includes('Target AC incl. cover: 24'));
+ const scenario={...base,rollIndex:6,targetResults:[{
+  ...base.targetResults[0],
+  coverDiagnosis:{status:'confirmed',type:'normal',acBonus:4},
+  defense:{baseValue:16,value:null,coverBonus:4,uncertain:true,
+   nativeCoverProvenance:{status:'uncertain',reason:'untyped-or-unclassified-native-ac-source'}}
+ }]};
+ const preview=pf1aeModule.api.coverNativeBridge.cardSection(scenario);
+ assert.ok(preview.includes('Indicative AC with cover: 20'));
+ assert.ok(preview.includes('Native AC: 16'));
+ assert.ok(preview.includes('Cover bonus: +4'));
+ assert.ok(preview.includes('Not verified:'));
+ assert.ok(!preview.includes('Target AC incl. cover: 20'));
+
  const total={...base,targetResults:[{targetTokenUuid:target.document.uuid,
   coverDiagnosis:{status:'confirmed',type:'total',
    preventsDirectAttack:true},defense:{baseValue:17,value:null}}]};
