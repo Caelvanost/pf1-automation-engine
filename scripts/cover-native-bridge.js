@@ -227,6 +227,77 @@ function cbPresentation(event){
   'margin-top:0.5rem;padding-top:0.4rem">'+
   '<strong>'+title+suffix+'</strong><div>'+content+'</div></section>';
 }
+/**
+ * Update only the displayed defense number within the native PF1 target
+ * miniature. The card template has:
+ *   .attack-targets > .target[data-uuid] .ac .normal > span.value
+ * Its other siblings are touch and flatFooted: never rewrite those when
+ * changing normal AC. This string transform runs on the persistent
+ * ChatMessage.content, so Foundry rerenders retain the new display.
+ *
+ * Restrict to the exact UUID and to a native numeric value equal to the
+ * already-resolved baseline AC. This avoids rewriting unrelated chat HTML
+ * or an unrelated target (and avoids double application on repeat events).
+ * First roll owns the summary thumbnail for a multiattack card; individual
+ * attack outcomes keep their distinct values in the PF1AE footnotes.
+ */
+function cbPatchTargetAC(source,event){
+ if(typeof source!=="string"||event?.rollIndex!==0||
+    event?.targetResults?.length!==1)return source;
+ const result=event.targetResults[0],cover=result?.coverDiagnosis;
+ const defense=result?.defense,base=cbNumber(defense?.baseValue);
+ const effective=cbNumber(defense?.value);
+ if(cover?.status!=="confirmed"||
+    !["normal","soft"].includes(cover.type)||
+    base===null||effective===null||base===effective)return source;
+ const defenseType=defense.type??"normal";
+ if(!["normal","touch","flatFooted"].includes(defenseType))return source;
+ const uuid=result.targetTokenUuid;
+ if(typeof uuid!=="string")return source;
+ // PF1 target thumbnails use individual <div class="target" data-uuid>.
+ // Scan only div opening tags; the next target opening limits the search
+ // region and prevents accidental updates to other targets or chat sections.
+ const open=/<div\b[^>]*>/gi;
+ const targets=[];
+ let match;
+ while((match=open.exec(source))){
+  const tag=match[0];
+  const classes=tag.match(/\bclass\s*=\s*(["'])(.*?)\1/i)?.[2]??"";
+  if(!classes.split(/\s+/).includes("target"))continue;
+  const id=tag.match(/\bdata-uuid\s*=\s*(["'])(.*?)\1/i)?.[2];
+  if(id!==uuid)continue;
+  targets.push({start:match.index,after:open.lastIndex});
+ }
+ if(targets.length!==1)return source;
+ const regionStart=targets[0].after;
+ const next=source.slice(regionStart).search(
+  /<div\b[^>]*\bclass\s*=\s*["'][^"']*\btarget\b[^"']*["'][^>]*>/i);
+ const regionEnd=next<0?source.length:regionStart+next;
+ const region=source.slice(regionStart,regionEnd);
+ const acTag=/<div\b[^>]*\bclass\s*=\s*(["'])[^"']*\bac\b[^"']*\1[^>]*>/i.exec(region);
+ if(!acTag)return source;
+ const acRegion=region.slice(acTag.index+acTag[0].length);
+ const defenseTags=[...acRegion.matchAll(/<div\b[^>]*\bclass\s*=\s*(["'])([^"']*)\1[^>]*>/gi)];
+ const found=defenseTags.find(t=>t[2].split(/\s+/).includes(defenseType));
+ if(!found)return source;
+ const after=acRegion.slice(found.index+found[0].length);
+ const span=/<span\b([^>]*\bclass\s*=\s*(["'])[^"']*\bvalue\b[^"']*\2[^>]*)>(\s*)(-?\d+)(\s*)<\/span>/i.exec(after);
+ if(!span)return source;
+ // The AC value must belong to the immediately selected defense row.
+ if(after.slice(0,span.index).includes("<div"))return source;
+ if(Number(span[4])!==base)return source;
+ const absoluteStart=regionStart+acTag.index+acTag[0].length+
+  found.index+found[0].length+span.index;
+ const title=cbLabel("PF1AE.Cover.ThumbnailTitle","AC with cover");
+ // Numeric and localized strings must be escaped for attribute context.
+ const safeTitle=String(title).replace(/[&"<>]/g,c=>
+  ({"&":"&amp;",'"':"&quot;","<":"&lt;",">":"&gt;"}[c]));
+ const changed='<span'+span[1]+' data-pf1ae-cover-native-ac="'+base+
+  '" title="'+safeTitle+': '+effective+'">'+span[3]+effective+
+  span[5]+'</span>';
+ return source.slice(0,absoluteStart)+changed+
+  source.slice(absoluteStart+span[0].length);
+}
 async function cbOnResolved(event,messageOverride=null){
  if(!cbEnable()||!event?.sourceMessageId)return;
  const section=cbPresentation(event);
@@ -245,8 +316,11 @@ async function cbOnResolved(event,messageOverride=null){
      card.user!==game.user?.id)return;
   const source=card.content;
   const key=cbKey(event,event.targetResults?.[0]);
-  if(!key||source.includes('data-pf1ae-cover-key="'+key+'"'))return;
-  try{await card.update({content:source+section})}
+  if(!key)return;
+  const already=source.includes('data-pf1ae-cover-key="'+key+'"');
+  const content=cbPatchTargetAC(source,event)+(already?"":section);
+  if(content===source)return;
+  try{await card.update({content})}
   catch(error){console.warn("[PF1AE][CoverBridge] Card annotation unavailable",error)}
  });
  CB_CHAT_QUEUES.set(messageId,operation);
@@ -320,6 +394,7 @@ Hooks.once("ready",()=>{
   previewRange:actionUse=>game.modules.get(CB_NS)?.api?.actionRange?.
    inspectActionUse?.(actionUse)??null,
   cardSection:event=>cbPresentation(event),
+  patchTargetAC:(content,event)=>cbPatchTargetAC(content,event),
   annotateNativePostUse:(use,message)=>cbOnNativePostUse(use,message)
  });
 });
