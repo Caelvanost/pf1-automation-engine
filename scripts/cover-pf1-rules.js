@@ -6,7 +6,9 @@
  * creatures. No feat/class logic, no attacks, no saving throws or writes.
  *
  * Ranged/reach: for EACH choice of attacker-space corner, test all four
- * target-space corners. If there is one wholly clear origin, no cover.
+ * target-space corners. Use the best available origin for the attacker;
+ * endpoint-grazing rays without strict blockers count as a clear angle.
+ * Unknown wall or 3D collisions are never optimistically dismissed.
  * Adjacent melee: all four attacker corners matter; creature interposition
  * does NOT confer soft cover for adjacent melee.
  *
@@ -311,6 +313,23 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // attacker-selected corner for ranged and non-adjacent melee attacks.
  const considered=method==="adjacent-melee"?cornerResults:
   cornerResults;
+ // Best-angle convention for ranged / non-adjacent melee: the
+ // attacker selects the most favorable occupied-square corner.
+ // A ray that merely touches a wall endpoint (or creature boundary)
+ // is not a PROVEN crossing. Where an origin has no definite blockers
+ // and its only uncertainties are such grazing contacts, treat it as
+ // the clear best angle. Unknown wall classification, Levels collisions,
+ // roof/height ambiguity and other uncertain geometry remain uncertain.
+ const bestGrazeOnly=method!=="adjacent-melee"?
+  considered.find(o=>!o.solid&&!o.soft&&o.traces.every(ray=>
+   ray.blocked.length===0&&ray.uncertain.every(u=>
+    u.startsWith("wall-grazed:")||u.startsWith("creature-grazed:")))):
+  null;
+ if(bestGrazeOnly)
+  return cpResult("confirmed","attacker-selected-best-grazing-angle",{
+   type:"none",method,selectedOrigin:bestGrazeOnly.originCorner,
+   origins:cornerResults,multilevel,sourceHeight,targetHeight,
+   mode:selectedMode});
  if(method!=="adjacent-melee"&&considered.some(r=>r.clear))
   return cpResult("confirmed","attacker-selected-clear-corner",{
    type:"none",method,origins:cornerResults,
