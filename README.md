@@ -1,8 +1,34 @@
 # PF1 Automation Engine
 
-**Version 1.39.13 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.40.0 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Explicit partial / improved wall cover (development branch)
+
+PF1AE can now distinguish a **GM-classified wall** from ordinary full-height wall cover. This feature does **not** infer which percentage of a creature's body is visible from a 2D wall segment or a single 3D line-of-sight height, because that would produce inaccurate Pathfinder 1e adjudications.
+
+- **Ordinary wall:** standard cover, **+4 AC / +2 Reflex**.
+- **Partial-cover wall:** **+2 AC / +1 Reflex**.
+- **Improved-cover wall:** **+8 AC / +4 Reflex**.
+- **Interposed creature:** soft cover, **+4 AC / no Reflex bonus**.
+- **Total cover:** direct attack still blocked only when ALL traced rays are fully obstructed by *ordinary solid* walls. A partial or improved-grade wall does not automatically create total cover.
+
+The PF1 corner-ray detector still chooses the attacker's best origin, respects 2D/3D wall heights and preserves unknown-geometry safeguards. Graded-wall attack bonuses appear in the three native target AC thumbnail values **only when the geometry and native AC bonus provenance are confirmed**. This display does not mutate Actor AC. Reflex modifiers continue to use the existing explicitly reviewed, source-bound manual-cover save mechanism; no guessed automatic Reflex bonus is applied to an unrelated save.
+
+**GM wall setup:** select one or more wall segments in the native Foundry Walls layer, then execute this *GM script macro* to assign their cover grade. Change `grade` to `"improved"`, `"normal"` (reset), or `"partial"`:
+
+```js
+const grade = "partial";
+const cover = game.modules.get("pf1-automation-engine")?.api?.coverPF1;
+if (!game.user.isGM || !cover?.setWallGrade) throw Error("PF1AE GM cover API unavailable");
+const walls = canvas.walls.controlled;
+if (!walls.length) throw Error("Select at least one wall segment");
+for (const wall of walls) await cover.setWallGrade(wall.document, grade);
+ui.notifications.info(`PF1AE: ${walls.length} wall(s) classified as ${grade}`);
+```
+
+The `flags.pf1-automation-engine.coverGrade` value is stored on the wall document, not on actors or tokens. Classification is an intentional GM rule call: use **partial** where most of the defender is still exposed and **improved** for exceptional protection such as an arrow slit. Never label every enclosing opaque wall as improved cover; unlike regular walls, improved-grade segments do not automatically prove total cover.
 
 ## Automatically choose the attacker's best cover angle (v1.39.13)
 

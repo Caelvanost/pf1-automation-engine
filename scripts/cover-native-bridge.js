@@ -170,7 +170,7 @@ function cbPresentation(event){
  // native token sight alone cannot prove a PF1 cover bonus.
  const uncertain=cover.status==="uncertain";
  if(!uncertain&&(cover.status!=="confirmed"||
-    !["normal","soft","total"].includes(cover.type)))return null;
+    !["partial","normal","soft","improved","total"].includes(cover.type)))return null;
  const isTotal=!uncertain&&cover.type==="total"&&cover.preventsDirectAttack===true;
  const native=cbNumber(defense?.baseValue);
  const effective=cbNumber(defense?.value);
@@ -252,7 +252,7 @@ function cbNativeThumbnailValues(event){
  const entry=event?.targetResults?.[0],cover=entry?.coverDiagnosis;
  if(event?.rollIndex!==0||event?.targetResults?.length!==1||
     cover?.status!=="confirmed"||
-    !["normal","soft"].includes(cover.type))return null;
+    !["partial","normal","soft","improved"].includes(cover.type))return null;
  const uuid=entry.targetTokenUuid;
  const tokens=globalThis.canvas?.tokens?.placeables??[];
  const token=tokens.find(t=>t?.document?.uuid===uuid);
@@ -382,7 +382,7 @@ async function cbOnNativePostUse(actionUse,message){
  const cover=geometry.assessment;
  if(cover.status!=="confirmed"&&cover.status!=="uncertain")return;
  if(cover.status==="confirmed"&&
-    !["normal","soft"].includes(cover.type))return;
+    !["partial","normal","soft","improved"].includes(cover.type))return;
  const api=game.modules.get(CB_NS)?.api?.attackResolution;
  if(typeof api?.resolveAttack!=="function")return;
  let defense=null;

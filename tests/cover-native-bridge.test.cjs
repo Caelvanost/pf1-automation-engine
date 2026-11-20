@@ -160,6 +160,25 @@ assert.equal(patch(altered,base),altered,
   'touch and flat-footed both become 17, plus unrelated target 17');
  assert.equal(patch(harpyAdjusted,harpyEvent),harpyAdjusted,
   'all three adjusted values remain stable after second render');
+ // Explicitly graded partial and improved cover use the same native
+ // thumbnail positions without modifying the actor's baseline CA.
+ for(const [coverType,bonus,normal,touch] of [
+  ['partial',2,18,15],['improved',8,24,21]
+ ]){
+  const classified={...harpyEvent,targetResults:[{
+   ...harpyEvent.targetResults[0],
+   coverDiagnosis:{status:'confirmed',type:coverType,acBonus:bonus},
+   defense:{baseValue:16,value:normal,coverBonus:bonus,type:'normal'}
+  }]};
+  const classifiedHtml=patch(harpyThumbnail,classified);
+  assert.ok(classifiedHtml.includes('title="AC with cover: '+normal+'"'),
+   coverType+': standard CA in target thumbnail');
+  assert.equal((classifiedHtml.match(new RegExp('>'+touch+'<\\/span>','g'))??[]).length,2,
+   coverType+': touch and flat-footed CA both updated');
+  assert.equal(patch(classifiedHtml,classified),classifiedHtml,
+   coverType+': repeated attack hook does not double cover');
+ }
+
  // Existing +4 typed cover on touch but not normal/flatFooted: touch
  // must stay native 13 while the other two receive their missing +4.
  pf1aeModule.api.nativeCover={inspect:({defense})=>({

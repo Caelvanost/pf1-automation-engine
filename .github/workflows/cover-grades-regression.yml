@@ -1,0 +1,35 @@
+name: Cover grades regression
+
+on:
+  pull_request:
+    paths:
+      - 'scripts/cover-pf1-rules.js'
+      - 'scripts/cover-native-bridge.js'
+      - 'tests/cover-pf1-rules.test.cjs'
+      - 'tests/cover-native-bridge.test.cjs'
+      - '.github/workflows/cover-grades-regression.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  cover:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Syntax checks
+        run: |
+          node --check scripts/cover-pf1-rules.js
+          node --check scripts/cover-native-bridge.js
+          node --check tests/cover-pf1-rules.test.cjs
+          node --check tests/cover-native-bridge.test.cjs
+      - name: Cover and defense regression
+        run: |
+          node tests/cover-pf1-rules.test.cjs
+          node tests/cover-native-bridge.test.cjs
+          node tests/cover-detection.test.cjs
+          node tests/cover-saves.test.cjs
+          node tests/native-cover-attack-integration.test.cjs
