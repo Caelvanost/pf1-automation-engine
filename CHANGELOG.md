@@ -1,3 +1,13 @@
+## v1.40.0 — GM-classified partial and improved cover
+
+- Recognize Pathfinder 1e **partial** wall cover (+2 AC, +1 cover-related Reflex) and **improved** wall cover (+8 AC, +4 cover-related Reflex), alongside ordinary (+4/+2), soft (+4/+0) and total cover.
+- Keep native Foundry 13 wall collision and 2D/3D verified height checks. Wall grade is persisted in `flags.pf1-automation-engine.coverGrade` only by explicit GM classification; never infer body exposure from a single 3D eye-height ray.
+- Preserve the attacker's best available PF1 corner choice. Partial/soft/normal/improved grades do not by themselves prove total cover; only fully proven ordinary solid-wall obstruction blocks direct attack.
+- Update all three native PF1 target thumbnail AC numbers for confirmed partial/improved cover, with no Actor/roll mutations and no redundant chat footer. Keep native cover-provenance nonstacking.
+- Expose `coverPF1.setWallGrade(wallDocument, "partial" | "normal" | "improved")` to GM scripts; document a ready-to-use selected-wall macro.
+- Retain manual, source-bound Reflex save modifier review: attack geometry alone cannot identify whether a particular Reflex effect benefits from cover.
+- Add automated grade and thumbnail regressions and a PR workflow for cover-specific tests.
+
 ## v1.39.13 — Best-angle attacker choice for cover
 
 - Automatically choose the **most favorable origin corner** for ranged and non-adjacent melee/reach attacks when resolving cover on the PF1 square grid.
