@@ -321,7 +321,7 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // the clear best angle. Unknown wall classification, Levels collisions,
  // roof/height ambiguity and other uncertain geometry remain uncertain.
  const bestGrazeOnly=method!=="adjacent-melee"?
-  considered.find(o=>!o.solid&&!o.soft&&o.traces.every(ray=>
+  considered.find(o=>o.unknown&&!o.solid&&!o.soft&&o.traces.every(ray=>
    ray.blocked.length===0&&ray.uncertain.every(u=>
     u.startsWith("wall-grazed:")||u.startsWith("creature-grazed:")))):
   null;
