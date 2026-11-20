@@ -28,10 +28,10 @@ const cpCollection=x=>Array.isArray(x)?x:
 const cpAllowedAttack=new Set(["ranged","melee","reach"]);
 function cpResult(status,reason,extra={}){
  const type=status==="confirmed"?extra.type??null:null;
- const bonus=type==="normal"||type==="soft"?4:type==="none"?0:null;
+ const bonus=type==="partial"?2:type==="normal"||type==="soft"?4:type==="improved"?8:type==="none"?0:null;
  const configuredMode=game.modules?.get?.(CP_NS)?.api?.coverMode?.get?.()??"2d";
  const result={status,reason,type,acBonus:bonus,
-  reflexBonus:type==="normal"?2:type==="none"||type==="soft"?0:null,
+  reflexBonus:type==="partial"?1:type==="normal"?2:type==="improved"?4:type==="none"||type==="soft"?0:null,
   authoritative:status==="confirmed",
   preventsDirectAttack:status==="confirmed"&&type==="total",
   mode:configuredMode,source:"pf1-corner-rays",...extra};
@@ -104,6 +104,11 @@ function cpTokenCross(a,b,rect){
  if(ambiguous)return "ambiguous";
  return crosses>=2?"cross":"clear";
 }
+// Only GM-classified wall grades; never guess cover from token visibility.
+function cpWallGrade(wall){
+ const grade=cpDoc(wall)?.flags?.[CP_NS]?.coverGrade;
+ return grade==="partial"||grade==="improved"?grade:"solid";
+}
 function cpWallData(wall,height,mode){
  const d=cpDoc(wall);
  const coords=d?.c;
@@ -125,7 +130,7 @@ function cpWallData(wall,height,mode){
   return {kind:"unknown",reason:"wall-movement-restriction"};
  if(mode==="2d")return {kind:"solid",
   a:{x:coords[0],y:coords[1]},b:{x:coords[2],y:coords[3]},
-  id:d.uuid??d.id};
+  id:d.uuid??d.id,grade:cpWallGrade(d)};
  const bounds=d.flags?.["wall-height"];
  const bottom=bounds?.bottom??-Infinity;
  const top=bounds?.top??Infinity;
@@ -138,7 +143,7 @@ function cpWallData(wall,height,mode){
  if(Math.abs(height-bottom)<CP_EPS||Math.abs(height-top)<CP_EPS)
   return {kind:"unknown",reason:"wall-height-boundary"};
  return {kind:"solid",a:{x:coords[0],y:coords[1]},
-  b:{x:coords[2],y:coords[3]},id:d.uuid??d.id};
+  b:{x:coords[2],y:coords[3]},id:d.uuid??d.id,grade:cpWallGrade(d)};
 }
 
 function cpSlopedWall(from,to,wall,startHeight,endHeight){
@@ -165,7 +170,7 @@ function cpSlopedWall(from,to,wall,startHeight,endHeight){
  if(height<bottom-CP_EPS||height>top+CP_EPS)return {kind:"clear"};
  if(Math.abs(height-bottom)<=CP_EPS||Math.abs(height-top)<=CP_EPS)
   return {kind:"unknown",reason:"wall-height-boundary"};
- return {kind:"solid"};
+ return {kind:"solid",grade:cpWallGrade(d)};
 }
 function cpInterpret({attacker,target,attackType="ranged",scene,
  tokens,projectileHeight=null,mode}={}){
@@ -276,13 +281,13 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
    if(nativeSurfaceState==="unknown")uncertainty.push("levels-collision-unknown");
    for(const w of blockingWalls){
     const cross=cpSegment(from,to,w.a,w.b);
-    if(cross==="cross")crossed.push({kind:"solid",id:w.id});
+    if(cross==="cross")crossed.push({kind:w.grade??"solid",id:w.id});
     else if(cross==="ambiguous")uncertainty.push("wall-grazed:"+w.id);
    }
    for(const w of slopedWalls){
     const result=cpSlopedWall(from,to,w,sourceHeight,targetHeight);
     const id=cpDoc(w)?.uuid??cpDoc(w)?.id;
-    if(result.kind==="solid")crossed.push({kind:"solid",id});
+    if(result.kind==="solid")crossed.push({kind:result.grade??"solid",id});
     else if(result.kind==="unknown")uncertainty.push(result.reason+":"+id);
    }
    for(const w of ambiguousWalls){
@@ -306,8 +311,15 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   const unknown=traces.some(r=>r.uncertain.length);
   const solid=traces.some(r=>r.blocked.some(x=>x.kind==="solid"));
   const soft=traces.some(r=>r.blocked.some(x=>x.kind==="soft"));
-  cornerResults.push({originCorner:i,traces,unknown,solid,soft,
-   clear:!unknown&&!solid&&!soft});
+  const partial=traces.some(r=>r.blocked.some(x=>x.kind==="partial"));
+  const improved=traces.some(r=>r.blocked.some(x=>x.kind==="improved"));
+  const rank={partial:2,soft:4,solid:4,improved:8};
+  const grade=traces.flatMap(r=>r.blocked).reduce((value,hit)=>
+   Math.max(value,rank[hit.kind]??0),0);
+  const coverType=grade===8?"improved":grade===4?(solid?"normal":"soft"):
+   grade===2?"partial":null;
+  cornerResults.push({originCorner:i,traces,unknown,solid,soft,partial,improved,
+   coverType,clear:!unknown&&!coverType});
  }
  // PF1 adjacent melee considers all attacker origins, unlike the
  // attacker-selected corner for ranged and non-adjacent melee attacks.
@@ -321,7 +333,7 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // the clear best angle. Unknown wall classification, Levels collisions,
  // roof/height ambiguity and other uncertain geometry remain uncertain.
  const bestGrazeOnly=method!=="adjacent-melee"?
-  considered.find(o=>o.unknown&&!o.solid&&!o.soft&&o.traces.every(ray=>
+  considered.find(o=>o.unknown&&!o.coverType&&o.traces.every(ray=>
    ray.blocked.length===0&&ray.uncertain.every(u=>
     u.startsWith("wall-grazed:")||u.startsWith("creature-grazed:")))):
   null;
@@ -354,14 +366,17 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   return cpResult("confirmed","every-direct-ray-blocked-by-solid-walls",{
    type:"total",method,origins:cornerResults,
    multilevel,sourceHeight,targetHeight,mode:selectedMode});
- const guaranteed=considered.length>0&&considered.every(o=>o.solid||o.soft);
+ const guaranteed=considered.length>0&&considered.every(o=>o.coverType);
  if(guaranteed){
-  // A selected origin with a proven soft-only blocker is sufficient to
-  // establish cover, but not necessarily a solid-wall cover bonus.
-  const softOnly=considered.some(o=>!o.solid&&o.soft);
-  const type=softOnly?"soft":"normal";
+  // Attacker chooses the least-protected origin; do not downgrade wall
+  // cover just because a different corner also crosses a creature.
+  const weight={partial:2,soft:4,normal:4,improved:8};
+  const selected=[...considered].sort((a,b)=>
+   weight[a.coverType]-weight[b.coverType]||
+   a.originCorner-b.originCorner)[0];
+  const type=selected.coverType;
   return cpResult("confirmed","every-origin-has-proven-obstruction",{
-   type,method,origins:cornerResults,
+   type,method,selectedOrigin:selected.originCorner,origins:cornerResults,
    multilevel,sourceHeight,targetHeight,mode:selectedMode
   });
  }
@@ -372,15 +387,15 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
    method,origins:cornerResults});
  const best=method==="adjacent-melee"?considered:
   [...considered].sort((x,y)=>
-   (x.solid?1:0)-(y.solid?1:0)||
-   (x.soft?1:0)-(y.soft?1:0));
+   ({partial:2,normal:4,soft:4,improved:8}[x.coverType]??0)-
+  ({partial:2,normal:4,soft:4,improved:8}[y.coverType]??0));
  const selected=best[0];
- if(!selected?.solid&&!selected?.soft)
+ if(!selected?.coverType)
   return cpResult("confirmed","no-cover",{
    type:"none",method,origins:cornerResults,
    multilevel,sourceHeight,targetHeight});
  return cpResult("confirmed","pf1-corner-rays-obstructed",{
-  type:selected.solid?"normal":"soft",method,
+  type:selected.coverType,method,
   selectedOrigin:selected.originCorner,origins:cornerResults,
   multilevel,sourceHeight,targetHeight});
 
@@ -391,6 +406,16 @@ Hooks.once("ready",()=>{
  module.api??={};
  module.api.coverPF1=Object.freeze({
   inspect:options=>cpInterpret(options),
-  lastDiagnostic:()=>CP_LAST?cpClone(CP_LAST):null
+  lastDiagnostic:()=>CP_LAST?cpClone(CP_LAST):null,
+  setWallGrade:async(wall,grade)=>{
+   if(!game.user?.isGM)throw Error("GM required to classify a wall");
+   const doc=cpDoc(wall);
+   if(doc?.documentName!=="Wall")throw Error("Wall document required");
+   if(![null,"partial","normal","improved"].includes(grade))
+    throw Error("Unsupported wall cover grade");
+   return grade===null||grade==="normal"?
+    doc.unsetFlag(CP_NS,"coverGrade"):
+    doc.setFlag(CP_NS,"coverGrade",grade);
+  }
  });
 });
