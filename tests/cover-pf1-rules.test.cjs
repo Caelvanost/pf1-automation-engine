@@ -54,6 +54,23 @@ assert.equal(result.status,'confirmed','partial wall may protect only part of ta
 assert.equal(result.type,'normal');
 assert.equal(result.acBonus,4);
 assert.equal(result.reflexBonus,2);
+// A wall may be explicitly graded by the GM: do not infer this
+// from its 2D segment or from the token's visual silhouette.
+scene.walls.contents[0].flags['pf1-automation-engine']={coverGrade:'partial'};
+result=check();
+assert.equal(result.status,'confirmed');
+assert.equal(result.type,'partial');
+assert.equal(result.acBonus,2);
+assert.equal(result.reflexBonus,1);
+scene.walls.contents[0].flags['pf1-automation-engine'].coverGrade='improved';
+result=check();
+assert.equal(result.status,'confirmed');
+assert.equal(result.type,'improved');
+assert.equal(result.acBonus,8);
+assert.equal(result.reflexBonus,4);
+assert.equal(result.preventsDirectAttack,false,
+ 'classified improved cover must never be mistaken for total cover');
+delete scene.walls.contents[0].flags['pf1-automation-engine'];
 scene.walls.contents[0].flags['wall-height'].top=2;
 result=check();
 assert.equal(result.status,'confirmed');
