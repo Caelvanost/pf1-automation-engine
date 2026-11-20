@@ -1,3 +1,11 @@
+## v1.40.1 — Default 2D walls, native windows and 3D low-wall sizes
+
+- Keep ordinary 2D walls unbounded by default: verified full corner-ray blockage confirms **total cover**, while partial ray obstruction continues to grant normal cover and corner-only grazing remains nonblocking.
+- Recognize movement-blocking, sight/light-transparent **native window segments** (or explicit GM `coverGrade=window`) as **improved cover +8 AC / +4 Reflex**, not total cover. Adjacent attackers ignore the window's cover without ignoring other wall obstacles.
+- Recognize verified ground-based 3D walls strictly below **3 ft** or **1 m**, depending on scene units. Within the Pathfinder low-obstacle range, and when the attacker is farther from the wall, automatically classify **Medium targets as partial cover (+2/+1)** and **Small targets as normal cover (+4/+2)**. A low wall may protect even when the sampled eye-height ray clears its upper edge.
+- Retain conservative handling when target size, scene units, geometric details, wall-type provenance, or Levels collision cannot be verified; retain GM overrides and native thumbnail-only display without modifying Actors or attack rolls.
+- Extend geometry tests for 2D opaque walls without height metadata, window adjacency, automatic native window recognition, feet/meters low walls and strict thresholds.
+
 ## v1.40.0 — GM-classified partial and improved cover
 
 - Recognize Pathfinder 1e **partial** wall cover (+2 AC, +1 cover-related Reflex) and **improved** wall cover (+8 AC, +4 cover-related Reflex), alongside ordinary (+4/+2), soft (+4/+0) and total cover.
