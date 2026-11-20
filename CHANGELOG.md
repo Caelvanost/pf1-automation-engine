@@ -1,3 +1,11 @@
+## v1.39.9 — Simplify cover AC using only explicit native cover sources
+
+- Resolve the actual PF1 11.11 breakdown supplied by Harpy: `Armure de cuir` has `modifier:null` as an item header, while its +2 armor contribution has `modifier:"base"`; Dexterity and base AC also have null/undefined modifiers. These normal entries previously triggered `untyped-or-unclassified-native-ac-source` and prevented an otherwise confirmed +4 from being applied.
+- Only recognize native source entries **explicitly tagged `modifier:"cover"`** as existing cover. Ignore unrelated typed, null, undefined and untyped native AC entries for the purpose of cover stacking. A native +4 `cover` still prevents a duplicate +4.
+- With a confirmed cover and no explicit native cover, use **native AC +4** as the effective defense and display that value on the existing native attack chat card. Harpy native AC 16 + confirmed normal cover 4 = target-specific AC 20. Native actor AC and attack roll are not modified.
+- Preserve uncertain outcomes for malformed or conflicting explicit cover entries and unverifiable geometry. Custom untyped modifiers that actually encode cover remain the GM's responsibility, because they cannot be distinguished from generic untyped bonuses by this deliberately simple rule.
+- Regression test now reproduces all six original Harpy source entries, verifies native baseline cover 0 and existing typed-cover no-double-counting, and retains failure for malformed typed cover.
+
 ## v1.39.8 — Display a qualified cover AC when native AC source provenance is uncertain
 
 - Live confirmation: v1.39.7 cover geometry is now correct (`confirmed / normal / acBonus:4`) for Ezren attacking Harpy, but the native PF1 AC baseline is `16` with a source classed as `untyped-or-unclassified-native-ac-source`, so the native damage/attack resolution correctly declines to invent a definitive `defense.value`.
