@@ -241,55 +241,83 @@ function cbPresentation(event){
  * First roll owns the summary thumbnail for a multiattack card; individual
  * attack outcomes keep their distinct values in the PF1AE footnotes.
  */
-function cbPatchTargetAC(source,event){
- if(typeof source!=="string"||event?.rollIndex!==0||
-    event?.targetResults?.length!==1)return source;
- const result=event.targetResults[0],cover=result?.coverDiagnosis;
- const defense=result?.defense,base=cbNumber(defense?.baseValue);
- const effective=cbNumber(defense?.value);
- if(cover?.status!=="confirmed"||
-    !["normal","soft"].includes(cover.type)||
-    base===null||effective===null||base===effective)return source;
- const defenseType=defense.type??"normal";
- if(!["normal","touch","flatFooted"].includes(defenseType))return source;
- const uuid=result.targetTokenUuid;
+/**
+ * Display-only cover adjustment of the three PF1 native AC figures. Native
+ * Actor values are read, never mutated. Existing explicit 'cover' entries
+ * are subtracted PER defense type; the same +4 cannot be counted twice.
+ * The first attack owns the target summary thumbnail. Later full-attack
+ * rolls retain their individual detailed defense lines.
+ */
+function cbNativeThumbnailValues(event){
+ const entry=event?.targetResults?.[0],cover=entry?.coverDiagnosis;
+ if(event?.rollIndex!==0||event?.targetResults?.length!==1||
+    cover?.status!=="confirmed"||
+    !["normal","soft"].includes(cover.type))return null;
+ const uuid=entry.targetTokenUuid;
+ const tokens=globalThis.canvas?.tokens?.placeables??[];
+ const token=tokens.find(t=>t?.document?.uuid===uuid);
+ const actor=token?.actor;
+ const bonus=cbNumber(cover.acBonus);
+ const values={};
+ if(actor&&bonus!==null&&bonus>=0){
+  const provenance=game.modules.get(CB_NS)?.api?.nativeCover;
+  for(const type of ["normal","touch","flatFooted"]){
+   const base=cbNumber(actor.system?.attributes?.ac?.[type]?.total);
+   if(base===null)continue;
+   // No guessing when a typed native cover source is ambiguous.
+   let existing;
+   try{existing=provenance?.inspect?.({actor,defense:type})}
+   catch(_){continue}
+   if(existing?.status!=="resolved"||cbNumber(existing.nativeCover)===null)
+    continue;
+   values[type]={base,effective:base+Math.max(0,bonus-existing.nativeCover)};
+  }
+ }
+ // The resolved defense is authoritative for the attack's actual AC
+ // type and remains available even if the token placeable is missing.
+ const defense=entry.defense,type=defense?.type??"normal";
+ const base=cbNumber(defense?.baseValue),effective=cbNumber(defense?.value);
+ if(["normal","touch","flatFooted"].includes(type)&&
+    base!==null&&effective!==null){
+  // An authoritative resolved total wins over read-only estimation.
+  values[type]={base,effective};
+ }
+ return Object.keys(values).length?values:null;
+}
+function cbPatchOneDefense(source,event,defenseType,base,effective){
+ if(base===effective)return source;
+ const uuid=event.targetResults[0].targetTokenUuid;
  if(typeof uuid!=="string")return source;
- // PF1 target thumbnails use individual <div class="target" data-uuid>.
- // Scan only div opening tags; the next target opening limits the search
- // region and prevents accidental updates to other targets or chat sections.
- const open=/<div\b[^>]*>/gi;
+ const open=/<div\\b[^>]*>/gi;
  const targets=[];
  let match;
  while((match=open.exec(source))){
   const tag=match[0];
-  const classes=tag.match(/\bclass\s*=\s*(["'])(.*?)\1/i)?.[2]??"";
-  if(!classes.split(/\s+/).includes("target"))continue;
-  const id=tag.match(/\bdata-uuid\s*=\s*(["'])(.*?)\1/i)?.[2];
+  const classes=tag.match(/\\bclass\\s*=\\s*(["'])(.*?)\\1/i)?.[2]??"";
+  if(!classes.split(/\\s+/).includes("target"))continue;
+  const id=tag.match(/\\bdata-uuid\\s*=\\s*(["'])(.*?)\\1/i)?.[2];
   if(id!==uuid)continue;
   targets.push({start:match.index,after:open.lastIndex});
  }
  if(targets.length!==1)return source;
  const regionStart=targets[0].after;
  const next=source.slice(regionStart).search(
-  /<div\b[^>]*\bclass\s*=\s*["'][^"']*\btarget\b[^"']*["'][^>]*>/i);
+  /<div\\b[^>]*\\bclass\\s*=\\s*["'][^"']*\\btarget\\b[^"']*["'][^>]*>/i);
  const regionEnd=next<0?source.length:regionStart+next;
  const region=source.slice(regionStart,regionEnd);
- const acTag=/<div\b[^>]*\bclass\s*=\s*(["'])[^"']*\bac\b[^"']*\1[^>]*>/i.exec(region);
+ const acTag=/<div\\b[^>]*\\bclass\\s*=\\s*(["'])[^"']*\\bac\\b[^"']*\\1[^>]*>/i.exec(region);
  if(!acTag)return source;
  const acRegion=region.slice(acTag.index+acTag[0].length);
- const defenseTags=[...acRegion.matchAll(/<div\b[^>]*\bclass\s*=\s*(["'])([^"']*)\1[^>]*>/gi)];
- const found=defenseTags.find(t=>t[2].split(/\s+/).includes(defenseType));
+ const defenseTags=[...acRegion.matchAll(/<div\\b[^>]*\\bclass\\s*=\\s*(["'])([^"']*)\\1[^>]*>/gi)];
+ const found=defenseTags.find(t=>t[2].split(/\\s+/).includes(defenseType));
  if(!found)return source;
  const after=acRegion.slice(found.index+found[0].length);
- const span=/<span\b([^>]*\bclass\s*=\s*(["'])[^"']*\bvalue\b[^"']*\2[^>]*)>(\s*)(-?\d+)(\s*)<\/span>/i.exec(after);
- if(!span)return source;
- // The AC value must belong to the immediately selected defense row.
- if(after.slice(0,span.index).includes("<div"))return source;
- if(Number(span[4])!==base)return source;
+ const span=/<span\\b([^>]*\\bclass\\s*=\\s*(["'])[^"']*\\bvalue\\b[^"']*\\2[^>]*)>(\\s*)(-?\\d+)(\\s*)<\\/span>/i.exec(after);
+ if(!span||after.slice(0,span.index).includes("<div")||
+    Number(span[4])!==base)return source;
  const absoluteStart=regionStart+acTag.index+acTag[0].length+
   found.index+found[0].length+span.index;
  const title=cbLabel("PF1AE.Cover.ThumbnailTitle","AC with cover");
- // Numeric and localized strings must be escaped for attribute context.
  const safeTitle=String(title).replace(/[&"<>]/g,c=>
   ({"&":"&amp;",'"':"&quot;","<":"&lt;",">":"&gt;"}[c]));
  const changed='<span'+span[1]+' data-pf1ae-cover-native-ac="'+base+
@@ -297,6 +325,17 @@ function cbPatchTargetAC(source,event){
   span[5]+'</span>';
  return source.slice(0,absoluteStart)+changed+
   source.slice(absoluteStart+span[0].length);
+}
+function cbPatchTargetAC(source,event){
+ if(typeof source!=="string")return source;
+ const values=cbNativeThumbnailValues(event);
+ if(!values)return source;
+ let result=source;
+ for(const type of ["normal","touch","flatFooted"]){
+  const data=values[type];
+  if(data)result=cbPatchOneDefense(result,event,type,data.base,data.effective);
+ }
+ return result;
 }
 async function cbOnResolved(event,messageOverride=null){
  if(!cbEnable()||!event?.sourceMessageId)return;
