@@ -1,8 +1,14 @@
 # PF1 Automation Engine
 
-**Version 1.39.9 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.39.10 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Cover-adjusted AC inside the native target thumbnail (v1.39.10)
+
+The original PF1 target mini-card displays three defenses next to the target portrait (normal AC shield, touch AC and flat-footed AC). When confirmed normal/soft cover gives an **authoritative** effective defense for a single targeted attack, PF1AE now replaces **only the corresponding number** inside that target's native card: for example, Harpy normal AC **16** with cover **+4** is displayed as **20 in the shield icon**. Touch and flat-footed values remain untouched when normal AC is modified. The original target card and its avatar are preserved; the detailed cover calculation remains in the same native chat message below the attack result.
+
+The change is persisted to the original `ChatMessage.content`, so it survives rerendering. It is scoped by the exact target Token UUID and expected original AC value. The source Actor's AC is never changed, and the native attack roll/damage are unaffected. When a full attack may have a different effective AC per roll, only the first attack sets the summary thumbnail; the footnotes continue to show individual values. Uncertain defense, absent target markup, missing native AC or unrelated targets are never rewritten.
 
 ## Simple cover-adjusted AC (v1.39.9)
 
