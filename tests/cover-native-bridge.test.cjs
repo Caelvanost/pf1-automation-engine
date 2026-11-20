@@ -136,6 +136,51 @@ assert.equal((altered.match(/>17<\/span>/g)??[]).length,1,
  'another target with same AC must stay unchanged');
 assert.equal(patch(altered,base),altered,
  'already adjusted target thumbnail cannot be modified again');
+ // In native PF1 the same cover applies to normal, touch and flat-footed.
+ // Harpy 16 / 13 / 13 against +4 normal cover => 20 / 17 / 17.
+ const priorSystem=target.actor.system;
+ const priorCoverApi=pf1aeModule.api.nativeCover;
+ target.actor.system={attributes:{ac:{
+  normal:{total:16},touch:{total:13},flatFooted:{total:13}
+ }}};
+ pf1aeModule.api.nativeCover={inspect:({defense})=>({
+  status:'resolved',nativeCover:0,defense
+ })};
+ const harpyThumbnail=nativeThumbnail.replace(
+  '<span class="value">17</span></div><div class="touch">',
+  '<span class="value">16</span></div><div class="touch">');
+ const harpyEvent={...base,targetResults:[{
+  ...base.targetResults[0],
+  defense:{baseValue:16,value:20,coverBonus:4,type:'normal'}
+ }]};
+ const harpyAdjusted=patch(harpyThumbnail,harpyEvent);
+ assert.ok(harpyAdjusted.includes('data-pf1ae-cover-native-ac="16"'));
+ assert.equal((harpyAdjusted.match(/>20<\/span>/g)??[]).length,1);
+ assert.equal((harpyAdjusted.match(/>17<\/span>/g)??[]).length,3,
+  'touch and flat-footed both become 17, plus unrelated target 17');
+ assert.equal(patch(harpyAdjusted,harpyEvent),harpyAdjusted,
+  'all three adjusted values remain stable after second render');
+ // Existing +4 typed cover on touch but not normal/flatFooted: touch
+ // must stay native 13 while the other two receive their missing +4.
+ pf1aeModule.api.nativeCover={inspect:({defense})=>({
+  status:'resolved',nativeCover:defense==='touch'?4:0,defense
+ })};
+ const byType=patch(harpyThumbnail,harpyEvent);
+ assert.equal((byType.match(/>17<\/span>/g)??[]).length,2,
+  'flat-footed changes, touch already contains its cover and remains 13');
+ assert.ok(byType.includes('<div class="touch"><i class="fa-solid fa-hand-point-up"></i><span class="value">13</span>'));
+ // If one native cover source is ambiguous, leave only that single AC
+ // figure unchanged; other verified defenses can still be displayed.
+ pf1aeModule.api.nativeCover={inspect:({defense})=>
+  defense==='touch'?{status:'uncertain'}:
+  {status:'resolved',nativeCover:0}
+ };
+ const partial=patch(harpyThumbnail,harpyEvent);
+ assert.equal((partial.match(/>17<\/span>/g)??[]).length,2);
+ assert.ok(partial.includes('<div class="touch"><i class="fa-solid fa-hand-point-up"></i><span class="value">13</span>'));
+ target.actor.system=priorSystem;
+ pf1aeModule.api.nativeCover=priorCoverApi;
+
 assert.equal(patch(nativeThumbnail,{...base,rollIndex:1}),nativeThumbnail,
  'different full-attack rolls cannot overwrite summary thumbnail');
 const wrongDef={...base,targetResults:[{...base.targetResults[0],
