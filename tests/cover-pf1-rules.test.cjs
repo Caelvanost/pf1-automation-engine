@@ -41,6 +41,36 @@ assert.equal(result.status,'confirmed','complete wall proves no direct line of e
 assert.equal(result.type,'total');
 assert.equal(result.preventsDirectAttack,true);
 assert.equal(result.acBonus,null);
+// A normal 2D wall without any wall-height flags still blocks all
+// direct rays and proves total cover by default.
+delete scene.walls.contents[0].flags['wall-height'];
+result=check({mode:'2d'});
+assert.equal(result.type,'total','2D unbounded wall gives total cover');
+scene.walls.contents[0].flags['wall-height']={bottom:0,top:10};
+// Native Foundry window (movement-blocking, sight/light-transparent) is
+// improved cover from a distance, but not immediately beside its opening.
+scene.walls.contents[0].sight=0;
+scene.walls.contents[0].light=0;
+ctx.CONST.WALL_SENSE_TYPES={NONE:0,NORMAL:20};
+result=check({mode:'2d'});
+assert.equal(result.type,'improved','native v13 window gives improved cover');
+assert.equal(result.acBonus,8);
+assert.equal(result.reflexBonus,4);
+assert.equal(result.preventsDirectAttack,false);
+attacker.document.x=100;
+result=check({mode:'2d'});
+assert.equal(result.type,'none','adjacent attacker ignores window cover');
+attacker.document.x=0;
+delete scene.walls.contents[0].sight;
+delete scene.walls.contents[0].light;
+result=check({mode:'2d'});
+assert.equal(result.type,'total','ordinary wall is still opaque');
+// GM window classification is supported when the native senses have
+// deliberately custom values.
+scene.walls.contents[0].flags['pf1-automation-engine']={coverGrade:'window'};
+result=check({mode:'2d'});
+assert.equal(result.type,'improved');
+delete scene.walls.contents[0].flags['pf1-automation-engine'];
 // Foundry v13 normal movement walls are 20; legacy 1 must not be trusted.
 scene.walls.contents[0].move=1;
 result=check();
@@ -75,6 +105,27 @@ scene.walls.contents[0].flags['wall-height'].top=2;
 result=check();
 assert.equal(result.status,'confirmed');
 assert.equal(result.type,'none','low wall below sample height cannot cover high ray');
+// In 3D a short ground-based wall (< 3 ft) grants partial cover to
+// Medium targets and standard cover to Small ones even when the token's
+// sight ray passes above it. The attacker must be farther from the
+// wall, and the defender must lie within the low-obstacle PF1 limit.
+scene.grid.units='ft';
+scene.grid.distance=5;
+target.actor={system:{traits:{size:'med'}}};
+result=check({mode:'3d'});
+assert.equal(result.type,'partial','2ft wall vs Medium grants partial cover');
+assert.equal(result.acBonus,2);
+assert.equal(result.reflexBonus,1);
+target.actor.system.traits.size='sm';
+result=check({mode:'3d'});
+assert.equal(result.type,'normal','2ft wall vs Small grants normal cover');
+assert.equal(result.acBonus,4);
+target.actor.system.traits.size='lg';
+result=check({mode:'3d'});
+assert.equal(result.type,'none','unclassified size must not infer M/P grade');
+target.actor=null;
+delete scene.grid.units;
+delete scene.grid.distance;
 scene.walls.contents[0].flags['wall-height'].top=10;
 scene.walls.contents[0].door=1;
 scene.walls.contents[0].ds=1;
