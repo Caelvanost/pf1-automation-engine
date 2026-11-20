@@ -1,8 +1,14 @@
 # PF1 Automation Engine
 
-**Version 1.39.7 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.39.8 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Indicative cover AC when native breakdown is ambiguous (v1.39.8)
+
+In the live Ezren → Harpy test, PF1AE v1.39.7 confirms normal cover (+4) in both 2D and 3D. Harpy has native normal AC 16, but native AC source analysis returns `untyped-or-unclassified-native-ac-source` for an existing item, so the strict defense resolver cannot prove that this AC excludes a cover bonus. The combat outcome remains `indeterminate` rather than risk doubling cover.
+
+The native chat card now **shows the arithmetic reference** `Indicative AC with cover: 20` (`Native AC: 16 · Cover bonus: +4`) with a conspicuous warning that the number is **not verified** if native AC provenance is ambiguous. The native AC tooltip/icon, Actor, original attack roll, and automatic hit/miss state are untouched. When native provenance is verified, the card continues to show the definitive effective AC and avoids double-counting; uncertain cover geometry never produces an estimate.
 
 ## Proven cover despite grazing wall endpoints (v1.39.7)
 

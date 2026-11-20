@@ -1,3 +1,10 @@
+## v1.39.8 — Display a qualified cover AC when native AC source provenance is uncertain
+
+- Live confirmation: v1.39.7 cover geometry is now correct (`confirmed / normal / acBonus:4`) for Ezren attacking Harpy, but the native PF1 AC baseline is `16` with a source classed as `untyped-or-unclassified-native-ac-source`, so the native damage/attack resolution correctly declines to invent a definitive `defense.value`.
+- Add a **display-only** fallback for this precise situation: the native attack chat card shows `Indicative AC with cover: 20`, `Native AC: 16`, `Cover bonus: +4` and an explicit **unverified** warning. This is arithmetic information for the GM, not a proven effective target defense. Existing native source bonuses could already incorporate cover.
+- Do not alter the PF1 actor's AC, roll, attack result, cover geometry, or auto-hit/miss adjudication. A verified native cover baseline still yields an authoritative effective AC with correct nonstacking. Uncertain geometry and missing native base AC still do not fabricate a numeric value.
+- Add a regression matching confirmed normal cover +4, AC 16 and ambiguous native source, while preserving the existing tests for truly verified AC and unknown cover geometry.
+
 ## v1.39.7 — Prove partial cover even if some rays graze wall endpoints
 
 - Fix a confirmed live pier case: in both 2D and 3D the detector reported `uncertain / wall-or-creature-contact-ambiguous`, though ray diagnostics showed all four attacker origins had at least one definite `solid` wall crossing; other rays merely `wall-grazed`.

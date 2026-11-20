@@ -178,6 +178,8 @@
       "UncertainGeometry": "Géométrie de l’abri non vérifiable",
       "AttackNumber": "Attaque",
       "PendingAC": "Indéterminée (contrôle du MJ)",
+      "EstimatedAC": "CA indicative avec abri",
+      "EstimatedACWarning": "Non vérifiée : la CA native peut déjà inclure un bonus d’abri ou d’autres bonus incertains",
       "TotalBlocked": "Abri total : aucune ligne d'effet directe. Attaque directe annulée.",
       "TotalCardWarning": "Abri total détecté après le jet : cette attaque directe ne devrait pas être appliquée (contrôle du MJ)."
     }

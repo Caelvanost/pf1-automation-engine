@@ -178,6 +178,8 @@
       "UncertainGeometry": "Cover geometry cannot be verified",
       "AttackNumber": "Attack",
       "PendingAC": "Unverified (GM review)",
+      "EstimatedAC": "Indicative AC with cover",
+      "EstimatedACWarning": "Not verified: the native AC may already contain cover or other uncertain bonuses",
       "TotalBlocked": "Total cover: no direct line of effect. Direct attack cancelled.",
       "TotalCardWarning": "Total cover detected after the attack: review and disregard this direct attack."
     }

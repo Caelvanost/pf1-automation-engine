@@ -186,6 +186,9 @@ function cbPresentation(event){
  const bonusLabel=cbLabel("PF1AE.Cover.CoverBonus","Cover bonus");
  const includedLabel=cbLabel("PF1AE.Cover.AlreadyIncluded","Already included in native AC");
  const uncertainLabel=cbLabel("PF1AE.Cover.PendingAC","Unverified (GM review)");
+ const estimateLabel=cbLabel("PF1AE.Cover.EstimatedAC","Indicative AC with cover");
+ const estimateWarning=cbLabel("PF1AE.Cover.EstimatedACWarning",
+  "Not verified: the native AC may already contain cover or other uncertain bonuses");
  const blocked=cbLabel("PF1AE.Cover.TotalCardWarning",
   "Total cover: direct attack is blocked");
  const attackLabel=cbLabel("PF1AE.Cover.AttackNumber","Attack");
@@ -198,10 +201,22 @@ function cbPresentation(event){
    '<div>'+nativeLabel+': '+String(native)+
    ' · '+cbLabel("PF1AE.Cover.UncertainGeometry","Cover geometry cannot be verified")+'</div>';
  }else{
-  const actual=effective===null?uncertainLabel:String(effective);
   const bonus=declared===null?'?':'+'+String(declared);
   const included=effective!==null&&declared!==null&&added===0&&declared>0;
-  content='<strong>'+effectiveLabel+': '+actual+'</strong>'+
+  // Present an explicitly NON-AUTHORITATIVE arithmetic estimate if the
+  // spatial cover is proved but native source provenance is ambiguous.
+  // Never turn this into defense.value or resolve a hit/miss from it.
+  // Existing PF1 AC may already include an untyped cover bonus.
+  const indicative=effective===null&&declared!==null&&declared>=0&&
+   defense?.uncertain===true&&native!==null&&
+   !defense?.coverAssessment?.preventsDirectAttack;
+  const estimate=indicative?native+declared:null;
+  const actual=effective===null?uncertainLabel:String(effective);
+  content=indicative?
+   '<strong>'+estimateLabel+': '+String(estimate)+'</strong>'+
+   '<div>'+nativeLabel+': '+String(native)+' · '+bonusLabel+': '+bonus+'</div>'+
+   '<div>'+estimateWarning+'</div>':
+   '<strong>'+effectiveLabel+': '+actual+'</strong>'+
    '<div>'+nativeLabel+': '+String(native)+
    ' · '+bonusLabel+': '+bonus+
    (included?' ('+includedLabel+')':'')+'</div>';
