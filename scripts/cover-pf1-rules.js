@@ -113,8 +113,9 @@ function cpWallGrade(wall){
  // identical; a GM may override its treatment via the coverGrade flag.
  const movement=globalThis.CONST?.WALL_MOVEMENT_TYPES;
  const sense=globalThis.CONST?.WALL_SENSE_TYPES;
- if(d?.move===movement?.NORMAL&&d?.sight===sense?.NONE&&
-    d?.light===sense?.NONE)return "window";
+ if(cpFinite(movement?.NORMAL)&&cpFinite(sense?.NONE)&&
+    d?.move===movement.NORMAL&&d.sight===sense.NONE&&
+    d.light===sense.NONE)return "window";
  return "solid";
 }
 function cpWallSegment(wall){
