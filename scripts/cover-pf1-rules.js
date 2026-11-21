@@ -496,6 +496,16 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // target-space samples across its whole occupied vertical volume.
  // The 2D total-cover rule remains unchanged.
  const targetBodyHeight=selectedMode==="3d"?cpTokenBodyHeight(t,s):null;
+ // Foundry v13 token vision originates from the center of the occupied
+ // token space. For PF1AE's >50% visible-body house rule, sample every
+ // ray from that ONE point, regardless of which corner would be best for
+ // the attack's PF1 line-of-effect adjudication. Do not switch back to
+ // a corner when the attacker is Large or a ray is grazing a wall.
+ const visibilitySource={
+  x:(a.x+a.x2)/2,
+  y:(a.y+a.y2)/2
+ };
+ let centerVisibility;
  for(const origin of considered){
   // Preserve the v1.39.13 best-grazing-angle ruling for flat
   // sightlines. Sloped 3D rays need a separate body-volume inspection:
@@ -513,13 +523,17 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
    continue;
   if(origin.traces.some(ray=>ray.uncertain.some(u=>
     u.startsWith("creature-grazed:"))))continue;
-  const visibility=cpVisibleMajority({
-   from:as[origin.originCorner],targetSpace:t,sceneWalls:walls,
-   wallOptions,mode:selectedMode,sourceHeight,targetBodyHeight,
-   targetElevation:t.elevation
-  });
+  if(centerVisibility===undefined)
+   centerVisibility=cpVisibleMajority({
+    from:visibilitySource,targetSpace:t,sceneWalls:walls,
+    wallOptions,mode:selectedMode,sourceHeight,targetBodyHeight,
+    targetElevation:t.elevation
+   })??null;
+  const visibility=centerVisibility;
   if(visibility){
-   origin.visibility=visibility;
+   origin.visibility={...visibility,
+    source:"attacker-token-center",
+    sourcePoint:{...visibilitySource}};
    if(visibility.majority&&visibility.blockedSamples>0){
     origin.coverType="partial";
     origin.partial=true;
