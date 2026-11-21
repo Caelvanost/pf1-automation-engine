@@ -239,6 +239,52 @@ result=check({attackType:'ranged'});
 assert.notEqual(result.type,'normal',
  'zero-length wall endpoint must not award confirmed wall cover');
 scene.walls.contents.length=0;
+// Ranged screenshot regression: the wall starts at the upper-left
+// corner of the target and follows its left square BORDER. Rays drawn
+// from the best attacker corner to the target's lower-left corner
+// terminate on the wall (red), while rays to the right-hand target
+// corners are unobstructed (green). Some rays clear, but this is cover.
+scene.walls.contents.length=0;
+attacker.document.x=0;attacker.document.y=0;
+target.document.x=200;target.document.y=200;
+scene.walls.contents.push(wall('screenshot-ranged-edge',200,200,200,400));
+for(const mode of ['2d','3d']){
+ result=check({attackType:'ranged',mode});
+ assert.equal(result.status,'confirmed',
+  'ranged border cover must be confirmed: '+JSON.stringify(result));
+ assert.equal(result.type,'normal',
+  'best attack corner still has a ray passing through target-border wall: '+
+  JSON.stringify({mode,reason:result.reason,origins:result.origins}));
+ assert.equal(result.acBonus,4);
+ assert.equal(result.reflexBonus,2);
+ assert.ok(result.origins.every(o=>o.traces.some(r=>r.blocked.length>0)),
+  'every attacker corner has at least one blocked target-corner ray');
+ assert.ok(result.origins.some(o=>o.traces.some(r=>r.blocked.length===0)),
+  'other rays from the same corner remain visibly clear');
+ const majority=result.origins.map(o=>o.visibility).find(Boolean);
+ assert.ok(majority&&!majority.majority,
+  'target is not proven >50% exposed from attacker token center');
+}
+// Reverse wall direction: the result cannot depend on endpoint order.
+scene.walls.contents[0].c=[200,400,200,200];
+result=check({attackType:'ranged',mode:'2d'});
+assert.equal(result.type,'normal','reverse border-wall direction is identical');
+assert.equal(result.acBonus,4);
+// A zero-length tip, unlike a positive-length wall along the border,
+// cannot establish a definitively obstructed target-corner ray.
+scene.walls.contents[0].c=[200,300,200,300];
+result=check({attackType:'ranged',mode:'2d'});
+assert.notEqual(result.type,'normal',
+ 'single point at corner cannot prove normal cover');
+// An open door coinciding with the target border is still passable.
+scene.walls.contents[0].c=[200,200,200,400];
+scene.walls.contents[0].door=1;
+scene.walls.contents[0].ds=1;
+result=check({attackType:'ranged',mode:'2d'});
+assert.equal(result.type,'none','open target-border door cannot grant cover');
+scene.walls.contents.length=0;
+attacker.document.x=0;attacker.document.y=0;
+target.document.x=300;target.document.y=0;
 // Actual second pier diagnostic: origin solid rays [0,0,1,1],
 // endpoint-grazing rays [2,2,1,1]. The attacker automatically chooses
 // corner 0 or 1: no strictly blocked ray => no cover.

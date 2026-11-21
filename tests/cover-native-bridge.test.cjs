@@ -111,7 +111,22 @@ assert.ok(screenshotCover.acBonus>=2);
 scene.walls.contents.length=0;
 attacker.document.y=0;
 action.actionType='rwak';
-target.document.x=300;
+// Ranged screenshot integration: the wall follows the LEFT border of
+// the targeted square. Two target-corner rays touch the actual wall,
+// even though rays toward the right-hand corners are green/clear.
+target.document.x=200;target.document.y=200;
+scene.walls.contents.push({id:'ranged-target-border',
+ uuid:'Scene.s.Wall.ranged-border',c:[200,200,200,400],
+ flags:{'wall-height':{bottom:0,top:10}},
+ move:20,door:0,ds:0});
+const rangedBorder=pf1aeModule.api.coverNativeBridge.preview(actionUse);
+assert.equal(rangedBorder?.status,'confirmed');
+assert.equal(rangedBorder?.type,'normal',
+ 'native ranged attack should show normal cover for target-border ray');
+assert.equal(rangedBorder?.acBonus,4);
+assert.equal(rangedBorder?.reflexBonus,2);
+scene.walls.contents.length=0;
+target.document.x=300;target.document.y=0;
 const originalPrototypeProcess=NativeActionUse.prototype.process;
 const originalPrototypeDialog=NativeActionUse.prototype.createAttackDialog;
 callbacks.get('pf1CreateActionUse')(actionUse);

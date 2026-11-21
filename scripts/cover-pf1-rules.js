@@ -88,6 +88,30 @@ function cpSegment(a,b,c,d){
  }
  return ab1*ab2<0&&cd1*cd2<0?"cross":"clear";
 }
+// PF1's corner-to-corner cover lines include a wall running along a
+// TARGET SQUARE BORDER. A ray ending at a target corner located in the
+// INTERIOR of that wall segment has reached the obstruction; it is not
+// a harmless wall-endpoint graze. Do not apply this to a lone tip touch,
+// a wall outside the target edge or a zero-length segment.
+function cpTargetBorderWallHit(to,target,a,b){
+ if(!to||!target||!a||!b)return false;
+ const dx=b.x-a.x,dy=b.y-a.y,den=dx*dx+dy*dy;
+ if(den<=CP_EPS*CP_EPS)return false;
+ if(Math.abs(cpOrientation(a,b,to))>CP_EPS)return false;
+ const t=((to.x-a.x)*dx+(to.y-a.y)*dy)/den;
+ if(t<=CP_EPS||t>=1-CP_EPS)return false;
+ const vertical=Math.abs(a.x-b.x)<=CP_EPS&&
+  (Math.abs(a.x-target.x)<=CP_EPS||
+   Math.abs(a.x-target.x2)<=CP_EPS)&&
+  Math.max(Math.min(a.y,b.y),target.y)<
+   Math.min(Math.max(a.y,b.y),target.y2)-CP_EPS;
+ const horizontal=Math.abs(a.y-b.y)<=CP_EPS&&
+  (Math.abs(a.y-target.y)<=CP_EPS||
+   Math.abs(a.y-target.y2)<=CP_EPS)&&
+  Math.max(Math.min(a.x,b.x),target.x)<
+   Math.min(Math.max(a.x,b.x),target.x2)-CP_EPS;
+ return vertical||horizontal;
+}
 // In adjacent melee a wall can lie ON the shared square border.
 // Corner rays then touch or overlap it rather than strictly crossing,
 // but the wall still prevents the direct attack. Inspect that border.
@@ -539,7 +563,9 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
    if(nativeSurfaceState==="unknown")uncertainty.push("levels-collision-unknown");
    for(const w of blockingWalls){
     const cross=cpSegment(from,to,w.a,w.b);
-    if(cross==="cross")crossed.push({kind:w.grade??"solid",id:w.id});
+    if(cross==="cross"||
+       (cross==="ambiguous"&&cpTargetBorderWallHit(to,t,w.a,w.b)))
+      crossed.push({kind:w.grade??"solid",id:w.id});
     else if(cross==="ambiguous")uncertainty.push("wall-grazed:"+w.id);
    }
    for(const w of slopedWalls){
@@ -547,6 +573,19 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
      wallOptions.get(w));
     const id=cpDoc(w)?.uuid??cpDoc(w)?.id;
     if(result.kind==="solid")crossed.push({kind:result.grade??"solid",id});
+    else if(result.kind==="unknown"&&result.reason==="wall-grazed"&&
+       cpTargetBorderWallHit(to,t,...cpWallSegment(w))){
+      // An actual target-border contact is covered only if the projectile
+      // also meets the wall's known vertical extent at the target.
+      const wd=cpDoc(w),bounds=wd.flags?.["wall-height"];
+      const opts=wallOptions.get(w);
+      if(opts?.lowCover||
+         (cpFinite(bounds?.bottom)&&cpFinite(bounds?.top)&&
+          targetHeight>bounds.bottom+CP_EPS&&
+          targetHeight<bounds.top-CP_EPS))
+       crossed.push({kind:opts?.grade??cpWallGrade(w),id});
+      else uncertainty.push(result.reason+":"+id);
+    }
     else if(result.kind==="unknown")uncertainty.push(result.reason+":"+id);
    }
    for(const w of ambiguousWalls){

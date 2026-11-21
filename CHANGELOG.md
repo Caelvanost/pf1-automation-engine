@@ -1,3 +1,10 @@
+## v1.40.10 — Ranged cover when a red ray reaches the target's wall border
+
+- Fix PF1 ranged and nonadjacent melee/reach corner-ray analysis for a wall **running along the target's square border**. A ray to a target corner lying strictly **inside** the actual wall segment is an obstruction, not just a harmless wall-tip graze. One obstructed target-corner ray from the chosen attacker origin establishes cover, even when other lines from that same origin are clear.
+- Preserve the best attacker corner, strict 50%-visibility check from attacker token center, normal +4 CA / +2 qualifying Reflex versus partial +2/+1, 2D/3D wall-height semantics, soft cover, and native bilingual card display.
+- Preserve conservative treatment of isolated wall-tip contacts, zero-length walls, unverified geometry and open doors. No Actor AC mutation or attacks-of-opportunity automation.
+- Add regression for the supplied screenshot's green/red rays, reverse wall orientation, zero-length wall and open door; verify +4 cover through the PF1 native ActionUse bridge.
+
 ## v1.40.9 — Treat wall endpoint visibility rays as uncertain; shorten normal cover label
 
 - Fix the strict PF1 more-than-half-visible test near a diagonal wall corner: a ray that touches the wall endpoint **is not proof of visibility**. Previously nine grazing samples in a 9×9 measurement could artificially raise the exposed fraction to 55.6%, incorrectly reducing cover to partial (+2 AC). These samples now count as unknown; an unproven majority cannot override normal wall cover (+4 AC).
