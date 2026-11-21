@@ -328,7 +328,9 @@ scene.walls.contents.push(wall('slope-full',200,-200,200,300,
  {bottom:0,top:10}));
 result=check();
 assert.equal(result.status,'confirmed');
-assert.equal(result.type,'total');
+assert.equal(result.type,'total','sloping full wall debug: '+
+ JSON.stringify(result.origins.map(o=>({grade:o.coverType,unknown:o.unknown,
+ visibility:o.visibility,traces:o.traces.map(t=>({blocked:t.blocked,uncertain:t.uncertain}))}))));
 scene.walls.contents.length=0;
 // An unknown wall vertical boundary is not proof of +4.
 scene.walls.contents.push(wall('slope-unknown',200,25,200,120,
