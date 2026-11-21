@@ -1,8 +1,12 @@
 # PF1 Automation Engine
 
-**Version 1.40.5 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.40.6 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Compact two-line cover label at right of native PF1 target (v1.40.6)
+
+The cover indicator is now **the rightmost content within the existing native target row**, after the portrait and AC shield values, instead of appearing at the left. The two lines are **left-aligned inside the note**: `Abri partiel` / `+2 CA` in French; `Partial cover` / `+2 AC` in English. Normal, soft and improved cover labels use the same layout. Total cover displays only its name. The note is a regular flex item—not absolutely positioned over the token portrait or defense values—so it can use a compact width and will not cover native controls. Rerenders remain idempotent; no extra ChatMessage or Actor mutations occur.
 
 ## Compact, bilingual cover label inside native PF1 attack cards (v1.40.5)
 
