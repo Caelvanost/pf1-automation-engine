@@ -207,7 +207,7 @@ function cpLowWallGrade(wall,attacker,target,targetToken,scene,grid){
   scene.grid.distance:null;
  if(distanceUnits===null)return null;
  const maxSquares=6;
- if(dt>maxSquares*grid.size+CP_EPS||da<=dt+CP_EPS)return null;
+ if(dt>maxSquares*grid.size+CP_EPS||da<dt-CP_EPS)return null;
  return cpSizeGrade(targetToken);
 }
 function cpWallData(wall,height,mode,{grade=null,lowCover=false}={}){
