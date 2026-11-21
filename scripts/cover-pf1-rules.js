@@ -274,7 +274,10 @@ function cpVisibleMajority({from,targetSpace,sceneWalls,wallOptions,mode,
  if(mode==="3d"&&(!cpFinite(sourceHeight)||
     !cpFinite(targetBodyHeight)||!cpFinite(targetElevation)||
     targetBodyHeight<=CP_EPS))return null;
- const slices=mode==="3d"?5:1;
+ // Dense vertical samples catch the narrow exposed strip above a wall.
+// Five samples can incorrectly call a 5ft target totally blocked by a
+// 4ft wall when the line of sight originates below the wall top.
+ const slices=mode==="3d"?21:1;
  const side=9;
  let clear=0,blocked=0;
  for(let z=0;z<slices;z++){
