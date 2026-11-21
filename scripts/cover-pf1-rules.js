@@ -497,6 +497,11 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // The 2D total-cover rule remains unchanged.
  const targetBodyHeight=selectedMode==="3d"?cpTokenBodyHeight(t,s):null;
  for(const origin of considered){
+  // Preserve the v1.39.13 best-grazing-angle ruling. A corner whose
+  // only native contacts are wall endpoints remains a clean angle.
+  // 2D also requires proven corner-ray cover before body assessment.
+  if((origin.unknown&&!origin.coverType)||
+     (selectedMode==="2d"&&!origin.coverType))continue;
   if((origin.coverType&&origin.coverType!=="normal")||
      origin.soft||origin.partial||origin.improved||
      origin.unknown&&origin.traces.some(ray=>
