@@ -5,7 +5,7 @@ const code=fs.readFileSync(path.resolve(__dirname,'../scripts/cover-pf1-rules.js
 const ready=[];
 const mod={api:{coverMode:{get:()=>"3d",inspect:()=>({ready:true,reasons:[]})}},active:true};
 const modules=new Map([['pf1-automation-engine',mod]]);
-const scene={id:'s',grid:{type:1},walls:{contents:[]},
+const scene={id:'s',grid:{type:1,distance:5,units:'ft'},walls:{contents:[]},
  tiles:{contents:[]},regions:{contents:[]}};
 const all=[];
 const game={modules};
@@ -65,6 +65,32 @@ delete scene.walls.contents[0].sight;
 delete scene.walls.contents[0].light;
 result=check({mode:'2d'});
 assert.equal(result.type,'total','ordinary wall is still opaque');
+// Foundry doors are walls when closed or locked, regardless of a
+// window-like sight/light setup or stale special-cover classification.
+// Open doors permit direct attacks.
+scene.walls.contents[0].door=1;
+scene.walls.contents[0].sight=0;
+scene.walls.contents[0].light=0;
+scene.walls.contents[0].flags['pf1-automation-engine']={coverGrade:'window'};
+for(const ds of [0,2]){
+ scene.walls.contents[0].ds=ds;
+ for(const mode of ['2d','3d']){
+  result=check({mode});
+  assert.equal(result.type,'total',
+   mode+': closed/locked door must be an ordinary solid wall');
+  assert.equal(result.preventsDirectAttack,true);
+ }
+}
+scene.walls.contents[0].ds=1;
+for(const mode of ['2d','3d']){
+ result=check({mode});
+ assert.equal(result.type,'none',mode+': open door must be unobstructed');
+}
+scene.walls.contents[0].door=0;
+scene.walls.contents[0].ds=0;
+delete scene.walls.contents[0].sight;
+delete scene.walls.contents[0].light;
+delete scene.walls.contents[0].flags['pf1-automation-engine'];
 // GM window classification is supported when the native senses have
 // deliberately custom values.
 scene.walls.contents[0].flags['pf1-automation-engine']={coverGrade:'window'};
@@ -144,7 +170,7 @@ assert.equal(result.acBonus,4);
 // Threshold is strict, so exactly 3ft is not a low wall.
 scene.walls.contents[0].flags['wall-height'].top=3;
 result=check({mode:'3d'});
-assert.equal(result.type,'none','3ft wall is not below the low-wall threshold');
+assert.equal(result.type,'partial','3ft wall is not a size-based low wall; normal visibility can still give partial cover');
 scene.walls.contents[0].flags['wall-height'].top=2;
 // Metric scenes use 1m instead of 3ft; grid remains 100 pixels/cell.
 scene.grid.units='m';
@@ -154,17 +180,19 @@ result=check({mode:'3d'});
 assert.equal(result.type,'normal','0.8m wall gives normal cover to Small target');
 scene.walls.contents[0].flags['wall-height'].top=1;
 result=check({mode:'3d'});
-assert.equal(result.type,'none','1m wall does not qualify as below 1m');
+assert.equal(result.type,'none','1m wall is not a low wall and the test attacker at 5m can see completely above it');
 scene.grid.units='ft';
 scene.grid.distance=5;
 scene.walls.contents[0].flags['wall-height'].top=2;
 target.actor.system.traits.size='lg';
 result=check({mode:'3d'});
-assert.equal(result.type,'none','unclassified size must not infer M/P grade');
+assert.equal(result.type,'partial','Large PF1 size does not trigger M/P low-wall grade, but 1x1 token body visibility gives generic partial cover');
 target.actor=null;
 attacker.document.x=0;
 delete scene.grid.units;
-delete scene.grid.distance;
+// Foundry always provides a scene grid distance. Preserve it for body
+// height calculations in subsequent 3D tests.
+scene.grid.distance=5;
 scene.walls.contents[0].flags['wall-height'].top=10;
 scene.walls.contents[0].door=1;
 scene.walls.contents[0].ds=1;
@@ -173,7 +201,7 @@ assert.equal(result.status,'confirmed');
 assert.equal(result.type,'none','open door should not block');
 scene.walls.contents[0].ds=0;
 result=check();
-assert.equal(result.type,'partial','closed door restores visibility-sensitive partial cover');
+assert.equal(result.type,'partial','closed door is a wall but grants partial cover when most of the target remains exposed');
 scene.walls.contents[0].move=0;
 result=check();
 assert.equal(result.status,'uncertain','passable wall may still represent a physical obstacle');
@@ -302,7 +330,9 @@ scene.walls.contents.push(wall('slope-full',200,-200,200,300,
  {bottom:0,top:10}));
 result=check();
 assert.equal(result.status,'confirmed');
-assert.equal(result.type,'total');
+assert.equal(result.type,'total','sloping full wall debug: '+
+ JSON.stringify(result.origins.map(o=>({grade:o.coverType,unknown:o.unknown,
+ visibility:o.visibility,traces:o.traces.map(t=>({blocked:t.blocked,uncertain:t.uncertain}))}))));
 scene.walls.contents.length=0;
 // An unknown wall vertical boundary is not proof of +4.
 scene.walls.contents.push(wall('slope-unknown',200,25,200,120,
@@ -319,6 +349,66 @@ result=check({attackType:'melee'});
 assert.equal(result.type,'none');
 result=check({attackType:'ranged',projectileHeight:5});
 assert.equal(result.type,'none');
+// Body-height house rule: a 1×1 token is 5ft high on this grid,
+// and a 2×2 token is 10ft high, independent of token.losHeight.
+scene.walls.contents.length=0;
+target.document.width=1;
+target.document.height=1;
+attacker.losHeight=3;
+target.losHeight=3;
+scene.walls.contents.push(wall('body-size',275,-200,275,300,
+ {bottom:0,top:4}));
+result=check({mode:'3d'});
+assert.equal(result.type,'normal','5ft body behind 4ft wall retains normal cover');
+assert.equal(result.origins[0].visibility.bodyHeight,5);
+assert.equal(result.origins[0].visibility.bodyTop,5);
+target.document.width=2;
+target.document.height=2;
+result=check({mode:'3d'});
+assert.equal(result.type,'partial','10ft body extends above 4ft wall: '+
+ JSON.stringify(result.origins.map(o=>({type:o.coverType,unknown:o.unknown,
+  visibility:o.visibility}))));
+assert.equal(result.acBonus,2);
+assert.equal(result.origins[0].visibility.bodyHeight,10);
+assert.equal(result.origins[0].visibility.bodyTop,10);
+assert.ok(result.origins.some(o=>o.visibility.majority));
+// A wall higher than the entire Large body still fully prevents attack.
+scene.walls.contents[0].flags['wall-height'].top=12;
+result=check({mode:'3d'});
+assert.equal(result.type,'total','fully blocked 10ft body keeps total cover; diagnosis='+
+ JSON.stringify(result.origins.map(o=>({corner:o.originCorner,cover:o.coverType,
+  vis:o.visibility,blocked:o.traces.map(t=>t.blocked)}))));
+// LOS-eye height must never stretch or shrink the sampled body height.
+scene.walls.contents[0].flags['wall-height'].top=4;
+target.losHeight=7;
+result=check({mode:'3d'});
+assert.equal(result.type,'partial','LOS independent body cover: '+result.reason+' '+
+ JSON.stringify(result.origins.map(o=>({type:o.coverType,unknown:o.unknown,
+ visibility:o.visibility}))));
+assert.equal(result.origins[0].visibility.bodyHeight,10);
+// Metric 1.5m grid: M=1.5m and Large=3m in physical vertical volume.
+scene.grid.units='m';
+scene.grid.distance=1.5;
+target.document.width=1;
+target.document.height=1;
+result=check({mode:'3d'});
+assert.equal(result.origins[0].visibility.bodyHeight,1.5);
+target.document.width=2;
+target.document.height=2;
+result=check({mode:'3d'});
+assert.equal(result.origins[0].visibility.bodyHeight,3);
+// No trustworthy grid distance -> do not invent a 3D total-cover proof.
+delete scene.grid.distance;
+scene.walls.contents[0].flags['wall-height'].top=12;
+result=check({mode:'3d'});
+assert.notEqual(result.type,'total');
+scene.grid.distance=5;
+scene.grid.units='ft';
+scene.walls.contents.length=0;
+target.document.width=1;
+target.document.height=1;
+target.losHeight=5;
+attacker.losHeight=5;
 // This engine only computes candidate defense adjustments; it must never
 // write source documents or resolve any roll itself.
 const snapshot=JSON.stringify(scene);

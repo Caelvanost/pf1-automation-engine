@@ -1,8 +1,16 @@
 # PF1 Automation Engine
 
-**Version 1.40.2 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.40.3 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## 3D token body height and closed-door cover (v1.40.3)
+
+**House rule:** the target body occupies the same number of grid cells vertically as its larger horizontal footprint dimension. A 1×1 token on a 1.5 m grid is 1.5 m tall; a 2×2 token is 3 m tall. On a 5 ft grid these heights are 5 ft and 10 ft. The target's LOS-eye height is no longer mistaken for its full body height.
+
+The 3D more-than-half-visible rule samples this full occupied body volume. A wall crossing the four native corner rays does not establish **total cover** unless its obstruction also spans all sampled body heights. Without trustworthy scene grid distance or wall geometry, PF1AE does not claim 3D total cover.
+
+**Foundry doors:** Closed and locked doors are **ordinary solid walls** for cover, even if their sight/light settings or obsolete custom grade resemble a window. Open doors do not block. All standard 2D and 3D wall/height rules (including partial cover) apply to closed doors. Invalid/unknown door states remain uncertain. Nothing modifies the native door document.
 
 ## Partial cover when more than half the target is exposed (v1.40.2)
 

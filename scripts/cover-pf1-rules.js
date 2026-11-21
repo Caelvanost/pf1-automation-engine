@@ -107,6 +107,11 @@ function cpTokenCross(a,b,rect){
 // Only GM-classified wall grades; never guess cover from token visibility.
 function cpWallGrade(wall){
  const d=cpDoc(wall),grade=d?.flags?.[CP_NS]?.coverGrade;
+ // A closed or locked door is a wall, even if its sight/light settings
+ // resemble a window or a stale GM flag asks for a different cover grade.
+ // Open and unknown door states are handled by cpWallData.
+ if(d?.door!==undefined&&d.door!==0&&
+    (d.ds===0||d.ds===2))return "solid";
  if(grade==="partial"||grade==="improved"||grade==="window")return grade;
  // Foundry v13's native Window preset: blocks movement but explicitly
  // allows sight and light. An invisible movement wall is geometrically
@@ -254,21 +259,34 @@ function cpSlopedWall(from,to,wall,startHeight,endHeight,{grade=null,lowCover=fa
  * strict >50% criterion from PF1e, and retain normal cover whenever the
  * estimate cannot be trusted.
  */
+// House rule: a token's occupied height equals its occupied horizontal
+// size in grid cells. 1x1 on a 1.5 m grid = 1.5 m, 2x2 = 3 m.
+// Using the target's LOS eye height here would misrepresent its body.
+function cpTokenBodyHeight(space,scene){
+ const distance=scene?.grid?.distance;
+ if(!cpFinite(distance)||distance<=0||
+    !cpFinite(space?.width)||!cpFinite(space?.height)||
+    space.width<=0||space.height<=0)return null;
+ return Math.max(space.width,space.height)*distance;
+}
 function cpVisibleMajority({from,targetSpace,sceneWalls,wallOptions,mode,
- sourceHeight,targetHeight,targetElevation}){
+ sourceHeight,targetBodyHeight,targetElevation}){
  if(mode==="3d"&&(!cpFinite(sourceHeight)||
-    !cpFinite(targetHeight)||!cpFinite(targetElevation)||
-    targetHeight<=targetElevation+CP_EPS))return null;
- const slices=mode==="3d"?5:1;
+    !cpFinite(targetBodyHeight)||!cpFinite(targetElevation)||
+    targetBodyHeight<=CP_EPS))return null;
+ // Dense vertical samples catch the narrow exposed strip above a wall.
+// Five samples can incorrectly call a 5ft target totally blocked by a
+// 4ft wall when the line of sight originates below the wall top.
+ const slices=mode==="3d"?21:1;
  const side=9;
- let clear=0,blocked=0;
+ let clear=0,blocked=0,unknown=0;
  for(let z=0;z<slices;z++){
   const toHeight=mode==="3d"?targetElevation+
-   (targetHeight-targetElevation)*(z+0.5)/slices:null;
+   targetBodyHeight*(z+0.5)/slices:null;
   for(let y=0;y<side;y++)for(let x=0;x<side;x++){
    const to={x:targetSpace.x+(targetSpace.x2-targetSpace.x)*(x+0.5)/side,
     y:targetSpace.y+(targetSpace.y2-targetSpace.y)*(y+0.5)/side};
-   let obstructed=false;
+   let obstructed=false,ambiguous=false;
    for(const wall of sceneWalls){
     const opts=wallOptions.get(wall);
     if(!opts||opts.grade==="adjacent-window")continue;
@@ -284,19 +302,29 @@ function cpVisibleMajority({from,targetSpace,sceneWalls,wallOptions,mode,
     if(known.kind==="open")continue;
     if(mode==="3d"){
      const hit=cpSlopedWall(from,to,wall,sourceHeight,toHeight,opts);
-     if(hit.kind==="unknown")return null;
+     if(hit.kind==="unknown"){
+      if(hit.reason==="wall-height-boundary"){
+       ambiguous=true;break;
+      }
+      return null;
+     }
      if(hit.kind==="clear")continue;
     }
     obstructed=true;break;
    }
-   if(obstructed)blocked++;
+   if(ambiguous)unknown++;
+   else if(obstructed)blocked++;
    else clear++;
   }
  }
- const count=clear+blocked;
+ const count=clear+blocked+unknown;
  return count?{visibleFraction:clear/count,samples:count,
-  visibleSamples:clear,blockedSamples:blocked,
-  majority:clear>blocked}:null;
+  visibleSamples:clear,blockedSamples:blocked,uncertainSamples:unknown,
+  bodyHeight:mode==="3d"?targetBodyHeight:null,
+  bodyTop:mode==="3d"?targetElevation+targetBodyHeight:null,
+  // An ambiguous boundary sample can neither prove visibility nor
+  // prove total obstruction. Only positive evidence supports downgrades.
+  majority:clear>count/2}:null;
 }
 function cpInterpret({attacker,target,attackType="ranged",scene,
  tokens,projectileHeight=null,mode}={}){
@@ -463,6 +491,49 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // attacker-selected corner for ranged and non-adjacent melee attacks.
  const considered=method==="adjacent-melee"?cornerResults:
   cornerResults;
+ // For 3D, an eye-height ray hitting a wall does not prove total
+ // cover if the token's body extends ABOVE that wall. First inspect
+ // target-space samples across its whole occupied vertical volume.
+ // The 2D total-cover rule remains unchanged.
+ const targetBodyHeight=selectedMode==="3d"?cpTokenBodyHeight(t,s):null;
+ for(const origin of considered){
+  // Preserve the v1.39.13 best-grazing-angle ruling for flat
+  // sightlines. Sloped 3D rays need a separate body-volume inspection:
+  // a clear eye-level ray can still hide the lower target silhouette.
+  // 2D still requires proven corner-ray cover before body sampling.
+  if((origin.unknown&&!origin.coverType&&
+       !(selectedMode==="3d"&&sloped))||
+     (selectedMode==="2d"&&!origin.coverType))continue;
+  if((origin.coverType&&origin.coverType!=="normal")||
+     origin.soft||origin.partial||origin.improved||
+     origin.unknown&&origin.traces.some(ray=>
+      ray.uncertain.some(u=>!u.startsWith("wall-grazed:")&&
+       !u.startsWith("creature-grazed:"))))continue;
+  if(origin.traces.some(ray=>ray.blocked.some(hit=>hit.kind!=="solid")))
+   continue;
+  if(origin.traces.some(ray=>ray.uncertain.some(u=>
+    u.startsWith("creature-grazed:"))))continue;
+  const visibility=cpVisibleMajority({
+   from:as[origin.originCorner],targetSpace:t,sceneWalls:walls,
+   wallOptions,mode:selectedMode,sourceHeight,targetBodyHeight,
+   targetElevation:t.elevation
+  });
+  if(visibility){
+   origin.visibility=visibility;
+   if(visibility.majority&&visibility.blockedSamples>0){
+    origin.coverType="partial";
+    origin.partial=true;
+    origin.clear=false;
+   }else if(selectedMode==="3d"&&!origin.coverType&&
+       visibility.blockedSamples>0){
+    // A clear eye-height ray can still pass over a wall that hides
+    // most of the target's body. Do not infer no cover from eyes alone.
+    origin.coverType="normal";
+    origin.solid=true;
+    origin.clear=false;
+   }
+  }
+ }
  // Best-angle convention for ranged / non-adjacent melee: the
  // attacker selects the most favorable occupied-square corner.
  // A ray that merely touches a wall endpoint (or creature boundary)
@@ -497,42 +568,17 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // Therefore +4 is proven only when EVERY possible origin has at least
  // one definitively obstructed ray to a target corner.
  //
- // Total cover must remain strict: only fully proven solid obstruction
- // across every ray can establish that no direct ray gets through.
+ // A confirmed total obstruction requires all four corner rays to
+ // cross solid walls AND, in 3D, a proven zero visible body volume.
+ // Missing scale data never justifies suppressing a direct attack.
  if(considered.length>0&&considered.every(o=>o.traces.every(r=>
-    r.blocked.some(x=>x.kind==="solid"))))
+    r.blocked.some(x=>x.kind==="solid")))&&
+    (selectedMode==="2d"||considered.every(o=>
+      o.visibility?.visibleSamples===0&&
+      o.visibility?.uncertainSamples===0)))
   return cpResult("confirmed","every-direct-ray-blocked-by-solid-walls",{
    type:"total",method,origins:cornerResults,
    multilevel,sourceHeight,targetHeight,mode:selectedMode});
- // PF1e partial cover: if COVER is already established, but more than
- // half the target's occupied silhouette remains unobstructed from a
- // selectable attacker corner, reduce only normal wall cover to +2/+1.
- // This runs AFTER the all-solid total-cover guard and BEFORE selection
- // of the attacker's best cover angle.
- for(const origin of considered){
-  if(origin.coverType!=="normal"||origin.soft||origin.partial||
-     origin.improved||origin.unknown&&origin.traces.some(ray=>
-      ray.uncertain.some(u=>!u.startsWith("wall-grazed:")&&
-       !u.startsWith("creature-grazed:"))))continue;
-  if(origin.traces.some(ray=>ray.blocked.some(hit=>hit.kind!=="solid")))
-   continue;
-  // A creature grazing an attack ray is not proof that its silhouette
-  // is irrelevant to the percentage calculation.
-  if(origin.traces.some(ray=>ray.uncertain.some(u=>
-    u.startsWith("creature-grazed:"))))continue;
-  const visibility=cpVisibleMajority({
-   from:as[origin.originCorner],targetSpace:t,sceneWalls:walls,
-   wallOptions,mode:selectedMode,sourceHeight,targetHeight,
-   targetElevation:t.elevation
-  });
-  if(visibility){
-   origin.visibility=visibility;
-   if(visibility.majority){
-    origin.coverType="partial";
-    origin.partial=true;
-   }
-  }
- }
  const guaranteed=considered.length>0&&considered.every(o=>o.coverType);
  if(guaranteed){
   // Attacker chooses the least-protected origin; do not downgrade wall
