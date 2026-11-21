@@ -441,6 +441,90 @@ assert.equal(result.origins.some(o=>o.originCorner!==4),true,
 attacker.document.width=1;
 attacker.document.height=1;
 scene.walls.contents.length=0;
+// A full wall exactly ON the shared edge cannot be mistaken for a
+// harmless endpoint grazing ray. Closed doors are solid; open ones clear.
+scene.walls.contents.length=0;
+target.document.x=100;target.document.y=0;
+scene.walls.contents.push(wall('shared-door',100,0,100,100,
+ {door:1,ds:0}));
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.type,'total',
+ 'adjacent closed door along shared boundary blocks all direct attacks');
+assert.equal(result.preventsDirectAttack,true);
+result=check({attackType:'melee',mode:'3d'});
+assert.equal(result.type,'total',
+ 'full-height closed adjacent door blocks body in 3D');
+scene.walls.contents[0].ds=2;
+assert.equal(check({attackType:'melee',mode:'2d'}).type,'total',
+ 'locked door is also a solid shared border');
+scene.walls.contents[0].ds=1;
+assert.equal(check({attackType:'melee',mode:'2d'}).type,'none',
+ 'open adjacent door leaves melee line of effect');
+scene.walls.contents[0].ds=0;
+scene.walls.contents[0].door=0;
+// Low obstacle dividing adjacent squares: equal distances do NOT
+// allow either creature to ignore the obstacle under PF1.
+scene.walls.contents[0].flags['wall-height'].top=2;
+target.actor={system:{traits:{size:"med"}}};
+result=check({attackType:'melee',mode:'3d'});
+assert.equal(result.type,'partial',
+ 'adjacent Medium target receives size-based partial cover over 2ft wall');
+target.actor.system.traits.size="sm";
+result=check({attackType:'melee',mode:'3d'});
+assert.equal(result.type,'normal',
+ 'adjacent Small target receives normal cover over 2ft wall');
+target.actor=null;
+scene.walls.contents[0].flags['wall-height'].top=10;
+scene.walls.contents[0].c=[100,0,100,50];
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.status,'confirmed');
+assert.notEqual(result.type,'total',
+ 'partial shared edge must not be classified as a whole sealed wall');
+scene.walls.contents.length=0;
+// Melee PF1: adjacent melee checks wall crossings from ANY attacker
+// corner, whereas nonadjacent melee/reach chooses the best corner.
+scene.walls.contents.length=0;
+target.document.x=100;target.document.y=100;
+scene.walls.contents.push(wall('melee-corner',100,10,100,90));
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.status,'confirmed');
+assert.equal(result.method,'adjacent-melee');
+assert.equal(result.type,'partial',
+ 'a blocked corner grants adjacent melee cover, reduced when the target is mostly visible');
+// No intervening-creature soft cover for adjacent melee.
+scene.walls.contents.length=0;
+const intervening=make('melee-interposed',100,0);
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.type,'none','adjacent melee ignores creature soft cover');
+// Melee through reach is governed by ranged cover, including creatures.
+target.document.x=300;target.document.y=0;
+intervening.document.x=150;intervening.document.y=0;
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.method,'ranged-or-reach');
+assert.equal(result.type,'soft',
+ 'nonadjacent melee uses creature soft cover');
+assert.equal(result.acBonus,4);
+assert.equal(result.reflexBonus,0);
+// Large melee attackers/targets may choose the most favorable
+// adjacent occupied square, rather than becoming uncertain near walls.
+all.splice(all.indexOf(intervening),1);
+target.document.x=200;target.document.y=0;
+attacker.document.width=2;attacker.document.height=2;
+target.document.width=2;target.document.height=2;
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.status,'confirmed');
+assert.equal(result.method,'adjacent-melee-large-squares');
+assert.equal(result.type,'none');
+scene.walls.contents.push(wall('large-corner',200,110,200,195));
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.status,'confirmed',
+ 'large adjacent selection must handle walls instead of returning unknown');
+assert.equal(result.type,'none',
+ 'large attacker selects an unobstructed neighboring square');
+attacker.document.width=1;attacker.document.height=1;
+target.document.width=1;target.document.height=1;
+target.document.x=300;target.document.y=0;
+scene.walls.contents.length=0;
 // This engine only computes candidate defense adjustments; it must never
 // write source documents or resolve any roll itself.
 const snapshot=JSON.stringify(scene);

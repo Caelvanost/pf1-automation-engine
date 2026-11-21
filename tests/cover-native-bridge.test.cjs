@@ -61,6 +61,39 @@ const after=callbacks.get('pf1aeAttackResolution');
 assert.equal(typeof before,'function');
 assert.equal(typeof after,'function');
 assert.equal(pf1aeModule.api.coverNativeBridge.earlyGateMode(),'native-dialog-hook');
+// Native PF1 mwak/msak attacks must receive the same cover decision in
+// the ACTUAL ActionUse bridge, not merely in the geometry test API.
+action.actionType='mwak';
+target.document.x=100;
+scene.walls.contents.push({id:'adjacent-melee-door',
+ uuid:'Scene.s.Wall.melee-door',c:[100,0,100,100],
+ flags:{'wall-height':{bottom:0,top:10}},
+ move:20,door:1,ds:0});
+let meleeAssessment=pf1aeModule.api.coverNativeBridge.preview(actionUse);
+assert.equal(meleeAssessment?.type,'total',
+ 'native mwak cannot directly attack through closed adjacent door');
+scene.walls.contents[0].ds=1;
+meleeAssessment=pf1aeModule.api.coverNativeBridge.preview(actionUse);
+assert.equal(meleeAssessment?.type,'none',
+ 'native mwak does not treat an open door as cover');
+scene.walls.contents.length=0;
+target.document.x=300;
+const reachBlocker=token('reach-interposer',150,{uuid:'Actor.blocker'});
+meleeAssessment=pf1aeModule.api.coverNativeBridge.preview(actionUse);
+assert.equal(meleeAssessment?.type,'soft',
+ 'native melee beyond adjacency uses ranged-style creature soft cover');
+tokens.splice(tokens.indexOf(reachBlocker),1);
+action.actionType='msak';
+target.document.x=100;
+scene.walls.contents.push({id:'adjacent-msak-door',
+ uuid:'Scene.s.Wall.msak-door',c:[100,0,100,100],
+ flags:{'wall-height':{bottom:0,top:10}},
+ move:20,door:1,ds:0});
+assert.equal(pf1aeModule.api.coverNativeBridge.preview(actionUse)?.type,'total',
+ 'native touch melee shares adjacent wall cover');
+scene.walls.contents.length=0;
+action.actionType='rwak';
+target.document.x=300;
 const originalPrototypeProcess=NativeActionUse.prototype.process;
 const originalPrototypeDialog=NativeActionUse.prototype.createAttackDialog;
 callbacks.get('pf1CreateActionUse')(actionUse);
