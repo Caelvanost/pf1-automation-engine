@@ -107,6 +107,11 @@ function cpTokenCross(a,b,rect){
 // Only GM-classified wall grades; never guess cover from token visibility.
 function cpWallGrade(wall){
  const d=cpDoc(wall),grade=d?.flags?.[CP_NS]?.coverGrade;
+ // A closed or locked door is a wall, even if its sight/light settings
+ // resemble a window or a stale GM flag asks for a different cover grade.
+ // Open and unknown door states are handled by cpWallData.
+ if(d?.door!==undefined&&d.door!==0&&
+    (d.ds===0||d.ds===2))return "solid";
  if(grade==="partial"||grade==="improved"||grade==="window")return grade;
  // Foundry v13's native Window preset: blocks movement but explicitly
  // allows sight and light. An invisible movement wall is geometrically
