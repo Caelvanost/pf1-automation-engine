@@ -272,13 +272,13 @@ function cpVisibleMajority({from,targetSpace,sceneWalls,wallOptions,mode,
    for(const wall of sceneWalls){
     const opts=wallOptions.get(wall);
     if(!opts||opts.grade==="adjacent-window")continue;
-    // Explicit partial/improved or a window must not be mistaken for
-    // ordinary cover purely because the visible body area is large.
-    if(opts.grade!=="solid"||opts.lowCover)return null;
     const segment=cpWallSegment(wall);
     if(!segment)return null;
     const cross=cpSegment(from,to,...segment);
     if(cross==="clear"||cross==="ambiguous")continue;
+    // Special cover applies only when the sampled ray actually crosses
+    // that segment; unrelated walls elsewhere in the scene are harmless.
+    if(opts.grade!=="solid"||opts.lowCover)return null;
     const known=cpWallData(wall,sourceHeight,"2d",opts);
     if(known.kind==="unknown")return null;
     if(known.kind==="open")continue;
