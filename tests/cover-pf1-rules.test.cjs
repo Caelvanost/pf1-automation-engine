@@ -186,7 +186,7 @@ scene.grid.distance=5;
 scene.walls.contents[0].flags['wall-height'].top=2;
 target.actor.system.traits.size='lg';
 result=check({mode:'3d'});
-assert.equal(result.type,'none','unclassified size must not infer M/P grade');
+assert.equal(result.type,'partial','Large PF1 size does not trigger M/P low-wall grade, but 1x1 token body visibility gives generic partial cover');
 target.actor=null;
 attacker.document.x=0;
 delete scene.grid.units;
