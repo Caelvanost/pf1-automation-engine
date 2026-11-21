@@ -464,6 +464,28 @@ assert.ok(['partial','normal','improved'].includes(result.type),
 attacker.document.y=0;
 target.document.x=300;target.document.y=0;
 scene.walls.contents.length=0;
+// Adjacency is symmetric: flipping either axis must never turn a
+// touch- or corner-adjacent melee attack into nonadjacent reach.
+scene.walls.contents.length=0;
+for(const [ax,ay,tx,ty] of [
+ [0,0,100,0], [100,0,0,0],
+ [0,0,0,100], [0,100,0,0],
+ [0,0,100,100], [100,100,0,0],
+ [0,100,100,0], [100,0,0,100]
+]){
+ attacker.document.x=ax;attacker.document.y=ay;
+ target.document.x=tx;target.document.y=ty;
+ result=check({attackType:'melee',mode:'2d'});
+ assert.equal(result.method,'adjacent-melee',
+  'melee adjacent squares must be orientation-independent: '+
+  [ax,ay,tx,ty].join(','));
+ assert.equal(result.type,'none');
+}
+attacker.document.x=0;attacker.document.y=0;
+target.document.x=300;target.document.y=0;
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.method,'ranged-or-reach',
+ 'true nonadjacent melee still uses reach/ranged corner selection');
 // A full wall exactly ON the shared edge cannot be mistaken for a
 // harmless endpoint grazing ray. Closed doors are solid; open ones clear.
 scene.walls.contents.length=0;
