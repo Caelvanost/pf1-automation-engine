@@ -523,12 +523,14 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
    if(visibility.majority&&visibility.blockedSamples>0){
     origin.coverType="partial";
     origin.partial=true;
+    origin.clear=false;
    }else if(selectedMode==="3d"&&!origin.coverType&&
        visibility.blockedSamples>0){
     // A clear eye-height ray can still pass over a wall that hides
     // most of the target's body. Do not infer no cover from eyes alone.
     origin.coverType="normal";
     origin.solid=true;
+    origin.clear=false;
    }
   }
  }
