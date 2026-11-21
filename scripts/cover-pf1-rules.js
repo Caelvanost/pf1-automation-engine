@@ -88,6 +88,39 @@ function cpSegment(a,b,c,d){
  }
  return ab1*ab2<0&&cd1*cd2<0?"cross":"clear";
 }
+// In adjacent melee a wall can lie ON the shared square border.
+// Corner rays then touch or overlap it rather than strictly crossing,
+// but the wall still prevents the direct attack. Inspect that border.
+function cpSharedMeleeEdge(a,t){
+ if(Math.abs(a.x2-t.x)<=CP_EPS||Math.abs(t.x2-a.x)<=CP_EPS){
+  const y0=Math.max(a.y,t.y),y1=Math.min(a.y2,t.y2);
+  if(y1>y0+CP_EPS){
+   const x=Math.abs(a.x2-t.x)<=CP_EPS?a.x2:t.x2;
+   return {axis:"y",line:x,start:y0,end:y1};
+  }
+ }
+ if(Math.abs(a.y2-t.y)<=CP_EPS||Math.abs(t.y2-a.y)<=CP_EPS){
+  const x0=Math.max(a.x,t.x),x1=Math.min(a.x2,t.x2);
+  if(x1>x0+CP_EPS){
+   const y=Math.abs(a.y2-t.y)<=CP_EPS?a.y2:t.y2;
+   return {axis:"x",line:y,start:x0,end:x1};
+  }
+ }
+ return null;
+}
+function cpSharedWallSpan(edge,wall){
+ const points=cpWallSegment(wall);
+ if(!edge||!points)return null;
+ const [u,v]=points;
+ const fixed=edge.axis==="y"?"x":"y";
+ const moving=edge.axis;
+ if(Math.abs(u[fixed]-edge.line)>CP_EPS||
+    Math.abs(v[fixed]-edge.line)>CP_EPS)return null;
+ const lo=Math.max(edge.start,Math.min(u[moving],v[moving]));
+ const hi=Math.min(edge.end,Math.max(u[moving],v[moving]));
+ return hi>lo+CP_EPS?{start:lo,end:hi,
+  full:lo<=edge.start+CP_EPS&&hi>=edge.end-CP_EPS}:null;
+}
 function cpInside(point,rect){
  return point.x>rect.x+CP_EPS&&point.x<rect.x2-CP_EPS&&
   point.y>rect.y+CP_EPS&&point.y<rect.y2-CP_EPS;
@@ -599,6 +632,54 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
     origin.solid=true;
     origin.clear=false;
    }
+  }
+ }
+ // A physical wall on the shared edge between two adjacent
+ // squares is not a mere wall-endpoint graze. It must be considered
+ // even when the only native corner-ray contacts are collinear.
+ if(method==="adjacent-melee"){
+  const shared=cpSharedMeleeEdge(a,t);
+  const touching=[];
+  if(shared)for(const wall of walls){
+   const span=cpSharedWallSpan(shared,wall);
+   const opts=wallOptions.get(wall);
+   if(!span||!opts||opts.grade==="adjacent-window")continue;
+   const info=cpWallData(wall,sourceHeight,selectedMode,opts);
+   if(info.kind==="open")continue;
+   if(info.kind==="unknown")return cpResult("uncertain",
+    "adjacent-melee-shared-wall-unverified",{method,mode:selectedMode});
+   touching.push({wall,span,opts});
+  }
+  const fullOpaque=touching.some(x=>x.span.full&&x.opts.grade==="solid"&&
+    !x.opts.lowCover);
+  if(fullOpaque&&selectedMode==="2d")
+   return cpResult("confirmed","adjacent-melee-shared-opaque-wall",{
+    type:"total",method,mode:selectedMode,
+    preventsDirectAttack:true,origins:cornerResults});
+  if(touching.length){
+   const grade=touching.reduce((best,x)=>{
+    const weight=x.opts.grade==="partial"?2:
+     x.opts.grade==="improved"||x.opts.grade==="window"?8:4;
+    return Math.max(best,weight);
+   },0);
+   const chosen=grade===8?"improved":grade===2?"partial":"normal";
+   // A 3D wall spanning the full body height provides total cover only
+   // if its verified extent also blocks the attacker's source height.
+   if(fullOpaque&&selectedMode==="3d"){
+    const targetTop=t.elevation+(cpFinite(targetBodyHeightOverride)?
+     targetBodyHeightOverride:cpTokenBodyHeight(t,s));
+    const high=touching.some(x=>{
+     if(!x.span.full||x.opts.grade!=="solid"||x.opts.lowCover)return false;
+     const bounds=cpDoc(x.wall)?.flags?.["wall-height"];
+     return cpFinite(bounds?.top)&&cpFinite(bounds?.bottom)&&
+      bounds.bottom<=Math.min(sourceHeight,t.elevation)+CP_EPS&&
+      bounds.top>=Math.max(sourceHeight,targetTop)-CP_EPS;
+    });
+    if(high)return cpResult("confirmed","adjacent-melee-shared-opaque-wall-3d",{
+     type:"total",method,mode:selectedMode,origins:cornerResults});
+   }
+   return cpResult("confirmed","adjacent-melee-shared-wall-cover",{
+    type:chosen,method,mode:selectedMode,origins:cornerResults});
   }
  }
  // Best-angle convention for ranged / non-adjacent melee: the
