@@ -138,6 +138,30 @@ const onceGuard=actionUse.createAttackDialog;
 callbacks.get('pf1CreateActionUse')(actionUse);
 assert.equal(actionUse.createAttackDialog,onceGuard,'dialog guard is idempotent');
 assert.equal(before(actionUse),undefined,'empty battlefield does not block');
+// Skull & Shackles integration: read flags.world.underwater on the
+// actual targeted TokenDocument, with no intervening creature/wall.
+target.document.flags={world:{underwater:true}};
+for(const actionType of ['rwak','mwak','msak']){
+ action.actionType=actionType;
+ const waterResult=pf1aeModule.api.coverNativeBridge.preview(actionUse);
+ assert.equal(waterResult?.status,'confirmed');
+ assert.equal(waterResult?.type,'soft',
+  actionType+' target underwater must gain intrinsic soft cover');
+ assert.equal(waterResult?.acBonus,4);
+ assert.equal(waterResult?.reflexBonus,0);
+}
+action.actionType='rwak';
+const waterHtml=pf1aeModule.api.coverNativeBridge.patchTargetAC(
+ '<div class="attack-targets"><div class="target" data-uuid="Scene.s.Token.b"><div class="ac"><div class="normal"><span class="value">16</span></div></div></div></div>',
+ {rollIndex:0,targetResults:[{targetTokenUuid:target.document.uuid,
+  coverDiagnosis:pf1aeModule.api.coverNativeBridge.preview(actionUse)}]});
+assert.ok(waterHtml.includes('>Soft cover</span>'),
+ 'native card explicitly labels underwater soft cover in English');
+assert.ok(waterHtml.includes('>+4 AC</span>'));
+target.document.flags.world.underwater=false;
+assert.equal(pf1aeModule.api.coverNativeBridge.preview(actionUse)?.type,'none',
+ 'submergence removed: intrinsic soft cover must disappear');
+
 scene.walls.contents.push({id:'wall',c:[200,-200,200,300],
  uuid:'Scene.s.Wall.w',move:20,door:0,ds:0});
 const diagnosis=pf1aeModule.api.coverNativeBridge.preview(actionUse);
