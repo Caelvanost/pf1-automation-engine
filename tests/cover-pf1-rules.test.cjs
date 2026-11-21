@@ -265,6 +265,23 @@ for(const mode of ['2d','3d']){
  assert.ok(majority&&!majority.majority,
   'target is not proven >50% exposed from attacker token center');
 }
+// Reverse wall direction: the result cannot depend on endpoint order.
+scene.walls.contents[0].c=[200,400,200,200];
+result=check({attackType:'ranged',mode:'2d'});
+assert.equal(result.type,'normal','reverse border-wall direction is identical');
+assert.equal(result.acBonus,4);
+// A zero-length tip, unlike a positive-length wall along the border,
+// cannot establish a definitively obstructed target-corner ray.
+scene.walls.contents[0].c=[200,300,200,300];
+result=check({attackType:'ranged',mode:'2d'});
+assert.notEqual(result.type,'normal',
+ 'single point at corner cannot prove normal cover');
+// An open door coinciding with the target border is still passable.
+scene.walls.contents[0].c=[200,200,200,400];
+scene.walls.contents[0].door=1;
+scene.walls.contents[0].ds=1;
+result=check({attackType:'ranged',mode:'2d'});
+assert.equal(result.type,'none','open target-border door cannot grant cover');
 scene.walls.contents.length=0;
 attacker.document.x=0;attacker.document.y=0;
 target.document.x=300;target.document.y=0;
