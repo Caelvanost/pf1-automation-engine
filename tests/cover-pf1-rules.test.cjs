@@ -449,8 +449,8 @@ scene.walls.contents.push(wall('melee-corner',100,10,100,90));
 result=check({attackType:'melee',mode:'2d'});
 assert.equal(result.status,'confirmed');
 assert.equal(result.method,'adjacent-melee');
-assert.equal(result.type,'normal',
- 'a blocked corner grants melee cover despite another clear corner');
+assert.equal(result.type,'partial',
+ 'a blocked corner grants adjacent melee cover, reduced when the target is mostly visible');
 // No intervening-creature soft cover for adjacent melee.
 scene.walls.contents.length=0;
 const intervening=make('melee-interposed',100,0);
