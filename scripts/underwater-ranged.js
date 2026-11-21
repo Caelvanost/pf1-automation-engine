@@ -128,8 +128,9 @@ function uwApply(use){
   const result=uwMeasure(use);
   if(result.skipped)return result;
 
-  const fr=String(game.i18n?.lang??"en").toLowerCase().startsWith("fr");
-  const label=fr?"Tir sous l’eau":"Underwater shot";
+  const key="PF1AE.UnderwaterRanged.Penalty";
+  const localized=game.i18n?.localize?.(key);
+  const label=localized&&localized!==key?localized:"Underwater shot";
   shared.attackBonus.push(`${result.penalty}[${label}]`);
   UW_APPLIED.add(use);
 
@@ -149,8 +150,8 @@ function uwApply(use){
 
 Hooks.once("init",()=>{
   game.settings.register(UW_NS,UW_SETTING,{
-    name:"Malus automatiques des tirs à travers l’eau",
-    hint:"Applique -2 au jet d’attaque par tranche de 1,50 m (5 ft) d’eau réellement traversée. Nécessite les zones d’eau de PF1 — Skull & Shackles.",
+    name:game.i18n?.localize?.("PF1AE.UnderwaterRanged.SettingsName")??"Automatic underwater ranged penalties",
+    hint:game.i18n?.localize?.("PF1AE.UnderwaterRanged.SettingsHint")??"Apply -2 per 5 ft / 1.5 m of water actually crossed.",
     scope:"world",
     config:true,
     restricted:true,
