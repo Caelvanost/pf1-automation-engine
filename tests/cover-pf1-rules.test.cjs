@@ -441,6 +441,33 @@ assert.equal(result.origins.some(o=>o.originCorner!==4),true,
 attacker.document.width=1;
 attacker.document.height=1;
 scene.walls.contents.length=0;
+// A full wall exactly ON the shared edge cannot be mistaken for a
+// harmless endpoint grazing ray. Closed doors are solid; open ones clear.
+scene.walls.contents.length=0;
+target.document.x=100;target.document.y=0;
+scene.walls.contents.push(wall('shared-door',100,0,100,100,
+ {door:1,ds:0}));
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.type,'total',
+ 'adjacent closed door along shared boundary blocks all direct attacks');
+assert.equal(result.preventsDirectAttack,true);
+result=check({attackType:'melee',mode:'3d'});
+assert.equal(result.type,'total',
+ 'full-height closed adjacent door blocks body in 3D');
+scene.walls.contents[0].ds=2;
+assert.equal(check({attackType:'melee',mode:'2d'}).type,'total',
+ 'locked door is also a solid shared border');
+scene.walls.contents[0].ds=1;
+assert.equal(check({attackType:'melee',mode:'2d'}).type,'none',
+ 'open adjacent door leaves melee line of effect');
+scene.walls.contents[0].ds=0;
+scene.walls.contents[0].door=0;
+scene.walls.contents[0].c=[100,0,100,50];
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.status,'confirmed');
+assert.notEqual(result.type,'total',
+ 'partial shared edge must not be classified as a whole sealed wall');
+scene.walls.contents.length=0;
 // Melee PF1: adjacent melee checks wall crossings from ANY attacker
 // corner, whereas nonadjacent melee/reach chooses the best corner.
 scene.walls.contents.length=0;
