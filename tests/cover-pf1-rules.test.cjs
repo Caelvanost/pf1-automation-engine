@@ -134,12 +134,12 @@ result=check({mode:'2d'});
 assert.equal(result.type,'normal','no partial when at most half remains exposed');
 // Preserve total cover and exceptional window classifications.
 scene.walls.contents.length=0;
-scene.walls.contents.push(wall('partial',200,55,200,120));
+scene.walls.contents.push(wall('partial',200,25,200,120));
 result=check();
-assert.equal(result.status,'confirmed','partial wall may protect only part of target');
-assert.equal(result.type,'partial');
-assert.equal(result.acBonus,2);
-assert.equal(result.reflexBonus,1);
+assert.equal(result.status,'confirmed','wall may protect more than half of the target from center');
+assert.equal(result.type,'normal');
+assert.equal(result.acBonus,4);
+assert.equal(result.reflexBonus,2);
 // A wall may be explicitly graded by the GM: do not infer this
 // from its 2D segment or from the token's visual silhouette.
 scene.walls.contents[0].flags['pf1-automation-engine']={coverGrade:'partial'};
