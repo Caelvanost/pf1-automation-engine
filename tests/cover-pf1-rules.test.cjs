@@ -5,7 +5,7 @@ const code=fs.readFileSync(path.resolve(__dirname,'../scripts/cover-pf1-rules.js
 const ready=[];
 const mod={api:{coverMode:{get:()=>"3d",inspect:()=>({ready:true,reasons:[]})}},active:true};
 const modules=new Map([['pf1-automation-engine',mod]]);
-const scene={id:'s',grid:{type:1},walls:{contents:[]},
+const scene={id:'s',grid:{type:1,distance:5,units:'ft'},walls:{contents:[]},
  tiles:{contents:[]},regions:{contents:[]}};
 const all=[];
 const game={modules};
@@ -319,6 +319,60 @@ result=check({attackType:'melee'});
 assert.equal(result.type,'none');
 result=check({attackType:'ranged',projectileHeight:5});
 assert.equal(result.type,'none');
+// Body-height house rule: a 1×1 token is 5ft high on this grid,
+// and a 2×2 token is 10ft high, independent of token.losHeight.
+scene.walls.contents.length=0;
+target.document.width=1;
+target.document.height=1;
+attacker.losHeight=3;
+target.losHeight=3;
+scene.walls.contents.push(wall('body-size',200,-200,200,300,
+ {bottom:0,top:4}));
+result=check({mode:'3d'});
+assert.equal(result.type,'normal','5ft body behind 4ft wall retains normal cover');
+assert.equal(result.origins[0].visibility.bodyHeight,5);
+assert.equal(result.origins[0].visibility.bodyTop,5);
+target.document.width=2;
+target.document.height=2;
+result=check({mode:'3d'});
+assert.equal(result.type,'partial','10ft body extends above 4ft wall');
+assert.equal(result.acBonus,2);
+assert.equal(result.origins[0].visibility.bodyHeight,10);
+assert.equal(result.origins[0].visibility.bodyTop,10);
+assert.ok(result.origins.some(o=>o.visibility.majority));
+// A wall higher than the entire Large body still fully prevents attack.
+scene.walls.contents[0].flags['wall-height'].top=12;
+result=check({mode:'3d'});
+assert.equal(result.type,'total','fully blocked 10ft body keeps total cover');
+// LOS-eye height must never stretch or shrink the sampled body height.
+scene.walls.contents[0].flags['wall-height'].top=4;
+target.losHeight=7;
+result=check({mode:'3d'});
+assert.equal(result.type,'partial');
+assert.equal(result.origins[0].visibility.bodyHeight,10);
+// Metric 1.5m grid: M=1.5m and Large=3m in physical vertical volume.
+scene.grid.units='m';
+scene.grid.distance=1.5;
+target.document.width=1;
+target.document.height=1;
+result=check({mode:'3d'});
+assert.equal(result.origins[0].visibility.bodyHeight,1.5);
+target.document.width=2;
+target.document.height=2;
+result=check({mode:'3d'});
+assert.equal(result.origins[0].visibility.bodyHeight,3);
+// No trustworthy grid distance -> do not invent a 3D total-cover proof.
+delete scene.grid.distance;
+scene.walls.contents[0].flags['wall-height'].top=12;
+result=check({mode:'3d'});
+assert.notEqual(result.type,'total');
+scene.grid.distance=5;
+scene.grid.units='ft';
+scene.walls.contents.length=0;
+target.document.width=1;
+target.document.height=1;
+target.losHeight=5;
+attacker.losHeight=5;
 // This engine only computes candidate defense adjustments; it must never
 // write source documents or resolve any roll itself.
 const snapshot=JSON.stringify(scene);
