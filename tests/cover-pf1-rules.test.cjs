@@ -382,7 +382,9 @@ assert.equal(result.type,'total','fully blocked 10ft body keeps total cover; dia
 scene.walls.contents[0].flags['wall-height'].top=4;
 target.losHeight=7;
 result=check({mode:'3d'});
-assert.equal(result.type,'partial');
+assert.equal(result.type,'partial','LOS independent body cover: '+result.reason+' '+
+ JSON.stringify(result.origins.map(o=>({type:o.coverType,unknown:o.unknown,
+ visibility:o.visibility}))));
 assert.equal(result.origins[0].visibility.bodyHeight,10);
 // Metric 1.5m grid: M=1.5m and Large=3m in physical vertical volume.
 scene.grid.units='m';
