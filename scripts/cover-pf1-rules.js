@@ -239,6 +239,65 @@ function cpSlopedWall(from,to,wall,startHeight,endHeight,{grade=null,lowCover=fa
   return {kind:"unknown",reason:"wall-height-boundary"};
  return {kind:"solid",grade:grade??cpWallGrade(d)};
 }
+/**
+ * Estimate the unobstructed fraction of the TARGET'S OCCUPIED SILHOUETTE,
+ * not the proportion of clear PF1 target-corner rays. Corner rays still
+ * decide whether cover exists or whether a direct attack is prohibited.
+ *
+ * 2D: uniform samples through the occupied footprint. This is a proxy for
+ * the projected body, not a measurement from an actor artwork/portrait.
+ * 3D: sample the footprint and the vertical span from token elevation to
+ * its verified LOS height. Missing heights leave normal cover unchanged.
+ *
+ * Never downgrade creature-provided soft cover, special wall grades,
+ * windows, or an unknown wall intersection to partial cover. We use the
+ * strict >50% criterion from PF1e, and retain normal cover whenever the
+ * estimate cannot be trusted.
+ */
+function cpVisibleMajority({from,targetSpace,sceneWalls,wallOptions,mode,
+ sourceHeight,targetHeight,targetElevation}){
+ if(mode==="3d"&&(!cpFinite(sourceHeight)||
+    !cpFinite(targetHeight)||!cpFinite(targetElevation)||
+    targetHeight<=targetElevation+CP_EPS))return null;
+ const slices=mode==="3d"?5:1;
+ const side=9;
+ let clear=0,blocked=0;
+ for(let z=0;z<slices;z++){
+  const toHeight=mode==="3d"?targetElevation+
+   (targetHeight-targetElevation)*(z+0.5)/slices:null;
+  for(let y=0;y<side;y++)for(let x=0;x<side;x++){
+   const to={x:targetSpace.x+(targetSpace.x2-targetSpace.x)*(x+0.5)/side,
+    y:targetSpace.y+(targetSpace.y2-targetSpace.y)*(y+0.5)/side};
+   let obstructed=false;
+   for(const wall of sceneWalls){
+    const opts=wallOptions.get(wall);
+    if(!opts||opts.grade==="adjacent-window")continue;
+    const segment=cpWallSegment(wall);
+    if(!segment)return null;
+    const cross=cpSegment(from,to,...segment);
+    if(cross==="clear"||cross==="ambiguous")continue;
+    // Special cover applies only when the sampled ray actually crosses
+    // that segment; unrelated walls elsewhere in the scene are harmless.
+    if(opts.grade!=="solid"||opts.lowCover)return null;
+    const known=cpWallData(wall,sourceHeight,"2d",opts);
+    if(known.kind==="unknown")return null;
+    if(known.kind==="open")continue;
+    if(mode==="3d"){
+     const hit=cpSlopedWall(from,to,wall,sourceHeight,toHeight,opts);
+     if(hit.kind==="unknown")return null;
+     if(hit.kind==="clear")continue;
+    }
+    obstructed=true;break;
+   }
+   if(obstructed)blocked++;
+   else clear++;
+  }
+ }
+ const count=clear+blocked;
+ return count?{visibleFraction:clear/count,samples:count,
+  visibleSamples:clear,blockedSamples:blocked,
+  majority:clear>blocked}:null;
+}
 function cpInterpret({attacker,target,attackType="ranged",scene,
  tokens,projectileHeight=null,mode}={}){
  const configured=game.modules?.get?.(CP_NS)?.api?.coverMode;
@@ -445,6 +504,35 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   return cpResult("confirmed","every-direct-ray-blocked-by-solid-walls",{
    type:"total",method,origins:cornerResults,
    multilevel,sourceHeight,targetHeight,mode:selectedMode});
+ // PF1e partial cover: if COVER is already established, but more than
+ // half the target's occupied silhouette remains unobstructed from a
+ // selectable attacker corner, reduce only normal wall cover to +2/+1.
+ // This runs AFTER the all-solid total-cover guard and BEFORE selection
+ // of the attacker's best cover angle.
+ for(const origin of considered){
+  if(origin.coverType!=="normal"||origin.soft||origin.partial||
+     origin.improved||origin.unknown&&origin.traces.some(ray=>
+      ray.uncertain.some(u=>!u.startsWith("wall-grazed:")&&
+       !u.startsWith("creature-grazed:"))))continue;
+  if(origin.traces.some(ray=>ray.blocked.some(hit=>hit.kind!=="solid")))
+   continue;
+  // A creature grazing an attack ray is not proof that its silhouette
+  // is irrelevant to the percentage calculation.
+  if(origin.traces.some(ray=>ray.uncertain.some(u=>
+    u.startsWith("creature-grazed:"))))continue;
+  const visibility=cpVisibleMajority({
+   from:as[origin.originCorner],targetSpace:t,sceneWalls:walls,
+   wallOptions,mode:selectedMode,sourceHeight,targetHeight,
+   targetElevation:t.elevation
+  });
+  if(visibility){
+   origin.visibility=visibility;
+   if(visibility.majority){
+    origin.coverType="partial";
+    origin.partial=true;
+   }
+  }
+ }
  const guaranteed=considered.length>0&&considered.every(o=>o.coverType);
  if(guaranteed){
   // Attacker chooses the least-protected origin; do not downgrade wall

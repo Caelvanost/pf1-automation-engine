@@ -1,8 +1,18 @@
 # PF1 Automation Engine
 
-**Version 1.40.1 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.40.2 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Partial cover when more than half the target is exposed (v1.40.2)
+
+Under Pathfinder 1e, cover reduces to **partial cover (+2 AC / +1 relevant Reflex)** when **strictly more than half of the target remains visible**. The existing PF1 corner-ray test still establishes whether cover exists, selects the best attacker origin, and proves total cover before this new calculation runs.
+
+For **ordinary wall cover only**, PF1AE now estimates the visible fraction of the target's occupied silhouette using a fixed 9×9 interior grid from each available attacker corner. In 3D it also samples five elevations between the target token's ground elevation and its reported LOS height, tracing obstructions at each sample's actual wall-crossing height. When more samples are unobstructed than blocked, confirmed **normal wall cover** is reduced to **partial**, with a diagnostic `origins[].visibility` containing `visibleFraction`, `visibleSamples` and `blockedSamples`. A fraction of **50% or less** retains normal cover.
+
+**Important limitation:** Foundry does not expose a trustworthy anatomical visible-area percentage. In 2D the target's occupied grid rectangle is a body silhouette *proxy*; in 3D the reported LOS height provides an approximate vertical extent, not the model's true physical height. This is deterministic and testable, but cannot measure artwork pixels or actual anatomy. The GM can still explicitly classify an obstacle using `coverPF1.setWallGrade` when the rendered creature differs materially from its token footprint.
+
+This does **not** downgrade total cover, creature-provided soft cover, windows/improved cover, explicitly classified partial/improved walls, or the separately defined size-dependent low-wall rule. Unknown collision geometry remains conservative; missing height data does not invent a visibility percentage. Actor AC is unchanged, and only the native target thumbnail displays the attack-specific adjustment.
 
 ## Opaque 2D walls, windows and low 3D obstacles (v1.40.1)
 

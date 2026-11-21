@@ -78,12 +78,32 @@ assert.equal(result.status,'uncertain','unsupported legacy movement value is not
 scene.walls.contents[0].move=20;
 assert.equal(check().type,'total','native normal movement value preserves total cover');
 scene.walls.contents.length=0;
+// A segment hides less than half the occupied silhouette from the
+// attacker's best available square corner. PF1 partial cover +2/+1
+// applies although at least one formal target-corner ray is blocked.
+scene.walls.contents.push(wall('majority-visible',200,35,200,120));
+for(const mode of ['2d','3d']){
+ result=check({attackType:'ranged',mode});
+ assert.equal(result.status,'confirmed');
+ assert.equal(result.type,'partial',mode+': more than half exposed gives partial cover');
+ assert.equal(result.acBonus,2);
+ assert.equal(result.reflexBonus,1);
+ assert.ok(result.origins.some(o=>o.visibility?.majority===true),
+  mode+': target silhouette majority evidence must be present');
+}
+// At or below half exposed, do not discount otherwise confirmed normal
+// wall cover. This is distinct from merely counting four corner rays.
+scene.walls.contents[0].c=[200,10,200,120];
+result=check({mode:'2d'});
+assert.equal(result.type,'normal','no partial when at most half remains exposed');
+// Preserve total cover and exceptional window classifications.
+scene.walls.contents.length=0;
 scene.walls.contents.push(wall('partial',200,25,200,120));
 result=check();
 assert.equal(result.status,'confirmed','partial wall may protect only part of target');
-assert.equal(result.type,'normal');
-assert.equal(result.acBonus,4);
-assert.equal(result.reflexBonus,2);
+assert.equal(result.type,'partial');
+assert.equal(result.acBonus,2);
+assert.equal(result.reflexBonus,1);
 // A wall may be explicitly graded by the GM: do not infer this
 // from its 2D segment or from the token's visual silhouette.
 scene.walls.contents[0].flags['pf1-automation-engine']={coverGrade:'partial'};
@@ -153,7 +173,7 @@ assert.equal(result.status,'confirmed');
 assert.equal(result.type,'none','open door should not block');
 scene.walls.contents[0].ds=0;
 result=check();
-assert.equal(result.type,'normal','closed door restores cover');
+assert.equal(result.type,'partial','closed door restores visibility-sensitive partial cover');
 scene.walls.contents[0].move=0;
 result=check();
 assert.equal(result.status,'uncertain','passable wall may still represent a physical obstacle');
@@ -268,8 +288,8 @@ scene.walls.contents.push(wall('slope-partial',200,25,200,120,
 result=check();
 assert.equal(result.status,'confirmed',
  'sloping shot must classify partially obstructing wall');
-assert.equal(result.type,'normal');
-assert.equal(result.acBonus,4);
+assert.equal(result.type,'partial');
+assert.equal(result.acBonus,2);
 // The same wall too low for the ray must not falsely grant +4.
 scene.walls.contents[0].flags['wall-height'].top=2;
 result=check();
