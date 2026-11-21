@@ -164,7 +164,7 @@
       "Saved": "Script approvals updated."
     },
     "ActionRange": {
-      "OutOfRange": "Target is beyond this action\u0027s maximum range. Action cancelled."
+      "OutOfRange": "Target is beyond this action's maximum range. Action cancelled."
     },
     "MeleeReach": {
       "OutOfReach": "Target beyond the maximum reach of this melee attack. Attack cancelled."
@@ -182,7 +182,12 @@
       "EstimatedAC": "Indicative AC with cover",
       "EstimatedACWarning": "Not verified: the native AC may already contain cover or other uncertain bonuses",
       "TotalBlocked": "Total cover: no direct line of effect. Direct attack cancelled.",
-      "TotalCardWarning": "Total cover detected after the attack: review and disregard this direct attack."
+      "TotalCardWarning": "Total cover detected after the attack: review and disregard this direct attack.",
+      "TypePartial": "Partial cover",
+      "TypeNormal": "Normal cover",
+      "TypeSoft": "Soft cover",
+      "TypeImproved": "Improved cover",
+      "TypeTotal": "Total cover"
     }
   }
 }
