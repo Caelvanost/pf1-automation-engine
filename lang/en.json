@@ -184,7 +184,7 @@
       "TotalBlocked": "Total cover: no direct line of effect. Direct attack cancelled.",
       "TotalCardWarning": "Total cover detected after the attack: review and disregard this direct attack.",
       "TypePartial": "Partial cover",
-      "TypeNormal": "Normal cover",
+      "TypeNormal": "Cover",
       "TypeSoft": "Soft cover",
       "TypeImproved": "Improved cover",
       "TypeTotal": "Total cover"
