@@ -190,7 +190,9 @@ assert.equal(result.type,'none','unclassified size must not infer M/P grade');
 target.actor=null;
 attacker.document.x=0;
 delete scene.grid.units;
-delete scene.grid.distance;
+// Foundry always provides a scene grid distance. Preserve it for body
+// height calculations in subsequent 3D tests.
+scene.grid.distance=5;
 scene.walls.contents[0].flags['wall-height'].top=10;
 scene.walls.contents[0].door=1;
 scene.walls.contents[0].ds=1;
