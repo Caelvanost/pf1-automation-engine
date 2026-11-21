@@ -65,6 +65,32 @@ delete scene.walls.contents[0].sight;
 delete scene.walls.contents[0].light;
 result=check({mode:'2d'});
 assert.equal(result.type,'total','ordinary wall is still opaque');
+// Foundry doors are walls when closed or locked, regardless of a
+// window-like sight/light setup or stale special-cover classification.
+// Open doors permit direct attacks.
+scene.walls.contents[0].door=1;
+scene.walls.contents[0].sight=0;
+scene.walls.contents[0].light=0;
+scene.walls.contents[0].flags['pf1-automation-engine']={coverGrade:'window'};
+for(const ds of [0,2]){
+ scene.walls.contents[0].ds=ds;
+ for(const mode of ['2d','3d']){
+  result=check({mode});
+  assert.equal(result.type,'total',
+   mode+': closed/locked door must be an ordinary solid wall');
+  assert.equal(result.preventsDirectAttack,true);
+ }
+}
+scene.walls.contents[0].ds=1;
+for(const mode of ['2d','3d']){
+ result=check({mode});
+ assert.equal(result.type,'none',mode+': open door must be unobstructed');
+}
+scene.walls.contents[0].door=0;
+scene.walls.contents[0].ds=0;
+delete scene.walls.contents[0].sight;
+delete scene.walls.contents[0].light;
+delete scene.walls.contents[0].flags['pf1-automation-engine'];
 // GM window classification is supported when the native senses have
 // deliberately custom values.
 scene.walls.contents[0].flags['pf1-automation-engine']={coverGrade:'window'};
@@ -343,7 +369,9 @@ assert.ok(result.origins.some(o=>o.visibility.majority));
 // A wall higher than the entire Large body still fully prevents attack.
 scene.walls.contents[0].flags['wall-height'].top=12;
 result=check({mode:'3d'});
-assert.equal(result.type,'total','fully blocked 10ft body keeps total cover');
+assert.equal(result.type,'total','fully blocked 10ft body keeps total cover; diagnosis='+
+ JSON.stringify(result.origins.map(o=>({corner:o.originCorner,cover:o.coverType,
+  vis:o.visibility,blocked:o.traces.map(t=>t.blocked)}))));
 // LOS-eye height must never stretch or shrink the sampled body height.
 scene.walls.contents[0].flags['wall-height'].top=4;
 target.losHeight=7;
