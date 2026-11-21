@@ -457,6 +457,13 @@ assert.equal(result.type,'normal',
  reason:result.reason,origins:result.origins?.map(o=>({origin:o.originCorner,type:o.coverType,
  visibility:o.visibility}))}));
 assert.equal(result.acBonus,4);
+const diagVisibility=result.origins.map(o=>o.visibility).find(Boolean);
+assert.ok(diagVisibility,'diagonal endpoint test must measure target exposure');
+assert.ok(diagVisibility.uncertainSamples>0,
+ 'rays grazing the wall endpoint must be uncertain, not visible');
+assert.equal(diagVisibility.majority,false,
+ 'a wall endpoint cannot make more than half provably visible');
+assert.ok(diagVisibility.visibleFraction<=0.5);
 result=check({attackType:'melee',mode:'3d'});
 assert.equal(result.status,'confirmed');
 assert.equal(result.type,'normal',
