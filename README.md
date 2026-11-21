@@ -1,8 +1,19 @@
 # PF1 Automation Engine
 
-**Version 1.40.6 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.40.7 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Pathfinder 1 melee cover and reach attacks (v1.40.7)
+
+- **Adjacent melee attacks** (`mwak`, `msak`): use the Pathfinder 1 rule that *any* blocking wall ray drawn from *any* attacker-square corner to a corner of the defender's square establishes cover. Unlike ranged combat, the attacker cannot select one clear corner to negate a wall crossing from another. A creature between attacker and target does **not** give soft cover for adjacent melee.
+- **Nonadjacent melee (reach weapons or natural reach):** use the ranged-cover corner-selection rule, including **soft cover +4 AC / +0 Reflex** from intervening creatures. The geometry engine determines adjacency from occupied squares, not from the weapon's label.
+- **Large or larger melee creatures:** select an adjacent occupied attacker square and an adjacent target square that give the attacker the least cover, in accordance with PF1's special rule. Each square pair is evaluated with the normal adjacent melee corner rule; uncertain pairs are not guessed. This applies to both attacker and target being large; 3D body visibility still respects the original target's grid-footprint height.
+- **Shared-border walls and doors:** a wall lying precisely on the common boundary between two adjacent squares is no longer dismissed as mere grazing. A full opaque wall / closed or locked door in 2D grants **total cover** and blocks a direct attack; an open door does not. In 3D a wall must span the attacker's source height and the whole target volume to confirm full shared-edge obstruction. Short and partial walls retain the usual categories.
+- **Low wall proximity:** if both adjacent creatures are equally far from a low obstacle, neither may ignore it merely for being equally close; Pathfinder 1 only allows ignoring low cover when the attacker is **closer**.
+- All existing **partial (+2 AC), normal (+4), improved (+8)** categories, windows, center-based visible-majority calculation, and compact bilingual native target-card label are retained. Total cover still aborts a direct attack before resolution. Actor CA is never permanently changed.
+
+**Limits:** This updates the geometry and native attack-card processing. It does not currently intercept every system-generated *attack of opportunity* workflow; although Pathfinder 1 does not allow an AoO against a creature with cover relative to the attacker, that restriction still requires the corresponding native AoO event to be identifiable before PF1AE can cancel it automatically. Nonstandard combat maneuvers remain outside this melee attack bridge.
 
 ## Compact two-line cover label at right of native PF1 target (v1.40.6)
 
