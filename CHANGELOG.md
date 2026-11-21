@@ -1,3 +1,11 @@
+## v1.40.11 — Skull & Shackles underwater token grants soft cover
+
+- Read the **exact generic token flag** `flags.world.underwater === true` from the targeted TokenDocument, as written by Skull & Shackles v1.23.0 water regions. No required runtime dependency on the campaign module; no Actor or TokenDocument mutation.
+- A submerged **target** gets intrinsic **soft cover +4 AC / +0 Reflex** in ranged, adjacent melee, melee touch and reach attacks, including when no interposed creature is present. The attacking token's own flag never grants the defender cover. The bonus disappears as soon as the target's flag is false or absent.
+- Apply nonstacking precedence: underwater replaces none/partial (+2 AC) with soft (+4 AC); keep confirmed normal wall cover (+4 AC and +2 Reflex), improved cover (+8) and total cover/direct-attack cancellation. Preserve uncertain geometry without guessing a weaker wall category.
+- Reuse the existing native two-line localized card display: **Abri mou / +4 CA** in French and **Soft cover / +4 AC** otherwise. No new chat message or permanent AC change.
+- Add geometry and native PF1 ActionUse tests for 2D/3D, melee/ranged/touch, strict boolean flag, disappearance, wall precedence and card label.
+
 ## v1.40.10 — Ranged cover when a red ray reaches the target's wall border
 
 - Fix PF1 ranged and nonadjacent melee/reach corner-ray analysis for a wall **running along the target's square border**. A ray to a target corner lying strictly **inside** the actual wall segment is an obstruction, not just a harmless wall-tip graze. One obstructed target-corner ray from the chosen attacker origin establishes cover, even when other lines from that same origin are clear.

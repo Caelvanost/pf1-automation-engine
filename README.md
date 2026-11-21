@@ -1,8 +1,18 @@
 # PF1 Automation Engine
 
-**Version 1.40.10 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.40.11 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Underwater targets gain intrinsic soft cover (v1.40.11)
+
+Skull & Shackles v1.23.0 sets the **generic TokenDocument flag** `flags.world.underwater = true` when a creature is below a water-region surface. PF1AE now reads that exact token flag, without requiring a runtime dependency on Skull & Shackles or modifying the token.
+
+Whenever a **target** has that boolean flag, it benefits from **soft cover +4 AC / +0 Reflex** in ranged attacks, melee (including adjacent melee), melee touch and attacks with reach. A submerged attacker does **not** give this bonus to a target that is not submerged. The bonus disappears on the next attack when the target's flag is `false` or absent. This is a campaign-specific application of soft cover, distinct from intervening-creature soft cover (which adjacent melee still ignores).
+
+**Nonstacking and priorities:** underwater soft cover replaces **no cover** or **partial +2 AC** with **soft +4 AC**, but never adds its bonus to another cover grade. Existing **normal wall cover +4 AC / +2 Reflex**, **improved +8 AC / +4 Reflex**, and **total cover** retain their results. An uncertain or unverified wall/Levels obstruction stays uncertain rather than incorrectly certifying a safe direct attack through total cover.
+
+On a single-target native PF1 attack, the existing compact two-line card label displays **Abri mou / +4 CA** when Foundry is in French, or **Soft cover / +4 AC** otherwise. Source Actor AC is never mutated; native thumbnail AC is adjusted only through the existing provenance-safe bridge. Save modifiers remain source-conditional and no attacks-of-opportunity automation is introduced.
 
 ## Ranged attacks: target-border wall lines count as cover (v1.40.10)
 

@@ -388,7 +388,7 @@ function cpVisibleMajority({from,targetSpace,sceneWalls,wallOptions,mode,
   // prove total obstruction. Only positive evidence supports downgrades.
   majority:clear>count/2}:null;
 }
-function cpInterpret({attacker,target,attackType="ranged",scene,
+function cpInterpretGeometry({attacker,target,attackType="ranged",scene,
  tokens,projectileHeight=null,mode,
  meleeSquareSelection=false,visibilityCenterOverride=null,
  targetBodyHeightOverride=null}={}){
@@ -497,7 +497,7 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
     ...cpDoc(attacker),x:pair.ox,y:pair.oy,width:1,height:1}};
    const targetSquare={...target,document:{
     ...cpDoc(target),x:pair.px,y:pair.py,width:1,height:1}};
-   const assessment=cpInterpret({attacker:attackerSquare,
+   const assessment=cpInterpretGeometry({attacker:attackerSquare,
     target:targetSquare,attackType:"melee",scene:s,tokens:all,
     projectileHeight,mode:selectedMode,meleeSquareSelection:true,
     visibilityCenterOverride:originalCenter,
@@ -830,6 +830,38 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   selectedOrigin:selected.originCorner,origins:cornerResults,
   multilevel,sourceHeight,targetHeight});
 
+}
+/**
+ * Skull & Shackles stores a generic token-world flag, not an Actor tag:
+ * TokenDocument.flags.world.underwater === true.
+ * No module dependency is needed; an underwater target has intrinsic
+ * soft cover (+4 AC, +0 Reflex), including in adjacent melee. It does
+ * NOT stack with geometric cover and can never bypass total cover.
+ */
+function cpIsTargetUnderwater(target){
+ const doc=cpDoc(target);
+ return doc?.flags?.world?.underwater===true;
+}
+function cpInterpret(options={}){
+ const result=cpInterpretGeometry(options);
+ if(!cpIsTargetUnderwater(options?.target))return result;
+ // Preserve uncertain geometry: a potential total wall obstruction
+ // cannot be silently replaced with an ordinary +4 AC bonus.
+ if(result.status!=="confirmed")return result;
+ result.underwaterCover=true;
+ // Equal AC with more Reflex protection: retain a confirmed normal
+ // wall; improved and total walls also have priority.
+ if(result.type==="none"||result.type==="partial"){
+  result.geometricCoverType=result.type;
+  result.type="soft";
+  result.acBonus=4;
+  result.reflexBonus=0;
+  result.preventsDirectAttack=false;
+  result.reason="underwater-soft-cover";
+  result.source="token.flags.world.underwater";
+ }
+ CP_LAST=cpClone(result);
+ return cpClone(result);
 }
 Hooks.once("ready",()=>{
  const module=game.modules.get(CP_NS);
