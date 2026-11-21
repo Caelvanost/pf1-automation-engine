@@ -436,8 +436,12 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // PF1e: melee against a nonadjacent target (natural reach or reach
  // weapon) uses ranged cover rules, INCLUDING interposed creatures.
  // Adjacent melee sees walls but does NOT gain soft cover from creatures.
- const dx=Math.max(a.x-t.x,t.x-a.x2,0);
- const dy=Math.max(a.y-t.y,t.y-a.y2,0);
+ // Distance between the two OCCUPIED rectangles, independent of
+ // facing. Comparing a left/top boundary against the other left/top
+ // instead of its right/bottom misclassified southwest and northwest
+ // adjacent melee as "ranged-or-reach".
+ const dx=Math.max(a.x-t.x2,t.x-a.x2,0);
+ const dy=Math.max(a.y-t.y2,t.y-a.y2,0);
  const adjacent=dx<=CP_EPS&&dy<=CP_EPS;
  const method=attackType==="melee"&&adjacent?"adjacent-melee":"ranged-or-reach";
  // Big creatures can pick a square occupied by either participant for

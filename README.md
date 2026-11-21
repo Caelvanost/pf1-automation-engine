@@ -1,8 +1,14 @@
 # PF1 Automation Engine
 
-**Version 1.40.7 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.40.8 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Fix: direction-independent melee adjacency near a diagonal wall corner (v1.40.8)
+
+PF1AE now computes the distance between the **occupied rectangles** of attacker and target using the correct left/right and top/bottom boundaries. Previously the wrong top/left boundary could classify an enemy diagonally adjacent to the **northeast of a southwest attacker** as **nonadjacent**, incorrectly invoking the *reach/ranged best-corner* cover rule. This caused a missing cover bonus in the native card even if a solid wall blocked some melee corner rays.
+
+Adjacent melee now behaves symmetrically in all eight neighboring directions (including diagonal adjacency); a diagonal wall starting at the common corner and extending behind the attacker gives the appropriate partial/normal wall cover, and nonadjacent melee retains reach/ranged treatment. The fix does not alter native target-card styling, AC provenance, Actor AC, or manual attacks of opportunity.
 
 ## Pathfinder 1 melee cover and reach attacks (v1.40.7)
 

@@ -92,6 +92,24 @@ scene.walls.contents.push({id:'adjacent-msak-door',
 assert.equal(pf1aeModule.api.coverNativeBridge.preview(actionUse)?.type,'total',
  'native touch melee shares adjacent wall cover');
 scene.walls.contents.length=0;
+// Screenshot: attacking from southwest with adjacent enemy northeast,
+// and a solid wall starting at the common corner, extending south.
+action.actionType='mwak';
+attacker.document.x=0;attacker.document.y=100;
+target.document.x=100;target.document.y=0;
+scene.walls.contents.push({id:'melee-diagonal-corner',
+ uuid:'Scene.s.Wall.melee-diagonal',c:[100,100,100,300],
+ flags:{'wall-height':{bottom:0,top:10}},
+ move:20,door:0,ds:0});
+const screenshotCover=pf1aeModule.api.coverNativeBridge.preview(actionUse);
+assert.equal(screenshotCover?.status,'confirmed');
+assert.equal(screenshotCover?.method,'adjacent-melee',
+ 'southwest mwak is adjacent, never treated as reach');
+assert.ok(['partial','normal'].includes(screenshotCover.type),
+ 'screenshot corner wall grants measurable cover');
+assert.ok(screenshotCover.acBonus>=2);
+scene.walls.contents.length=0;
+attacker.document.y=0;
 action.actionType='rwak';
 target.document.x=300;
 const originalPrototypeProcess=NativeActionUse.prototype.process;

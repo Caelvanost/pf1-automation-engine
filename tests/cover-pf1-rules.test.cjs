@@ -441,6 +441,51 @@ assert.equal(result.origins.some(o=>o.originCorner!==4),true,
 attacker.document.width=1;
 attacker.document.height=1;
 scene.walls.contents.length=0;
+// Screenshot regression: attacker at bottom-left, target at top-right,
+// vertical wall starts at their shared diagonal corner and runs down.
+// This is the same 1x1 square arrangement as a selected melee token
+// next to a wall corner and a diagonally adjacent enemy.
+scene.walls.contents.length=0;
+attacker.document.x=0;attacker.document.y=100;
+target.document.x=100;target.document.y=0;
+scene.walls.contents.push(wall('diagonal-corner',100,100,100,300));
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.method,'adjacent-melee');
+assert.equal(result.status,'confirmed');
+assert.ok(['partial','normal','improved'].includes(result.type),
+ 'diagonal adjacent melee wall-corner grants cover, not no-cover; diagnosis='+
+ JSON.stringify({reason:result.reason,type:result.type,origins:result.origins}));
+assert.ok(result.acBonus>=2);
+result=check({attackType:'melee',mode:'3d'});
+assert.equal(result.status,'confirmed');
+assert.ok(['partial','normal','improved'].includes(result.type),
+ 'diagonal adjacent 3D melee corner still grants cover; diagnosis='+
+ JSON.stringify({reason:result.reason,type:result.type,origins:result.origins}));
+attacker.document.y=0;
+target.document.x=300;target.document.y=0;
+scene.walls.contents.length=0;
+// Adjacency is symmetric: flipping either axis must never turn a
+// touch- or corner-adjacent melee attack into nonadjacent reach.
+scene.walls.contents.length=0;
+for(const [ax,ay,tx,ty] of [
+ [0,0,100,0], [100,0,0,0],
+ [0,0,0,100], [0,100,0,0],
+ [0,0,100,100], [100,100,0,0],
+ [0,100,100,0], [100,0,0,100]
+]){
+ attacker.document.x=ax;attacker.document.y=ay;
+ target.document.x=tx;target.document.y=ty;
+ result=check({attackType:'melee',mode:'2d'});
+ assert.equal(result.method,'adjacent-melee',
+  'melee adjacent squares must be orientation-independent: '+
+  [ax,ay,tx,ty].join(','));
+ assert.equal(result.type,'none');
+}
+attacker.document.x=0;attacker.document.y=0;
+target.document.x=300;target.document.y=0;
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.method,'ranged-or-reach',
+ 'true nonadjacent melee still uses reach/ranged corner selection');
 // A full wall exactly ON the shared edge cannot be mistaken for a
 // harmless endpoint grazing ray. Closed doors are solid; open ones clear.
 scene.walls.contents.length=0;
