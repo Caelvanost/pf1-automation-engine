@@ -452,15 +452,17 @@ scene.walls.contents.push(wall('diagonal-corner',100,100,100,300));
 result=check({attackType:'melee',mode:'2d'});
 assert.equal(result.method,'adjacent-melee');
 assert.equal(result.status,'confirmed');
-assert.ok(['partial','normal','improved'].includes(result.type),
- 'diagonal adjacent melee wall-corner grants cover, not no-cover; diagnosis='+
- JSON.stringify({reason:result.reason,type:result.type,origins:result.origins}));
-assert.ok(result.acBonus>=2);
+assert.equal(result.type,'normal',
+ 'at most half of northeast target exposed behind corner wall from southwest attacker center; '+JSON.stringify({
+ reason:result.reason,origins:result.origins?.map(o=>({origin:o.originCorner,type:o.coverType,
+ visibility:o.visibility}))}));
+assert.equal(result.acBonus,4);
 result=check({attackType:'melee',mode:'3d'});
 assert.equal(result.status,'confirmed');
-assert.ok(['partial','normal','improved'].includes(result.type),
- 'diagonal adjacent 3D melee corner still grants cover; diagnosis='+
- JSON.stringify({reason:result.reason,type:result.type,origins:result.origins}));
+assert.equal(result.type,'normal',
+ '3D diagonal corner wall hides at least half body; '+JSON.stringify({
+ reason:result.reason,origins:result.origins?.map(o=>({origin:o.originCorner,type:o.coverType,
+ visibility:o.visibility}))}));
 attacker.document.y=0;
 target.document.x=300;target.document.y=0;
 scene.walls.contents.length=0;
