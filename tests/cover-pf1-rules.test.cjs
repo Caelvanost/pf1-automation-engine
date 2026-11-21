@@ -111,9 +111,9 @@ scene.walls.contents.push(wall('majority-visible',200,55,200,120));
 for(const mode of ['2d','3d']){
  result=check({attackType:'ranged',mode});
  assert.equal(result.status,'confirmed');
- assert.equal(result.type,'partial',mode+': more than half exposed gives partial cover');
- assert.equal(result.acBonus,2);
- assert.equal(result.reflexBonus,1);
+ assert.equal(result.type,'none',mode+': best legal corner can still remove cover despite center showing majority exposed');
+ assert.equal(result.acBonus,0);
+ assert.equal(result.reflexBonus,0);
  assert.ok(result.origins.some(o=>o.visibility?.majority===true),
   mode+': target silhouette majority evidence must be present');
  const views=result.origins.filter(o=>o.visibility).map(o=>o.visibility);
