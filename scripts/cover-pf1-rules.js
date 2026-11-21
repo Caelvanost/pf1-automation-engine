@@ -491,6 +491,40 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // attacker-selected corner for ranged and non-adjacent melee attacks.
  const considered=method==="adjacent-melee"?cornerResults:
   cornerResults;
+ // For 3D, an eye-height ray hitting a wall does not prove total
+ // cover if the token's body extends ABOVE that wall. First inspect
+ // target-space samples across its whole occupied vertical volume.
+ // The 2D total-cover rule remains unchanged.
+ const targetBodyHeight=selectedMode==="3d"?cpTokenBodyHeight(t,s):null;
+ for(const origin of considered){
+  if((origin.coverType&&origin.coverType!=="normal")||
+     origin.soft||origin.partial||origin.improved||
+     origin.unknown&&origin.traces.some(ray=>
+      ray.uncertain.some(u=>!u.startsWith("wall-grazed:")&&
+       !u.startsWith("creature-grazed:"))))continue;
+  if(origin.traces.some(ray=>ray.blocked.some(hit=>hit.kind!=="solid")))
+   continue;
+  if(origin.traces.some(ray=>ray.uncertain.some(u=>
+    u.startsWith("creature-grazed:"))))continue;
+  const visibility=cpVisibleMajority({
+   from:as[origin.originCorner],targetSpace:t,sceneWalls:walls,
+   wallOptions,mode:selectedMode,sourceHeight,targetBodyHeight,
+   targetElevation:t.elevation
+  });
+  if(visibility){
+   origin.visibility=visibility;
+   if(visibility.majority&&visibility.blockedSamples>0){
+    origin.coverType="partial";
+    origin.partial=true;
+   }else if(selectedMode==="3d"&&!origin.coverType&&
+       visibility.blockedSamples>0){
+    // A clear eye-height ray can still pass over a wall that hides
+    // most of the target's body. Do not infer no cover from eyes alone.
+    origin.coverType="normal";
+    origin.solid=true;
+   }
+  }
+ }
  // Best-angle convention for ranged / non-adjacent melee: the
  // attacker selects the most favorable occupied-square corner.
  // A ray that merely touches a wall endpoint (or creature boundary)
@@ -525,33 +559,6 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // Therefore +4 is proven only when EVERY possible origin has at least
  // one definitively obstructed ray to a target corner.
  //
- // For 3D, an eye-height ray hitting a wall does not prove total
- // cover if the token's body extends ABOVE that wall. First inspect
- // target-space samples across its whole occupied vertical volume.
- // The 2D total-cover rule remains unchanged.
- const targetBodyHeight=selectedMode==="3d"?cpTokenBodyHeight(t,s):null;
- for(const origin of considered){
-  if(origin.coverType!=="normal"||origin.soft||origin.partial||
-     origin.improved||origin.unknown&&origin.traces.some(ray=>
-      ray.uncertain.some(u=>!u.startsWith("wall-grazed:")&&
-       !u.startsWith("creature-grazed:"))))continue;
-  if(origin.traces.some(ray=>ray.blocked.some(hit=>hit.kind!=="solid")))
-   continue;
-  if(origin.traces.some(ray=>ray.uncertain.some(u=>
-    u.startsWith("creature-grazed:"))))continue;
-  const visibility=cpVisibleMajority({
-   from:as[origin.originCorner],targetSpace:t,sceneWalls:walls,
-   wallOptions,mode:selectedMode,sourceHeight,targetBodyHeight,
-   targetElevation:t.elevation
-  });
-  if(visibility){
-   origin.visibility=visibility;
-   if(visibility.majority){
-    origin.coverType="partial";
-    origin.partial=true;
-   }
-  }
- }
  // A confirmed total obstruction requires all four corner rays to
  // cross solid walls AND, in 3D, a proven zero visible body volume.
  // Missing scale data never justifies suppressing a direct attack.
