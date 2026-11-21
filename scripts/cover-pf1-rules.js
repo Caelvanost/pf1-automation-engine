@@ -558,7 +558,8 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  if(considered.length>0&&considered.every(o=>o.traces.every(r=>
     r.blocked.some(x=>x.kind==="solid")))&&
     (selectedMode==="2d"||considered.every(o=>
-      o.visibility?.visibleSamples===0)))
+      o.visibility?.visibleSamples===0&&
+      o.visibility?.uncertainSamples===0)))
   return cpResult("confirmed","every-direct-ray-blocked-by-solid-walls",{
    type:"total",method,origins:cornerResults,
    multilevel,sourceHeight,targetHeight,mode:selectedMode});
