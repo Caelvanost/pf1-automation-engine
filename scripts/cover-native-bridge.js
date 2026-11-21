@@ -326,21 +326,79 @@ function cbPatchOneDefense(source,event,defenseType,base,effective){
  return source.slice(0,absoluteStart)+changed+
   source.slice(absoluteStart+span[0].length);
 }
+/**
+ * Append one small localized note inside the native PF1 target thumbnail,
+ * without creating a separate chat message or changing any combat values.
+ * No duplicate is inserted when the attack hook reruns on saved HTML.
+ */
+function cbCoverLabel(cover){
+ if(cover?.status!=="confirmed")return null;
+ const fr=game.i18n?.lang==="fr";
+ const types={
+  partial:["TypePartial","Abri partiel","Partial cover"],
+  normal:["TypeNormal","Abri normal","Normal cover"],
+  soft:["TypeSoft","Abri mou","Soft cover"],
+  improved:["TypeImproved","Abri supérieur","Improved cover"],
+  total:["TypeTotal","Abri total","Total cover"]
+ };
+ const entry=types[cover.type];
+ if(!entry)return null;
+ const name=cbLabel("PF1AE.Cover."+entry[0],fr?entry[1]:entry[2]);
+ if(cover.type==="total")return name;
+ const value=cbNumber(cover.acBonus);
+ if(value===null||value<=0)return null;
+ return name+" : +"+String(value)+" "+(fr?"CA":"AC");
+}
+function cbEscapeHtml(value){
+ return String(value).replace(/[&<>"']/g,c=>
+  ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function cbPatchCoverLabel(source,event){
+ const cover=event?.targetResults?.[0]?.coverDiagnosis;
+ const uuid=event?.targetResults?.[0]?.targetTokenUuid;
+ if(event?.rollIndex!==0||event?.targetResults?.length!==1||
+    typeof uuid!=="string"||!source.includes("attack-targets"))return source;
+ const label=cbCoverLabel(cover);
+ if(!label)return source;
+ const tags=/<div\b[^>]*>/gi;
+ let match,target=null,found=0;
+ while((match=tags.exec(source))){
+  const tag=match[0];
+  const classes=tag.match(/\bclass\s*=\s*(["'])(.*?)\1/i)?.[2]??"";
+  if(!classes.split(/\s+/).includes("target"))continue;
+  const id=tag.match(/\bdata-uuid\s*=\s*(["'])(.*?)\1/i)?.[2];
+  if(id!==uuid)continue;
+  target={after:tags.lastIndex};found++;
+ }
+ if(found!==1)return source;
+ const next=source.slice(target.after).search(
+  /<div\b[^>]*\bclass\s*=\s*["'][^"']*\btarget\b[^"']*["'][^>]*>/i);
+ const end=next<0?source.length:target.after+next;
+ const region=source.slice(target.after,end);
+ if(/data-pf1ae-cover-note\s*=/.test(region))return source;
+ const note='<div class="pf1ae-cover-inline-note" data-pf1ae-cover-note="1" '+
+  'style="font-size:0.75rem;line-height:1.25;'+
+  'color:var(--color-text-dark-secondary,#666);'+
+  'margin:0.2rem 0 0.3rem;white-space:nowrap">'+
+  cbEscapeHtml(label)+'</div>';
+ return source.slice(0,target.after)+note+source.slice(target.after);
+}
 function cbPatchTargetAC(source,event){
  if(typeof source!=="string")return source;
  const values=cbNativeThumbnailValues(event);
- if(!values)return source;
  let result=source;
- for(const type of ["normal","touch","flatFooted"]){
-  const data=values[type];
-  if(data)result=cbPatchOneDefense(result,event,type,data.base,data.effective);
+ if(values){
+  for(const type of ["normal","touch","flatFooted"]){
+   const data=values[type];
+   if(data)result=cbPatchOneDefense(result,event,type,data.base,data.effective);
+  }
  }
- return result;
+ return cbPatchCoverLabel(result,event);
 }
 async function cbOnResolved(event,messageOverride=null){
  if(!cbEnable()||!event?.sourceMessageId)return;
- // The native PF1 target thumbnail is the sole visible cover display.
- // Do not append a redundant PF1AE footer, even for uncertain geometry.
+ // Keep the native PF1 target thumbnail as the only cover display:
+ // AC figures plus one compact bilingual cover note, never a footer.
  const messageId=event.sourceMessageId;
  const prior=CB_CHAT_QUEUES.get(messageId)??Promise.resolve();
  // Keep concurrent hooks serialized: only the first resolved attack may

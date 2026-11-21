@@ -1,8 +1,18 @@
 # PF1 Automation Engine
 
-**Version 1.40.4 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.40.5 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Compact, bilingual cover label inside native PF1 attack cards (v1.40.5)
+
+On a confirmed single-target attack, the existing **native PF1 target thumbnail** now receives one small inline label with the diagnosed cover grade and AC bonus. It is placed inside the original attack card (no additional ChatMessage, separate PF1AE footer, or second roll). Examples:
+
+- If Foundry language is French (`game.i18n.lang === "fr"`): **Abri partiel : +2 CA**, **Abri normal : +4 CA**, **Abri mou : +4 CA**, **Abri supérieur : +8 CA**.
+- For English or **any other** Foundry language: **Partial cover : +2 AC**, **Normal cover : +4 AC**, **Soft cover : +4 AC**, **Improved cover : +8 AC**.
+- If a pre-existing card is diagnosed as fully blocked, the label reads **Abri total** / **Total cover**, without an invented numeric AC bonus; native pre-attack cancellation still prevents a new total-cover direct attack.
+
+The note is based on a **confirmed** cover diagnosis and does not assume that its displayed bonus was newly added to actor AC. It is still present if native AC source provenance is too ambiguous to safely replace a shield value. It is inserted only for the first attack summary of a full-attack action and is **idempotent** on later hooks or chat re-renders; previously stored native card content is updated, without changing Actor values, roll results or hit/miss resolution. Uncertain cover is not labeled with a guessed bonus.
 
 ## Visibility percentage measured from attacker's token center (v1.40.4)
 

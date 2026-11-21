@@ -1,3 +1,12 @@
+## v1.40.5 — Bilingual compact cover note in native attack card
+
+- Embed one compact **cover grade and AC bonus** note inside the existing native PF1 target thumbnail: **Abri partiel : +2 CA / Partial cover : +2 AC**, **Abri normal : +4 CA / Normal cover : +4 AC**, with equivalent soft (+4), improved (+8), and total-cover (no invented numeric AC) labels.
+- Use French labels only when Foundry language is `fr`, and English for all other languages. Add matching keys to the French and English module translations.
+- Persist the label in the native ChatMessage content for stable rerenders; never append a separate footer or duplicate note when multiple hooks resolve the same attack. Label the first attack summary in full attacks only.
+- A confirmed cover diagnosis may be labeled even when native AC provenance is too ambiguous to update the shield numerically. Uncertain cover never receives an invented label/bonus.
+- Preserve PF1 native combat values, total-cover prevention, target-specific AC thumbnail adjustment, normal/soft/improved/partial distinctions, and no changes to Actor data.
+- Add regressions for French, English and other language fallback, all grades, total cover, uncertain source defense, repeat hooks and nonduplication.
+
 ## v1.40.4 — Visible target fraction from attacker token center
 
 - Compute PF1's **more-than-half-visible** partial-cover threshold from the **center of the attacking token**, matching the typical Foundry map vision origin. Use the same center for every sample in 2D and for every body-height slice in 3D.
