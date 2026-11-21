@@ -360,22 +360,22 @@ function cbPatchCoverLabel(source,event){
     typeof uuid!=="string"||!source.includes("attack-targets"))return source;
  const label=cbCoverLabel(cover);
  if(!label)return source;
- const tags=/<div\\b[^>]*>/gi;
+ const tags=/<div\b[^>]*>/gi;
  let match,target=null,found=0;
  while((match=tags.exec(source))){
   const tag=match[0];
-  const classes=tag.match(/\\bclass\\s*=\\s*(["'])(.*?)\\1/i)?.[2]??"";
-  if(!classes.split(/\\s+/).includes("target"))continue;
-  const id=tag.match(/\\bdata-uuid\\s*=\\s*(["'])(.*?)\\1/i)?.[2];
+  const classes=tag.match(/\bclass\s*=\s*(["'])(.*?)\1/i)?.[2]??"";
+  if(!classes.split(/\s+/).includes("target"))continue;
+  const id=tag.match(/\bdata-uuid\s*=\s*(["'])(.*?)\1/i)?.[2];
   if(id!==uuid)continue;
   target={after:tags.lastIndex};found++;
  }
  if(found!==1)return source;
  const next=source.slice(target.after).search(
-  /<div\\b[^>]*\\bclass\\s*=\\s*["'][^"']*\\btarget\\b[^"']*["'][^>]*>/i);
+  /<div\b[^>]*\bclass\s*=\s*["'][^"']*\btarget\b[^"']*["'][^>]*>/i);
  const end=next<0?source.length:target.after+next;
  const region=source.slice(target.after,end);
- if(/data-pf1ae-cover-note\\s*=/.test(region))return source;
+ if(/data-pf1ae-cover-note\s*=/.test(region))return source;
  const note='<div class="pf1ae-cover-inline-note" data-pf1ae-cover-note="1" '+
   'style="font-size:0.75rem;line-height:1.25;'+
   'color:var(--color-text-dark-secondary,#666);'+
