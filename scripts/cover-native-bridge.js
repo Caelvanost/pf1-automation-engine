@@ -344,15 +344,22 @@ function cbCoverLabel(cover){
  const entry=types[cover.type];
  if(!entry)return null;
  const name=cbLabel("PF1AE.Cover."+entry[0],fr?entry[1]:entry[2]);
- if(cover.type==="total")return name;
+ if(cover.type==="total")return {name,bonus:null};
  const value=cbNumber(cover.acBonus);
  if(value===null||value<=0)return null;
- return name+" : +"+String(value)+" "+(fr?"CA":"AC");
+ return {name,bonus:"+"+String(value)+" "+(fr?"CA":"AC")};
 }
 function cbEscapeHtml(value){
  return String(value).replace(/[&<>"']/g,c=>
   ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 }
+/**
+ * Add a compact cover note as the LAST child of the native PF1 target.
+ * Native PF1 target rows contain portrait and AC; appending after them
+ * puts the two-line label on the RIGHT without overlaying either one.
+ * A nested-div scan finds the true closing tag for the exact UUID.
+ * Updating the persisted message content ensures rerenders keep it.
+ */
 function cbPatchCoverLabel(source,event){
  const cover=event?.targetResults?.[0]?.coverDiagnosis;
  const uuid=event?.targetResults?.[0]?.targetTokenUuid;
@@ -361,27 +368,45 @@ function cbPatchCoverLabel(source,event){
  const label=cbCoverLabel(cover);
  if(!label)return source;
  const tags=/<div\b[^>]*>/gi;
- let match,target=null,found=0;
+ let match,targetEnd=null,count=0;
  while((match=tags.exec(source))){
   const tag=match[0];
   const classes=tag.match(/\bclass\s*=\s*(["'])(.*?)\1/i)?.[2]??"";
   if(!classes.split(/\s+/).includes("target"))continue;
   const id=tag.match(/\bdata-uuid\s*=\s*(["'])(.*?)\1/i)?.[2];
   if(id!==uuid)continue;
-  target={after:tags.lastIndex};found++;
+  count++;
+  const nested=/<\/?div\b[^>]*>/gi;
+  nested.lastIndex=tags.lastIndex;
+  let depth=1,node;
+  while(depth>0&&(node=nested.exec(source))){
+   if(/^<\/div\b/i.test(node[0]))depth--;
+   else depth++;
+  }
+  if(depth!==0)return source;
+  targetEnd=nested.lastIndex-("</div>").length;
  }
- if(found!==1)return source;
- const next=source.slice(target.after).search(
-  /<div\b[^>]*\bclass\s*=\s*["'][^"']*\btarget\b[^"']*["'][^>]*>/i);
- const end=next<0?source.length:target.after+next;
- const region=source.slice(target.after,end);
- if(/data-pf1ae-cover-note\s*=/.test(region))return source;
+ if(count!==1||targetEnd===null)return source;
+ const targetRegion=source.slice(0,targetEnd);
+ // The previous module release added the note inside this target,
+ // before the portrait. Move that existing note to the new location
+ // when another resolution hook reprocesses the persisted message.
+ const oldNote=/<div\b[^>]*\bdata-pf1ae-cover-note=["']1["'][^>]*>[\s\S]*?<\/div>/i;
+ const lastTarget=targetRegion.lastIndexOf('data-uuid="'+uuid+'"');
+ const scoped=targetRegion.slice(lastTarget>=0?lastTarget:0);
+ if(oldNote.test(scoped))return source;
  const note='<div class="pf1ae-cover-inline-note" data-pf1ae-cover-note="1" '+
-  'style="font-size:0.75rem;line-height:1.25;'+
-  'color:var(--color-text-dark-secondary,#666);'+
-  'margin:0.2rem 0 0.3rem;white-space:nowrap">'+
-  cbEscapeHtml(label)+'</div>';
- return source.slice(0,target.after)+note+source.slice(target.after);
+  'style="display:flex;flex:0 0 auto;flex-direction:column;'+
+  'align-items:flex-start;justify-content:center;'+
+  'margin-left:auto;padding:0 0.25rem;min-width:max-content;'+
+  'font-size:0.68rem;line-height:1.1;text-align:left;'+
+  'white-space:nowrap;pointer-events:none;'+
+  'color:var(--color-text-dark-secondary,#666)">'+
+  '<span style="display:block;text-align:left">'+cbEscapeHtml(label.name)+'</span>'+
+  (label.bonus?'<span style="display:block;text-align:left;font-weight:600">'+
+    cbEscapeHtml(label.bonus)+'</span>':'')+
+  '</div>';
+ return source.slice(0,targetEnd)+note+source.slice(targetEnd);
 }
 function cbPatchTargetAC(source,event){
  if(typeof source!=="string")return source;
