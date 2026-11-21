@@ -279,14 +279,14 @@ function cpVisibleMajority({from,targetSpace,sceneWalls,wallOptions,mode,
 // 4ft wall when the line of sight originates below the wall top.
  const slices=mode==="3d"?21:1;
  const side=9;
- let clear=0,blocked=0;
+ let clear=0,blocked=0,unknown=0;
  for(let z=0;z<slices;z++){
   const toHeight=mode==="3d"?targetElevation+
    targetBodyHeight*(z+0.5)/slices:null;
   for(let y=0;y<side;y++)for(let x=0;x<side;x++){
    const to={x:targetSpace.x+(targetSpace.x2-targetSpace.x)*(x+0.5)/side,
     y:targetSpace.y+(targetSpace.y2-targetSpace.y)*(y+0.5)/side};
-   let obstructed=false;
+   let obstructed=false,ambiguous=false;
    for(const wall of sceneWalls){
     const opts=wallOptions.get(wall);
     if(!opts||opts.grade==="adjacent-window")continue;
@@ -302,21 +302,29 @@ function cpVisibleMajority({from,targetSpace,sceneWalls,wallOptions,mode,
     if(known.kind==="open")continue;
     if(mode==="3d"){
      const hit=cpSlopedWall(from,to,wall,sourceHeight,toHeight,opts);
-     if(hit.kind==="unknown")return null;
+     if(hit.kind==="unknown"){
+      if(hit.reason==="wall-height-boundary"){
+       ambiguous=true;break;
+      }
+      return null;
+     }
      if(hit.kind==="clear")continue;
     }
     obstructed=true;break;
    }
-   if(obstructed)blocked++;
+   if(ambiguous)unknown++;
+   else if(obstructed)blocked++;
    else clear++;
   }
  }
- const count=clear+blocked;
+ const count=clear+blocked+unknown;
  return count?{visibleFraction:clear/count,samples:count,
-  visibleSamples:clear,blockedSamples:blocked,
+  visibleSamples:clear,blockedSamples:blocked,uncertainSamples:unknown,
   bodyHeight:mode==="3d"?targetBodyHeight:null,
   bodyTop:mode==="3d"?targetElevation+targetBodyHeight:null,
-  majority:clear>blocked}:null;
+  // An ambiguous boundary sample can neither prove visibility nor
+  // prove total obstruction. Only positive evidence supports downgrades.
+  majority:clear>count/2}:null;
 }
 function cpInterpret({attacker,target,attackType="ranged",scene,
  tokens,projectileHeight=null,mode}={}){
