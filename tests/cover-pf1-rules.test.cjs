@@ -107,15 +107,25 @@ scene.walls.contents.length=0;
 // A segment hides less than half the occupied silhouette from the
 // attacker's best available square corner. PF1 partial cover +2/+1
 // applies although at least one formal target-corner ray is blocked.
-scene.walls.contents.push(wall('majority-visible',200,35,200,120));
+scene.walls.contents.push(wall('majority-visible',200,55,200,120));
 for(const mode of ['2d','3d']){
  result=check({attackType:'ranged',mode});
  assert.equal(result.status,'confirmed');
- assert.equal(result.type,'partial',mode+': more than half exposed gives partial cover');
- assert.equal(result.acBonus,2);
- assert.equal(result.reflexBonus,1);
+ const expected=mode==='2d'?'none':'partial';
+ assert.equal(result.type,expected,
+  mode+': PF1 corner rays determine attack availability; center determines the majority fraction');
+ assert.equal(result.acBonus,mode==='2d'?0:2);
+ assert.equal(result.reflexBonus,mode==='2d'?0:1);
  assert.ok(result.origins.some(o=>o.visibility?.majority===true),
   mode+': target silhouette majority evidence must be present');
+ const views=result.origins.filter(o=>o.visibility).map(o=>o.visibility);
+ assert.ok(views.length>0);
+ assert.ok(views.every(v=>v.source==='attacker-token-center'),
+  mode+': visibility diagnostics must identify the vision origin');
+ assert.ok(views.every(v=>v.sourcePoint.x===50&&v.sourcePoint.y===50),
+  mode+': all visibility rays originate at token center, not corners');
+ assert.ok(views.every(v=>v.visibleFraction===views[0].visibleFraction),
+  mode+': all candidate attack origins share a single visibility fraction');
 }
 // At or below half exposed, do not discount otherwise confirmed normal
 // wall cover. This is distinct from merely counting four corner rays.
@@ -126,10 +136,10 @@ assert.equal(result.type,'normal','no partial when at most half remains exposed'
 scene.walls.contents.length=0;
 scene.walls.contents.push(wall('partial',200,25,200,120));
 result=check();
-assert.equal(result.status,'confirmed','partial wall may protect only part of target');
-assert.equal(result.type,'partial');
-assert.equal(result.acBonus,2);
-assert.equal(result.reflexBonus,1);
+assert.equal(result.status,'confirmed','wall may protect more than half of the target from center');
+assert.equal(result.type,'normal');
+assert.equal(result.acBonus,4);
+assert.equal(result.reflexBonus,2);
 // A wall may be explicitly graded by the GM: do not infer this
 // from its 2D segment or from the token's visual silhouette.
 scene.walls.contents[0].flags['pf1-automation-engine']={coverGrade:'partial'};
@@ -201,7 +211,7 @@ assert.equal(result.status,'confirmed');
 assert.equal(result.type,'none','open door should not block');
 scene.walls.contents[0].ds=0;
 result=check();
-assert.equal(result.type,'partial','closed door is a wall but grants partial cover when most of the target remains exposed');
+assert.equal(result.type,'normal','closed door is a wall and hides most of the target from token center');
 scene.walls.contents[0].move=0;
 result=check();
 assert.equal(result.status,'uncertain','passable wall may still represent a physical obstacle');
@@ -315,9 +325,9 @@ scene.walls.contents.push(wall('slope-partial',200,25,200,120,
  {bottom:0,top:10}));
 result=check();
 assert.equal(result.status,'confirmed',
- 'sloping shot must classify partially obstructing wall');
-assert.equal(result.type,'partial');
-assert.equal(result.acBonus,2);
+ 'sloping shot must classify wall cover from attacker token center');
+assert.equal(result.type,'normal');
+assert.equal(result.acBonus,4);
 // The same wall too low for the ray must not falsely grant +4.
 scene.walls.contents[0].flags['wall-height'].top=2;
 result=check();
@@ -409,6 +419,28 @@ target.document.width=1;
 target.document.height=1;
 target.losHeight=5;
 attacker.losHeight=5;
+// The center of a Large attacker token is NOT any of its nine
+// selectable PF1 attack-square corners. Their attack rays must remain
+// independent, while the visibility percentage has one stable origin.
+scene.grid.distance=5;
+scene.grid.units='ft';
+scene.walls.contents.length=0;
+scene.walls.contents.push(wall('center-check',200,35,200,120));
+attacker.document.width=2;
+attacker.document.height=2;
+result=check({mode:'2d',attackType:'ranged'});
+assert.equal(result.origins.length,9,
+ 'large attacker must still retain all nine PF1 attack corners');
+const largeViews=result.origins.filter(o=>o.visibility).map(o=>o.visibility);
+assert.ok(largeViews.length>0,'large attacker needs visible-area diagnostics');
+assert.ok(largeViews.every(v=>v.sourcePoint.x===100&&v.sourcePoint.y===100),
+ 'large attacker visibility must originate from center (100,100)');
+assert.ok(largeViews.every(v=>v.visibleFraction===largeViews[0].visibleFraction));
+assert.equal(result.origins.some(o=>o.originCorner!==4),true,
+ 'the PF1 ray tracing corners must remain available');
+attacker.document.width=1;
+attacker.document.height=1;
+scene.walls.contents.length=0;
 // This engine only computes candidate defense adjustments; it must never
 // write source documents or resolve any roll itself.
 const snapshot=JSON.stringify(scene);

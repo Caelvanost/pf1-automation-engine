@@ -1,3 +1,11 @@
+## v1.40.4 — Visible target fraction from attacker token center
+
+- Compute PF1's **more-than-half-visible** partial-cover threshold from the **center of the attacking token**, matching the typical Foundry map vision origin. Use the same center for every sample in 2D and for every body-height slice in 3D.
+- Keep native PF1 attack-corner ray tracing independent for best attack angle, line of effect, total cover and reached targets; the center is only used to estimate the visible fraction of the defender's occupied area.
+- Publish the observer origin and shared visible fraction in `origins[].visibility.sourcePoint` and `origins[].visibility.source` for diagnostics. Large attackers still retain every PF1 selectable attack corner, without moving their vision source to one of those corners.
+- Preserve 3D grid-based body height, closed-door wall treatment, window rules, soft cover, uncertain geometry and native attack-card AC-only modifications. The geometry approximates map sight; it does not inspect Foundry's rendered fog or arbitrary third-party visibility effects.
+- Extend 2D/3D regressions for center-origin ray sampling, stable visible fractions across attack corners, and Large attackers.
+
 ## v1.40.3 — Grid-footprint body height and closed doors as walls
 
 - Use the target's occupied horizontal grid footprint as its 3D body height: 1×1 token = one grid-distance (1.5 m on a metric 1.5 m grid), 2×2 token = two grid-distances (3 m). The target's eye/LOS height is no longer used as its total body height.
