@@ -1,3 +1,14 @@
+# 1.41.0 — Tirs à distance à travers l’eau
+
+- Ajout d’un calcul automatique du malus PF1 des attaques à distance traversant une zone d’eau.
+- Règle appliquée : **–2 au jet d’attaque par tranche entamée de 1,50 m / 5 ft d’eau traversée**, en plus des malus normaux de portée.
+- La longueur immergée est fournie par l’API `waterAutomation` de **PF1 — Skull & Shackles** et tient compte de l’emprise des Regions d’eau ainsi que des élévations Foundry/Levels.
+- Le malus est injecté avant le jet dans `shared.attackBonus` : aucun Actor ni objet n’est modifié.
+- Fonctionne pour les attaques à distance natives PF1 de type `rwak` et `rsak`.
+- Les armes de jet (`twak`) ne sont pas modifiées ici : la règle PF1 les rend inefficaces sous l’eau et fera l’objet d’un blocage dédié séparé.
+- Nouveau réglage de monde **Malus automatiques des tirs à travers l’eau**, activé par défaut.
+- Nouvelle API `underwaterRanged` pour diagnostics et calculs.
+
 ## v1.40.11 — Skull & Shackles underwater token grants soft cover
 
 - Read the **exact generic token flag** `flags.world.underwater === true` from the targeted TokenDocument, as written by Skull & Shackles v1.23.0 water regions. No required runtime dependency on the campaign module; no Actor or TokenDocument mutation.
