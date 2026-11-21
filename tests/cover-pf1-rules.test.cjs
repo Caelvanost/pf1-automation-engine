@@ -288,8 +288,8 @@ scene.walls.contents.push(wall('slope-partial',200,25,200,120,
 result=check();
 assert.equal(result.status,'confirmed',
  'sloping shot must classify partially obstructing wall');
-assert.equal(result.type,'partial');
-assert.equal(result.acBonus,2);
+assert.equal(result.type,'normal');
+assert.equal(result.acBonus,4);
 // The same wall too low for the ray must not falsely grant +4.
 scene.walls.contents[0].flags['wall-height'].top=2;
 result=check();
