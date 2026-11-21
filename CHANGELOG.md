@@ -1,3 +1,10 @@
+# 1.41.1 — Libellé du tir sous l’eau
+
+- Le libellé du malus de tir sous l’eau est désormais explicitement bilingue :
+  - Foundry en français : **Tir sous l’eau**
+  - Toute autre langue : **Underwater shot**
+- Le comportement ne dépend plus du fallback de traduction de Foundry.
+
 # 1.41.0 — Tirs à distance à travers l’eau
 
 - Ajout d’un calcul automatique du malus PF1 des attaques à distance traversant une zone d’eau.
