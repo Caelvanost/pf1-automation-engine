@@ -211,7 +211,7 @@ assert.equal(result.status,'confirmed');
 assert.equal(result.type,'none','open door should not block');
 scene.walls.contents[0].ds=0;
 result=check();
-assert.equal(result.type,'partial','closed door is a wall but grants partial cover when most of the target remains exposed');
+assert.equal(result.type,'normal','closed door is a wall and hides most of the target from token center');
 scene.walls.contents[0].move=0;
 result=check();
 assert.equal(result.status,'uncertain','passable wall may still represent a physical obstacle');
