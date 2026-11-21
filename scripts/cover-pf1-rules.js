@@ -326,13 +326,18 @@ function cpVisibleMajority({from,targetSpace,sceneWalls,wallOptions,mode,
     const segment=cpWallSegment(wall);
     if(!segment)return null;
     const cross=cpSegment(from,to,...segment);
-    if(cross==="clear"||cross==="ambiguous")continue;
-    // Special cover applies only when the sampled ray actually crosses
-    // that segment; unrelated walls elsewhere in the scene are harmless.
+    if(cross==="clear")continue;
+    // A line touching a wall endpoint is NOT proven unobstructed.
+    // The target-at-diagonal-wall-corner case has nine such sample rays
+    // on a 9x9 grid: counting them as clear artificially raises the
+    // measured visible fraction from <=50% to 55.6%, yielding a false
+    // +2 partial cover instead of standard +4 cover.
+    // Keep them uncertain, never positively visible or blocked.
     if(opts.grade!=="solid"||opts.lowCover)return null;
     const known=cpWallData(wall,sourceHeight,"2d",opts);
     if(known.kind==="unknown")return null;
     if(known.kind==="open")continue;
+    if(cross==="ambiguous"){ambiguous=true;break;}
     if(mode==="3d"){
      const hit=cpSlopedWall(from,to,wall,sourceHeight,toHeight,opts);
      if(hit.kind==="unknown"){
