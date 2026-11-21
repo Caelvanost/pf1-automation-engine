@@ -1,3 +1,11 @@
+## v1.40.6 — Right-hand two-line cover label in native target miniature
+
+- Move the localized cover indicator from the far left to the **rightmost child** of the existing PF1 native attack-target miniature, after the portrait and AC display, as requested from the Foundry screenshot.
+- Render the cover grade and bonus on **two short lines**, text aligned **left** within the label (e.g. `Abri partiel` above `+2 CA`), automatically in French when Foundry language is `fr` and English otherwise.
+- Use normal inline flex layout with no absolute positioning over the portrait, icons, or AC values. Existing native attack-roll and target controls remain unchanged.
+- Preserve confirmed-cover-only labels, total cover naming, single-card updates and nonduplication, native PF1 thumbnail AC adjustments, and no Actor or attack-roll changes.
+- Add regression tests verifying compact two-line alignment and that the note appears after the target's AC and before the selected target's closing tag.
+
 ## v1.40.5 — Bilingual compact cover note in native attack card
 
 - Embed one compact **cover grade and AC bonus** note inside the existing native PF1 target thumbnail: **Abri partiel : +2 CA / Partial cover : +2 AC**, **Abri normal : +4 CA / Normal cover : +4 AC**, with equivalent soft (+4), improved (+8), and total-cover (no invented numeric AC) labels.

@@ -139,7 +139,17 @@ for(const [locale,expected] of [
   coverDiagnosis:{status:'confirmed',type:'partial',acBonus:2},
   defense:{baseValue:17,value:19,coverBonus:2}}]};
  const html=patch(nativeThumbnail,graded);
- assert.ok(html.includes(expected),'cover note for '+locale);
+ const [first,second]=expected.split(' : ');
+ assert.ok(html.includes('>'+first+'</span>'),'localized first line for '+locale);
+ assert.ok(html.includes('>'+second+'</span>'),'localized second line for '+locale);
+ assert.ok(html.includes('flex-direction:column'),'two-line compact layout');
+ assert.ok(html.includes('align-items:flex-start'),'note text aligned to left');
+ assert.ok(html.includes('margin-left:auto'),'note positioned at right');
+ const firstTargetEnd=html.indexOf('</div><div class="target" data-uuid="Scene.s.Token.else">');
+ const noteAt=html.indexOf('data-pf1ae-cover-note=');
+ const acAt=html.indexOf('<div class="ac">');
+ assert.ok(noteAt>acAt,'note appears AFTER the target portrait and AC block');
+ assert.ok(firstTargetEnd>noteAt,'note is inside correct target, not the next one');
  assert.equal((html.match(/data-pf1ae-cover-note=/g)??[]).length,1);
  assert.equal(patch(html,graded),html,'idempotent localized note for '+locale);
 }
@@ -151,7 +161,10 @@ for(const [type,bonus,label] of [
 ]){
  const event={...base,targetResults:[{...base.targetResults[0],
   coverDiagnosis:{status:'confirmed',type,acBonus:bonus}}]};
- assert.ok(patch(nativeThumbnail,event).includes(label),type+' note');
+ const html=patch(nativeThumbnail,event);
+  const [first,second]=label.split(' : ');
+  assert.ok(html.includes('>'+first+'</span>'),type+' grade on first line');
+  assert.ok(html.includes('>'+second+'</span>'),type+' AC on second line');
 }
 // Total cover is normally cancelled pre-use but remains displayable
 // for an already-existing native card with no invented AC bonus.
@@ -170,7 +183,8 @@ assert.equal((altered.match(/>17<\/span>/g)??[]).length,1,
  'another target with same AC must stay unchanged');
 assert.equal(patch(altered,base),altered,
  'already adjusted target thumbnail and cover note cannot be duplicated');
-assert.ok(altered.includes('Normal cover : +4 AC'));
+assert.ok(altered.includes('>Normal cover</span>'));
+assert.ok(altered.includes('>+4 AC</span>'));
 assert.equal((altered.match(/data-pf1ae-cover-note=/g)??[]).length,1);
  // In native PF1 the same cover applies to normal, touch and flat-footed.
  // Harpy 16 / 13 / 13 against +4 normal cover => 20 / 17 / 17.
@@ -241,13 +255,15 @@ assert.equal(patch(nativeThumbnail,{...base,rollIndex:1}),nativeThumbnail,
 const wrongDef={...base,targetResults:[{...base.targetResults[0],
  defense:{baseValue:18,value:22,coverBonus:4}}]};
 const wrongPatched=patch(nativeThumbnail,wrongDef);
-assert.ok(wrongPatched.includes('Normal cover : +4 AC'));
+assert.ok(wrongPatched.includes('>Normal cover</span>'));
+assert.ok(wrongPatched.includes('>+4 AC</span>'));
 assert.ok(!wrongPatched.includes('data-pf1ae-cover-native-ac'),
  'must not replace native AC when the baseline differs');
 const unknown={...base,targetResults:[{...base.targetResults[0],
  defense:{baseValue:17,value:null,coverBonus:4}}]};
 const unknownPatched=patch(nativeThumbnail,unknown);
-assert.ok(unknownPatched.includes('Normal cover : +4 AC'));
+assert.ok(unknownPatched.includes('>Normal cover</span>'));
+assert.ok(unknownPatched.includes('>+4 AC</span>'));
 assert.ok(!unknownPatched.includes('data-pf1ae-cover-native-ac'),
  'unknown effective AC cannot overwrite shield, but confirmed cover is labeled');
 const noCover={...base,targetResults:[{...base.targetResults[0],
@@ -266,7 +282,8 @@ after(base);
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(thumbnailCard.updates,1);
  assert.ok(thumbnailCard.content.includes('title="AC with cover: 21"'));
- assert.ok(thumbnailCard.content.includes('Normal cover : +4 AC'));
+ assert.ok(thumbnailCard.content.includes('>Normal cover</span>'));
+ assert.ok(thumbnailCard.content.includes('>+4 AC</span>'));
  assert.equal((thumbnailCard.content.match(/data-pf1ae-cover-note=/g)??[]).length,1);
  assert.ok(!thumbnailCard.content.includes('pf1ae-cover-result'),
   'cover must be shown only in the native target thumbnail');
