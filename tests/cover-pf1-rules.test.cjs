@@ -35,12 +35,48 @@ const wall=(id,x1,y1,x2,y2,{bottom=0,top=10,move=20,door=0,ds=0}={})=>({
  id,uuid:'Scene.s.Wall.'+id,c:[x1,y1,x2,y2],
  flags:{'wall-height':{bottom,top}},move,door,ds
 });
+// Skull & Shackles (v1.23): TokenDocument.flags.world.underwater
+// is the authoritative flag. Underwater TARGETS get intrinsic soft
+// cover (+4 AC / +0 Reflex) without needing an intervening creature.
+target.document.flags={world:{underwater:true}};
+for(const attackType of ['ranged','melee']){
+ for(const mode of ['2d','3d']){
+  result=check({attackType,mode});
+  assert.equal(result.status,'confirmed');
+  assert.equal(result.type,'soft','underwater '+attackType+'/'+mode);
+  assert.equal(result.acBonus,4);
+  assert.equal(result.reflexBonus,0);
+  assert.equal(result.underwaterCover,true);
+  assert.equal(result.source,'token.flags.world.underwater');
+  assert.equal(api.lastDiagnostic().type,'soft');
+ }
+}
+// Adjacent melee also gets underwater soft cover, independent of the
+// existing rule excluding soft cover from other intervening creatures.
+target.document.x=100;
+result=check({attackType:'melee',mode:'2d'});
+assert.equal(result.method,'adjacent-melee');
+assert.equal(result.type,'soft');
+target.document.x=300;
+// Only the target's underwater state matters, never the attacker.
+target.document.flags.world.underwater=false;
+attacker.document.flags={world:{underwater:true}};
+result=check({attackType:'ranged',mode:'2d'});
+assert.equal(result.type,'none','attacker underwater does not protect target');
+attacker.document.flags.world.underwater=false;
+// A string, missing flag, or false value must not grant underwater cover.
+target.document.flags.world.underwater='true';
+assert.equal(check({mode:'2d'}).type,'none');
+target.document.flags.world.underwater=true;
 scene.walls.contents.push(wall('full',200,-200,200,300));
 result=check();
 assert.equal(result.status,'confirmed','complete wall proves no direct line of effect');
 assert.equal(result.type,'total');
 assert.equal(result.preventsDirectAttack,true);
 assert.equal(result.acBonus,null);
+assert.equal(result.underwaterCover,true,
+ 'underwater soft cover must never bypass a proven total wall');
+target.document.flags.world.underwater=false;
 // A normal 2D wall without any wall-height flags still blocks all
 // direct rays and proves total cover by default.
 delete scene.walls.contents[0].flags['wall-height'];
@@ -140,6 +176,13 @@ assert.equal(result.status,'confirmed','wall may protect more than half of the t
 assert.equal(result.type,'normal');
 assert.equal(result.acBonus,4);
 assert.equal(result.reflexBonus,2);
+target.document.flags.world.underwater=true;
+result=check();
+assert.equal(result.type,'normal',
+ 'normal +4 wall cover retains +2 Reflex, without double AC bonuses');
+assert.equal(result.acBonus,4);
+assert.equal(result.reflexBonus,2);
+target.document.flags.world.underwater=false;
 // A wall may be explicitly graded by the GM: do not infer this
 // from its 2D segment or from the token's visual silhouette.
 scene.walls.contents[0].flags['pf1-automation-engine']={coverGrade:'partial'};
@@ -148,6 +191,14 @@ assert.equal(result.status,'confirmed');
 assert.equal(result.type,'partial');
 assert.equal(result.acBonus,2);
 assert.equal(result.reflexBonus,1);
+// Intrinsic underwater soft cover outranks explicit +2 partial wall
+// cover but does not add +4 to it.
+target.document.flags.world.underwater=true;
+result=check();
+assert.equal(result.type,'soft');
+assert.equal(result.acBonus,4);
+assert.equal(result.reflexBonus,0);
+target.document.flags.world.underwater=false;
 scene.walls.contents[0].flags['pf1-automation-engine'].coverGrade='improved';
 result=check();
 assert.equal(result.status,'confirmed');
@@ -156,6 +207,11 @@ assert.equal(result.acBonus,8);
 assert.equal(result.reflexBonus,4);
 assert.equal(result.preventsDirectAttack,false,
  'classified improved cover must never be mistaken for total cover');
+target.document.flags.world.underwater=true;
+result=check();
+assert.equal(result.type,'improved','underwater must not replace +8 improved cover');
+assert.equal(result.acBonus,8);
+target.document.flags.world.underwater=false;
 delete scene.walls.contents[0].flags['pf1-automation-engine'];
 scene.walls.contents[0].flags['wall-height'].top=2;
 result=check();
