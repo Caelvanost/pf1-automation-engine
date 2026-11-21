@@ -127,6 +127,40 @@ const nativeThumbnail='<div class="attack-targets">'+
  '<div class="ac"><div class="normal"><span class="value">17</span>'+
  '</div></div></div></div>';
 const patch=pf1aeModule.api.coverNativeBridge.patchTargetAC;
+// Only French Foundry language uses French labels; every other locale
+// must produce English, even when no localized key is available.
+for(const [locale,expected] of [
+ ['fr','Abri partiel : +2 CA'],
+ ['en','Partial cover : +2 AC'],
+ ['de','Partial cover : +2 AC']
+]){
+ system.i18n.lang=locale;
+ const graded={...base,targetResults:[{...base.targetResults[0],
+  coverDiagnosis:{status:'confirmed',type:'partial',acBonus:2},
+  defense:{baseValue:17,value:19,coverBonus:2}}]};
+ const html=patch(nativeThumbnail,graded);
+ assert.ok(html.includes(expected),'cover note for '+locale);
+ assert.equal((html.match(/data-pf1ae-cover-note=/g)??[]).length,1);
+ assert.equal(patch(html,graded),html,'idempotent localized note for '+locale);
+}
+system.i18n.lang='en';
+for(const [type,bonus,label] of [
+ ['normal',4,'Normal cover : +4 AC'],
+ ['soft',4,'Soft cover : +4 AC'],
+ ['improved',8,'Improved cover : +8 AC']
+]){
+ const event={...base,targetResults:[{...base.targetResults[0],
+  coverDiagnosis:{status:'confirmed',type,acBonus:bonus}}]};
+ assert.ok(patch(nativeThumbnail,event).includes(label),type+' note');
+}
+// Total cover is normally cancelled pre-use but remains displayable
+// for an already-existing native card with no invented AC bonus.
+const total={...base,targetResults:[{...base.targetResults[0],
+ coverDiagnosis:{status:'confirmed',type:'total',acBonus:null,
+  preventsDirectAttack:true}}]};
+assert.ok(patch(nativeThumbnail,total).includes('Total cover'));
+assert.equal(patch(nativeThumbnail,{...base,rollIndex:1}),nativeThumbnail,
+ 'later full-attack rolls never add a new cover note');
 const altered=patch(nativeThumbnail,base);
 assert.ok(altered.includes('data-pf1ae-cover-native-ac="17"'));
 assert.ok(altered.includes('title="AC with cover: 21"'));
@@ -135,7 +169,9 @@ assert.equal((altered.match(/>13<\/span>/g)??[]).length,2);
 assert.equal((altered.match(/>17<\/span>/g)??[]).length,1,
  'another target with same AC must stay unchanged');
 assert.equal(patch(altered,base),altered,
- 'already adjusted target thumbnail cannot be modified again');
+ 'already adjusted target thumbnail and cover note cannot be duplicated');
+assert.ok(altered.includes('Normal cover : +4 AC'));
+assert.equal((altered.match(/data-pf1ae-cover-note=/g)??[]).length,1);
  // In native PF1 the same cover applies to normal, touch and flat-footed.
  // Harpy 16 / 13 / 13 against +4 normal cover => 20 / 17 / 17.
  const priorSystem=target.actor.system;
@@ -204,12 +240,16 @@ assert.equal(patch(nativeThumbnail,{...base,rollIndex:1}),nativeThumbnail,
  'different full-attack rolls cannot overwrite summary thumbnail');
 const wrongDef={...base,targetResults:[{...base.targetResults[0],
  defense:{baseValue:18,value:22,coverBonus:4}}]};
-assert.equal(patch(nativeThumbnail,wrongDef),nativeThumbnail,
+const wrongPatched=patch(nativeThumbnail,wrongDef);
+assert.ok(wrongPatched.includes('Normal cover : +4 AC'));
+assert.ok(!wrongPatched.includes('data-pf1ae-cover-native-ac'),
  'must not replace native AC when the baseline differs');
 const unknown={...base,targetResults:[{...base.targetResults[0],
  defense:{baseValue:17,value:null,coverBonus:4}}]};
-assert.equal(patch(nativeThumbnail,unknown),nativeThumbnail,
- 'unknown effective AC cannot overwrite shield');
+const unknownPatched=patch(nativeThumbnail,unknown);
+assert.ok(unknownPatched.includes('Normal cover : +4 AC'));
+assert.ok(!unknownPatched.includes('data-pf1ae-cover-native-ac'),
+ 'unknown effective AC cannot overwrite shield, but confirmed cover is labeled');
 const noCover={...base,targetResults:[{...base.targetResults[0],
  coverDiagnosis:{status:'uncertain',reason:'unknown-geometry'}}]};
 assert.equal(patch(nativeThumbnail,noCover),nativeThumbnail,
@@ -226,6 +266,8 @@ after(base);
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(thumbnailCard.updates,1);
  assert.ok(thumbnailCard.content.includes('title="AC with cover: 21"'));
+ assert.ok(thumbnailCard.content.includes('Normal cover : +4 AC'));
+ assert.equal((thumbnailCard.content.match(/data-pf1ae-cover-note=/g)??[]).length,1);
  assert.ok(!thumbnailCard.content.includes('pf1ae-cover-result'),
   'cover must be shown only in the native target thumbnail');
  after(thumbnailEvent);
