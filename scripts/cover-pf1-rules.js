@@ -497,10 +497,12 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // The 2D total-cover rule remains unchanged.
  const targetBodyHeight=selectedMode==="3d"?cpTokenBodyHeight(t,s):null;
  for(const origin of considered){
-  // Preserve the v1.39.13 best-grazing-angle ruling. A corner whose
-  // only native contacts are wall endpoints remains a clean angle.
-  // 2D also requires proven corner-ray cover before body assessment.
-  if((origin.unknown&&!origin.coverType)||
+  // Preserve the v1.39.13 best-grazing-angle ruling for flat
+  // sightlines. Sloped 3D rays need a separate body-volume inspection:
+  // a clear eye-level ray can still hide the lower target silhouette.
+  // 2D still requires proven corner-ray cover before body sampling.
+  if((origin.unknown&&!origin.coverType&&
+       !(selectedMode==="3d"&&sloped))||
      (selectedMode==="2d"&&!origin.coverType))continue;
   if((origin.coverType&&origin.coverType!=="normal")||
      origin.soft||origin.partial||origin.improved||
