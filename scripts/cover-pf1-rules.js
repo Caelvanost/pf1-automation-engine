@@ -327,7 +327,9 @@ function cpVisibleMajority({from,targetSpace,sceneWalls,wallOptions,mode,
   majority:clear>count/2}:null;
 }
 function cpInterpret({attacker,target,attackType="ranged",scene,
- tokens,projectileHeight=null,mode}={}){
+ tokens,projectileHeight=null,mode,
+ meleeSquareSelection=false,visibilityCenterOverride=null,
+ targetBodyHeightOverride=null}={}){
  const configured=game.modules?.get?.(CP_NS)?.api?.coverMode;
  const selectedMode=mode??configured?.get?.()??"2d";
  if(selectedMode!=="2d"&&selectedMode!=="3d")
@@ -398,8 +400,65 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
    ...value,id:cpDoc(wall)?.uuid??cpDoc(wall)?.id
   });
  }
+ // PF1e: melee against a nonadjacent target (natural reach or reach
+ // weapon) uses ranged cover rules, INCLUDING interposed creatures.
+ // Adjacent melee sees walls but does NOT gain soft cover from creatures.
+ const dx=Math.max(a.x-t.x,t.x-a.x2,0);
+ const dy=Math.max(a.y-t.y,t.y-a.y2,0);
+ const adjacent=dx<=CP_EPS&&dy<=CP_EPS;
+ const method=attackType==="melee"&&adjacent?"adjacent-melee":"ranged-or-reach";
+ // Big creatures can pick a square occupied by either participant for
+ // melee cover. Resolve each adjacent square pair independently; the
+ // attacker can use the most favorable legal choice.
+ if(method==="adjacent-melee"&&!meleeSquareSelection&&
+   (a.width>1||a.height>1||t.width>1||t.height>1)){
+  const pairs=[];
+  for(let ay=0;ay<a.height;ay++)for(let ax=0;ax<a.width;ax++)
+   for(let ty=0;ty<t.height;ty++)for(let tx=0;tx<t.width;tx++){
+    const ox=a.x+ax*a.size,oy=a.y+ay*a.size;
+    const px=t.x+tx*t.size,py=t.y+ty*t.size;
+    const deltaX=Math.max(ox-(px+t.size),px-(ox+a.size),0);
+    const deltaY=Math.max(oy-(py+t.size),py-(oy+a.size),0);
+    if(deltaX>CP_EPS||deltaY>CP_EPS)continue;
+    pairs.push({ax,ay,tx,ty,ox,oy,px,py});
+   }
+  if(!pairs.length||pairs.length>100)return cpResult("uncertain",
+   "adjacent-melee-large-square-pairs-unverified",{method});
+  const originalCenter={x:(a.x+a.x2)/2,y:(a.y+a.y2)/2};
+  const fullBodyHeight=selectedMode==="3d"?cpTokenBodyHeight(t,s):null;
+  const resolved=pairs.map(pair=>{
+   const attackerSquare={...attacker,document:{
+    ...cpDoc(attacker),x:pair.ox,y:pair.oy,width:1,height:1}};
+   const targetSquare={...target,document:{
+    ...cpDoc(target),x:pair.px,y:pair.py,width:1,height:1}};
+   const assessment=cpInterpret({attacker:attackerSquare,
+    target:targetSquare,attackType:"melee",scene:s,tokens:all,
+    projectileHeight,mode:selectedMode,meleeSquareSelection:true,
+    visibilityCenterOverride:originalCenter,
+    targetBodyHeightOverride:fullBodyHeight});
+   return {pair:{attacker:[pair.ax,pair.ay],target:[pair.tx,pair.ty]},
+    assessment};
+  });
+  const usable=resolved.filter(x=>x.assessment.status==="confirmed");
+  // A demonstrated fully unprotected square is enough to establish no
+  // cover, even when a different candidate is uncertain.
+  const none=usable.find(x=>x.assessment.type==="none");
+  if(none)return cpResult("confirmed","large-melee-chosen-clear-square",{
+   type:"none",method:"adjacent-melee-large-squares",
+   squareChoice:none.pair,candidateCount:pairs.length,mode:selectedMode});
+  if(usable.length!==resolved.length)return cpResult("uncertain",
+   "large-melee-square-choice-unverified",{
+    method:"adjacent-melee-large-squares",candidateCount:pairs.length});
+  const rank={partial:2,normal:4,soft:4,improved:8,total:100};
+  const best=resolved.sort((x,y)=>
+   (rank[x.assessment.type]??100)-(rank[y.assessment.type]??100))[0];
+  return cpResult("confirmed","large-melee-chosen-occupied-square",{
+   type:best.assessment.type,method:"adjacent-melee-large-squares",
+   squareChoice:best.pair,candidateCount:pairs.length,
+   mode:selectedMode});
+ }
  const blockers=[];
- if(attackType!=="melee"){
+ if(method!=="adjacent-melee"){
   for(const other of all){
    const d=cpDoc(other);
    if(!d||d.id===cpDoc(attacker)?.id||d.id===cpDoc(target)?.id||
@@ -412,14 +471,6 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
    blockers.push(rect);
   }
  }
- const dx=Math.max(a.x-t.x,t.x-a.x2,0);
- const dy=Math.max(a.y-t.y,t.y-a.y2,0);
- const adjacent=dx<=CP_EPS&&dy<=CP_EPS;
- const method=attackType==="melee"&&adjacent?"adjacent-melee":"ranged-or-reach";
- if(method==="adjacent-melee"&&
-  (a.width>1||a.height>1||t.width>1||t.height>1)&&
-  walls.length>0)
-  return cpResult("uncertain","large-creature-adjacent-melee-square-selection");
  const cornerResults=[];
  const as=cpOriginCorners(a),ts=cpCorners(t);
  for(let i=0;i<as.length;i++){
@@ -495,13 +546,15 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
  // cover if the token's body extends ABOVE that wall. First inspect
  // target-space samples across its whole occupied vertical volume.
  // The 2D total-cover rule remains unchanged.
- const targetBodyHeight=selectedMode==="3d"?cpTokenBodyHeight(t,s):null;
+ const targetBodyHeight=selectedMode==="3d"?
+  (cpFinite(targetBodyHeightOverride)?targetBodyHeightOverride:
+   cpTokenBodyHeight(t,s)):null;
  // Foundry v13 token vision originates from the center of the occupied
  // token space. For PF1AE's >50% visible-body house rule, sample every
  // ray from that ONE point, regardless of which corner would be best for
  // the attack's PF1 line-of-effect adjudication. Do not switch back to
  // a corner when the attacker is Large or a ray is grazing a wall.
- const visibilitySource={
+ const visibilitySource=visibilityCenterOverride??{
   x:(a.x+a.x2)/2,
   y:(a.y+a.y2)/2
  };
@@ -593,6 +646,28 @@ function cpInterpret({attacker,target,attackType="ranged",scene,
   return cpResult("confirmed","every-direct-ray-blocked-by-solid-walls",{
    type:"total",method,origins:cornerResults,
    multilevel,sourceHeight,targetHeight,mode:selectedMode});
+ // Adjacent melee is stricter than ranged: if ANY line from ANY
+ // corner crosses a wall, cover applies. A clear origin does not cancel
+ // a wall crossing from another corner. Partial/improved types are kept.
+ if(method==="adjacent-melee"){
+  const covered=considered.filter(o=>o.coverType);
+  const unverifiable=considered.some(o=>o.traces.some(r=>
+   r.uncertain.some(u=>!u.startsWith("wall-grazed:"))));
+  if(unverifiable)return cpResult("uncertain",
+   "adjacent-melee-collision-unverified",{method,origins:cornerResults});
+  if(covered.length){
+   const weights={partial:2,normal:4,improved:8};
+   const selected=[...covered].sort((x,y)=>
+    (weights[y.coverType]??0)-(weights[x.coverType]??0))[0];
+   return cpResult("confirmed","adjacent-melee-any-corner-wall-cover",{
+    type:selected.coverType,method,selectedOrigin:selected.originCorner,
+    origins:cornerResults,multilevel,sourceHeight,targetHeight,
+    mode:selectedMode});
+  }
+  return cpResult("confirmed","adjacent-melee-no-wall-cover",{
+   type:"none",method,origins:cornerResults,
+   multilevel,sourceHeight,targetHeight,mode:selectedMode});
+ }
  const guaranteed=considered.length>0&&considered.every(o=>o.coverType);
  if(guaranteed){
   // Attacker chooses the least-protected origin; do not downgrade wall
