@@ -1,3 +1,14 @@
+## v1.40.7 — Pathfinder 1 melee cover and reach attacks
+
+- For **adjacent melee** attacks, check all attacker-square corners: one confirmed wall-blocked corner establishes cover despite another clear corner. Adjacent interposed creatures never grant soft cover.
+- For **nonadjacent melee/reach** attacks, use the ranged-cover best-corner method and include soft cover from other creature tokens.
+- For **Large or larger melee combatants** (attacker and/or defender), evaluate adjacent choices of occupied squares and choose the most favorable legal pair. Preserve original token-center visibility and target body height for the 3D majority-visible rule; avoid invented bonuses for unresolved geometry.
+- Detect walls **coincident with the shared edge** of two adjacent squares. An opaque full shared-border wall or closed/locked door proves total cover in 2D and prevents the direct attack; open doors do not. Verify full-height blocking for shared-border total cover in 3D.
+- Correct low-obstacle proximity: equal distance from the obstacle does not let the attacker ignore it; an attacker must be strictly closer. Medium (+2) and Small (+4) 3D low-wall melee cases are covered by regression.
+- Native Pathfinder 1 `mwak`/`msak` attacks receive the same cover evaluation, localized two-line native target-card note, and total-cover gate as ranged attacks.
+- No automatic interception of independently triggered Attacks of Opportunity or nonstandard combat maneuvers in this release; standard PF1 cover/AoO constraints remain documented.
+- Extend dedicated geometry, native ActionUse melee/touch, reach soft-cover, square-choice and closed/open door regression tests.
+
 ## v1.40.6 — Right-hand two-line cover label in native target miniature
 
 - Move the localized cover indicator from the far left to the **rightmost child** of the existing PF1 native attack-target miniature, after the portrait and AC display, as requested from the Foundry screenshot.
