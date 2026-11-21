@@ -356,7 +356,7 @@ target.document.width=1;
 target.document.height=1;
 attacker.losHeight=3;
 target.losHeight=3;
-scene.walls.contents.push(wall('body-size',200,-200,200,300,
+scene.walls.contents.push(wall('body-size',275,-200,275,300,
  {bottom:0,top:4}));
 result=check({mode:'3d'});
 assert.equal(result.type,'normal','5ft body behind 4ft wall retains normal cover');
