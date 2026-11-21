@@ -128,9 +128,8 @@ function uwApply(use){
   const result=uwMeasure(use);
   if(result.skipped)return result;
 
-  const key="PF1AE.UnderwaterRanged.Penalty";
-  const localized=game.i18n?.localize?.(key);
-  const label=localized&&localized!==key?localized:"Underwater shot";
+  const isFrench=String(game.i18n?.lang??"en").toLowerCase().startsWith("fr");
+  const label=isFrench?"Tir sous l’eau":"Underwater shot";
   shared.attackBonus.push(`${result.penalty}[${label}]`);
   UW_APPLIED.add(use);
 
