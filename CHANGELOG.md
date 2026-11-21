@@ -1,3 +1,11 @@
+## v1.40.8 — Fix melee cover for diagonal adjacency near walls
+
+- Correct the attacker/target occupied-rectangle separation calculation: compare each left edge against the **other square's right edge**, and each top edge against the **other square's bottom edge**.
+- Fix a direction-dependent bug whereby a southwest melee attacker striking a northeast diagonally adjacent target (and some other orientations) was incorrectly classified as a **nonadjacent/reach** attacker. This incorrectly selected the best clear ranged corner and could omit melee wall cover and its native card label.
+- Preserve PF1 adjacent-melee all-corners wall cover for corner-ending walls, windows and doors. Actual nonadjacent attacks still use reach/ranged rules and intervening-creature soft cover.
+- Test eight different cardinal/diagonal adjacent orientations, a truly nonadjacent reach attack, the screenshot's diagonally adjacent wall-corner layout in 2D/3D, and the same layout through the native ActionUse bridge.
+- Leave manual Attacks of Opportunity untouched as requested.
+
 ## v1.40.7 — Pathfinder 1 melee cover and reach attacks
 
 - For **adjacent melee** attacks, check all attacker-square corners: one confirmed wall-blocked corner establishes cover despite another clear corner. Adjacent interposed creatures never grant soft cover.
