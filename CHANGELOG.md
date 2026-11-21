@@ -1,3 +1,11 @@
+## v1.40.3 — Grid-footprint body height and closed doors as walls
+
+- Use the target's occupied horizontal grid footprint as its 3D body height: 1×1 token = one grid-distance (1.5 m on a metric 1.5 m grid), 2×2 token = two grid-distances (3 m). The target's eye/LOS height is no longer used as its total body height.
+- Apply the visible-majority rule across that body volume. A fully blocked eye-height attack ray does not by itself prove total cover if higher body samples remain exposed; preserve strict total cover when all target body samples and corner rays are blocked.
+- Closed and locked Foundry doors are ordinary solid walls for cover regardless of window-like settings or stale GM cover-grade flags; open doors provide no obstruction. Standard normal/partial wall cover rules still apply to a partly exposed creature.
+- Preserve 2D behavior, window rules on actual windows, normal/soft/improved cover, native thumbnail display, Actor immutability and conservative unknown geometry.
+- Add 2D/3D closed, locked and open door tests, body-height and metric-grid tests, and total-cover regression guards.
+
 ## v1.40.2 — Partial cover when a majority of the target remains exposed
 
 - Implement the Pathfinder 1e **strictly more than half visible** criterion for partial cover: automatically reduce ordinary wall cover from **+4 AC / +2 qualifying Reflex** to **+2 AC / +1 qualifying Reflex** when the selected attacker origin has a verified majority-exposed target silhouette.
