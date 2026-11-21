@@ -1,3 +1,11 @@
+## v1.40.2 — Partial cover when a majority of the target remains exposed
+
+- Implement the Pathfinder 1e **strictly more than half visible** criterion for partial cover: automatically reduce ordinary wall cover from **+4 AC / +2 qualifying Reflex** to **+2 AC / +1 qualifying Reflex** when the selected attacker origin has a verified majority-exposed target silhouette.
+- Use a fixed grid of interior target-space samples in 2D and five vertically spaced samples in 3D, tracing actual supported native wall crossings. The sample-based silhouette is a deterministic proxy for the target's occupied space, not an anatomical or pixel-perfect measurement.
+- Evaluate the rule after the existing total-cover check, and before the best-angle selection. Preserve native soft cover, windows, improved cover, GM-classified wall grades and special size-dependent low walls, without stacking modifiers or changing Actor AC.
+- Keep ordinary cover at **50% visible or less**, and avoid reductions for unknown wall/height geometry or uncertain creature boundaries. Include per-origin visibility diagnostics when computed.
+- Add regression cases for majority-visible targets in 2D/3D, majority-obscured targets, existing windows, solid walls and conservative geometry.
+
 ## v1.40.1 — Default 2D walls, native windows and 3D low-wall sizes
 
 - Keep ordinary 2D walls unbounded by default: verified full corner-ray blockage confirms **total cover**, while partial ray obstruction continues to grant normal cover and corner-only grazing remains nonblocking.
