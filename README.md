@@ -1,8 +1,14 @@
 # PF1 Automation Engine
 
-**Version 1.40.9 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.40.10 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Ranged attacks: target-border wall lines count as cover (v1.40.10)
+
+Fix for a ranged-attack screenshot in which a wall starts at the top-left corner of the target and runs down its **left square border**. The attacker may select the most favorable corner, but **all four lines from that single chosen corner to the target's four corners must be considered**. A ray ending on a target corner strictly **inside an actual wall segment aligned to the target-square border** is a proven wall obstruction, even though the generic segment test labels an endpoint contact "ambiguous". Previously such a red ray was mistaken for a harmless wall-endpoint graze and a clear attacker angle could incorrectly result in zero cover.
+
+The new **target-border contact** test is restricted to proper, positive-length wall segments coincident with a target boundary. Merely touching a loose wall tip, a zero-length wall, or a wall elsewhere in the scene does not count as proven wall cover. Native open doors are still nonblocking, reverse segment orientation is equivalent, and 3D checks still respect wall height. The existing rule for a **strictly greater than 50% visible** target silhouette controls whether ordinary confirmed cover is **partial (+2 CA)** or **normal (+4 CA)**. In the reproduced red/green ray geometry, the result is **normal +4 AC / +2 relevant Reflex**, displayed in the compact bilingual PF1 attack card.
 
 ## Diagonal wall endpoint: normal cover at 50% or less exposure (v1.40.9)
 
