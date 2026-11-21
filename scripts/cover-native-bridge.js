@@ -336,7 +336,7 @@ function cbCoverLabel(cover){
  const fr=game.i18n?.lang==="fr";
  const types={
   partial:["TypePartial","Abri partiel","Partial cover"],
-  normal:["TypeNormal","Abri normal","Normal cover"],
+  normal:["TypeNormal","Abri","Cover"],
   soft:["TypeSoft","Abri mou","Soft cover"],
   improved:["TypeImproved","Abri supérieur","Improved cover"],
   total:["TypeTotal","Abri total","Total cover"]

@@ -1,3 +1,10 @@
+## v1.40.9 — Treat wall endpoint visibility rays as uncertain; shorten normal cover label
+
+- Fix the strict PF1 more-than-half-visible test near a diagonal wall corner: a ray that touches the wall endpoint **is not proof of visibility**. Previously nine grazing samples in a 9×9 measurement could artificially raise the exposed fraction to 55.6%, incorrectly reducing cover to partial (+2 AC). These samples now count as unknown; an unproven majority cannot override normal wall cover (+4 AC).
+- Preserve the attacker's token-center observer origin, 2D and 3D silhouette/body-height sampling, genuine more-than-half partial cover, wall/door geometry and native actor-AC safety.
+- Shorten only the **normal-cover** native card label to `Abri` above `+4 CA` in French, or `Cover` above `+4 AC` for all other languages; keep specific partial, soft, improved and total grade descriptions.
+- Extend regression tests for the screenshot's diagonal corner with visibility diagnostics and both localized card labels.
+
 ## v1.40.8 — Fix melee cover for diagonal adjacency near walls
 
 - Correct the attacker/target occupied-rectangle separation calculation: compare each left edge against the **other square's right edge**, and each top edge against the **other square's bottom edge**.

@@ -204,9 +204,18 @@ for(const [locale,expected] of [
  assert.equal((html.match(/data-pf1ae-cover-note=/g)??[]).length,1);
  assert.equal(patch(html,graded),html,'idempotent localized note for '+locale);
 }
+// French normal-cover label has no adjective; the same abbreviated
+// two-line layout is used as in the native attack thumbnail.
+system.i18n.lang='fr';
+const frenchNormal={...base,targetResults:[{...base.targetResults[0],
+ coverDiagnosis:{status:'confirmed',type:'normal',acBonus:4}}]};
+const frenchNormalHTML=patch(nativeThumbnail,frenchNormal);
+assert.ok(frenchNormalHTML.includes('>Abri</span>'));
+assert.ok(frenchNormalHTML.includes('>+4 CA</span>'));
+assert.ok(!frenchNormalHTML.includes('Abri normal'));
 system.i18n.lang='en';
 for(const [type,bonus,label] of [
- ['normal',4,'Normal cover : +4 AC'],
+ ['normal',4,'Cover : +4 AC'],
  ['soft',4,'Soft cover : +4 AC'],
  ['improved',8,'Improved cover : +8 AC']
 ]){
@@ -234,7 +243,7 @@ assert.equal((altered.match(/>17<\/span>/g)??[]).length,1,
  'another target with same AC must stay unchanged');
 assert.equal(patch(altered,base),altered,
  'already adjusted target thumbnail and cover note cannot be duplicated');
-assert.ok(altered.includes('>Normal cover</span>'));
+assert.ok(altered.includes('>Cover</span>'));
 assert.ok(altered.includes('>+4 AC</span>'));
 assert.equal((altered.match(/data-pf1ae-cover-note=/g)??[]).length,1);
  // In native PF1 the same cover applies to normal, touch and flat-footed.
@@ -306,14 +315,14 @@ assert.equal(patch(nativeThumbnail,{...base,rollIndex:1}),nativeThumbnail,
 const wrongDef={...base,targetResults:[{...base.targetResults[0],
  defense:{baseValue:18,value:22,coverBonus:4}}]};
 const wrongPatched=patch(nativeThumbnail,wrongDef);
-assert.ok(wrongPatched.includes('>Normal cover</span>'));
+assert.ok(wrongPatched.includes('>Cover</span>'));
 assert.ok(wrongPatched.includes('>+4 AC</span>'));
 assert.ok(!wrongPatched.includes('data-pf1ae-cover-native-ac'),
  'must not replace native AC when the baseline differs');
 const unknown={...base,targetResults:[{...base.targetResults[0],
  defense:{baseValue:17,value:null,coverBonus:4}}]};
 const unknownPatched=patch(nativeThumbnail,unknown);
-assert.ok(unknownPatched.includes('>Normal cover</span>'));
+assert.ok(unknownPatched.includes('>Cover</span>'));
 assert.ok(unknownPatched.includes('>+4 AC</span>'));
 assert.ok(!unknownPatched.includes('data-pf1ae-cover-native-ac'),
  'unknown effective AC cannot overwrite shield, but confirmed cover is labeled');
@@ -333,7 +342,7 @@ after(base);
  await new Promise(resolve=>setImmediate(resolve));
  assert.equal(thumbnailCard.updates,1);
  assert.ok(thumbnailCard.content.includes('title="AC with cover: 21"'));
- assert.ok(thumbnailCard.content.includes('>Normal cover</span>'));
+ assert.ok(thumbnailCard.content.includes('>Cover</span>'));
  assert.ok(thumbnailCard.content.includes('>+4 AC</span>'));
  assert.equal((thumbnailCard.content.match(/data-pf1ae-cover-note=/g)??[]).length,1);
  assert.ok(!thumbnailCard.content.includes('pf1ae-cover-result'),
