@@ -93,7 +93,7 @@ for(const mode of ['2d','3d']){
 }
 // At or below half exposed, do not discount otherwise confirmed normal
 // wall cover. This is distinct from merely counting four corner rays.
-scene.walls.contents[0].c=[200,20,200,120];
+scene.walls.contents[0].c=[200,10,200,120];
 result=check({mode:'2d'});
 assert.equal(result.type,'normal','no partial when at most half remains exposed');
 // Preserve total cover and exceptional window classifications.
