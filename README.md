@@ -1,4 +1,10 @@
-# PF1 Automation Engine
+# PF1 Automation Engine v1.41.0
+
+## Tirs à travers l’eau
+
+Avec **PF1 — Skull & Shackles v1.23.1+**, PF1AE mesure la portion du trajet d’un projectile située sous l’eau et applique automatiquement **–2 au jet d’attaque par tranche de 1,50 m / 5 ft d’eau traversée**.
+
+Le calcul est effectué avant le jet natif PF1 et s’additionne aux malus de portée existants. Les élévations Foundry/Levels sont prises en compte. Les armes de jet sont exclues de ce calcul, car les règles PF1 les rendent inefficaces sous l’eau.
 
 **Version 1.40.11 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
