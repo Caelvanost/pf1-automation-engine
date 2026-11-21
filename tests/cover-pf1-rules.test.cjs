@@ -111,9 +111,11 @@ scene.walls.contents.push(wall('majority-visible',200,55,200,120));
 for(const mode of ['2d','3d']){
  result=check({attackType:'ranged',mode});
  assert.equal(result.status,'confirmed');
- assert.equal(result.type,'none',mode+': best legal corner can still remove cover despite center showing majority exposed');
- assert.equal(result.acBonus,0);
- assert.equal(result.reflexBonus,0);
+ const expected=mode==='2d'?'none':'partial';
+ assert.equal(result.type,expected,
+  mode+': PF1 corner rays determine attack availability; center determines the majority fraction');
+ assert.equal(result.acBonus,mode==='2d'?0:2);
+ assert.equal(result.reflexBonus,mode==='2d'?0:1);
  assert.ok(result.origins.some(o=>o.visibility?.majority===true),
   mode+': target silhouette majority evidence must be present');
  const views=result.origins.filter(o=>o.visibility).map(o=>o.visibility);
