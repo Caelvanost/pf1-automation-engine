@@ -1,8 +1,16 @@
 # PF1 Automation Engine
 
-**Version 1.40.3 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
+**Version 1.40.4 (experimental prerelease) · Foundry VTT 13.351 · Pathfinder 1e (PF1) 11.11**
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
+
+## Visibility percentage measured from attacker's token center (v1.40.4)
+
+The optional Pathfinder 1e **more-than-half-visible** reduction now measures the target's exposed occupied silhouette from the **horizontal center of the attacking token**, matching Foundry's usual map token-vision origin. Every 2D sample and every 3D vertical-body sample uses exactly this same center point (`(x+x2)/2, (y+y2)/2`). The attacker’s 3D sight/LOS height remains the observer elevation; target body height still follows the grid-footprint house rule.
+
+**Important distinction:** PF1's native attack-corner rays still determine the legal attack angle, solid-wall total cover, reach behavior and other obstructions. They do **not** choose a different viewpoint for the 50% visible-area assessment. The new diagnostic `origins[].visibility.sourcePoint` identifies the center used, `source` is `attacker-token-center`, and the visible fraction is shared across eligible origins. No Actor AC is permanently changed.
+
+This is a deterministic geometric approximation of Foundry's map visibility, **not** a readback of Foundry's rendered fog-of-war or sight polygon (which can involve extra module-specific settings and lights). It uses PF1AE's verified wall collision model, preserves uncertain collision handling, and does not classify native windows or soft cover by the generic majority rule.
 
 ## 3D token body height and closed-door cover (v1.40.3)
 
