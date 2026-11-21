@@ -365,7 +365,9 @@ assert.equal(result.origins[0].visibility.bodyTop,5);
 target.document.width=2;
 target.document.height=2;
 result=check({mode:'3d'});
-assert.equal(result.type,'partial','10ft body extends above 4ft wall');
+assert.equal(result.type,'partial','10ft body extends above 4ft wall: '+
+ JSON.stringify(result.origins.map(o=>({type:o.coverType,unknown:o.unknown,
+  visibility:o.visibility}))));
 assert.equal(result.acBonus,2);
 assert.equal(result.origins[0].visibility.bodyHeight,10);
 assert.equal(result.origins[0].visibility.bodyTop,10);
