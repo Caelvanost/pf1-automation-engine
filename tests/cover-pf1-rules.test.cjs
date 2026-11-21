@@ -107,7 +107,7 @@ scene.walls.contents.length=0;
 // A segment hides less than half the occupied silhouette from the
 // attacker's best available square corner. PF1 partial cover +2/+1
 // applies although at least one formal target-corner ray is blocked.
-scene.walls.contents.push(wall('majority-visible',200,35,200,120));
+scene.walls.contents.push(wall('majority-visible',200,55,200,120));
 for(const mode of ['2d','3d']){
  result=check({attackType:'ranged',mode});
  assert.equal(result.status,'confirmed');
@@ -132,7 +132,7 @@ result=check({mode:'2d'});
 assert.equal(result.type,'normal','no partial when at most half remains exposed');
 // Preserve total cover and exceptional window classifications.
 scene.walls.contents.length=0;
-scene.walls.contents.push(wall('partial',200,25,200,120));
+scene.walls.contents.push(wall('partial',200,55,200,120));
 result=check();
 assert.equal(result.status,'confirmed','partial wall may protect only part of target');
 assert.equal(result.type,'partial');
