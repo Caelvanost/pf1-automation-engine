@@ -462,6 +462,19 @@ assert.equal(check({attackType:'melee',mode:'2d'}).type,'none',
  'open adjacent door leaves melee line of effect');
 scene.walls.contents[0].ds=0;
 scene.walls.contents[0].door=0;
+// Low obstacle dividing adjacent squares: equal distances do NOT
+// allow either creature to ignore the obstacle under PF1.
+scene.walls.contents[0].flags['wall-height'].top=2;
+target.actor={system:{traits:{size:"med"}}};
+result=check({attackType:'melee',mode:'3d'});
+assert.equal(result.type,'partial',
+ 'adjacent Medium target receives size-based partial cover over 2ft wall');
+target.actor.system.traits.size="sm";
+result=check({attackType:'melee',mode:'3d'});
+assert.equal(result.type,'normal',
+ 'adjacent Small target receives normal cover over 2ft wall');
+target.actor=null;
+scene.walls.contents[0].flags['wall-height'].top=10;
 scene.walls.contents[0].c=[100,0,100,50];
 result=check({attackType:'melee',mode:'2d'});
 assert.equal(result.status,'confirmed');
