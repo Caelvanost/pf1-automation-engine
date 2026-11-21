@@ -170,7 +170,7 @@ assert.equal(result.acBonus,4);
 // Threshold is strict, so exactly 3ft is not a low wall.
 scene.walls.contents[0].flags['wall-height'].top=3;
 result=check({mode:'3d'});
-assert.equal(result.type,'none','3ft wall is not below the low-wall threshold');
+assert.equal(result.type,'partial','3ft wall is not a size-based low wall; normal visibility can still give partial cover');
 scene.walls.contents[0].flags['wall-height'].top=2;
 // Metric scenes use 1m instead of 3ft; grid remains 100 pixels/cell.
 scene.grid.units='m';
@@ -180,7 +180,7 @@ result=check({mode:'3d'});
 assert.equal(result.type,'normal','0.8m wall gives normal cover to Small target');
 scene.walls.contents[0].flags['wall-height'].top=1;
 result=check({mode:'3d'});
-assert.equal(result.type,'none','1m wall does not qualify as below 1m');
+assert.equal(result.type,'partial','1m wall does not qualify as size-based low wall, but body visibility gives partial cover');
 scene.grid.units='ft';
 scene.grid.distance=5;
 scene.walls.contents[0].flags['wall-height'].top=2;
