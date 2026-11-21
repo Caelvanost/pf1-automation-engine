@@ -180,7 +180,7 @@ result=check({mode:'3d'});
 assert.equal(result.type,'normal','0.8m wall gives normal cover to Small target');
 scene.walls.contents[0].flags['wall-height'].top=1;
 result=check({mode:'3d'});
-assert.equal(result.type,'partial','1m wall does not qualify as size-based low wall, but body visibility gives partial cover');
+assert.equal(result.type,'none','1m wall is not a low wall and the test attacker at 5m can see completely above it');
 scene.grid.units='ft';
 scene.grid.distance=5;
 scene.walls.contents[0].flags['wall-height'].top=2;
