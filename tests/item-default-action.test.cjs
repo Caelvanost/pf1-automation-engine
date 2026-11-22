@@ -135,6 +135,64 @@ const item=new ItemPF();
  assert.equal(nativeSelector.length,4);
  assert.equal(render.has('renderItemSheet'),true);
  assert.equal(render.has('renderItemSheetV2'),true);
+ assert.equal(render.has('renderApplication'),true,
+  'PF1 ItemSheetV2 ApplicationV2 generic render hook must be registered');
+ // Exercise the real daRender path with synthetic DOM primitives: unlike
+ // the old static checks, this catches missing tabs, duplicate injection
+ // and the single-action filter on different PF1 sheet types.
+ class FakeNode {
+  constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.style={};
+   this.className='';this.value='';this.type='';this.disabled=false;
+   this.listeners={};this.parentElement=null;}
+  append(...nodes){for(const n of nodes){n.parentElement=this;this.children.push(n)}}
+  setAttribute(){}
+  addEventListener(name,fn){this.listeners[name]=fn}
+  querySelector(selector){
+   if(selector==='[data-pf1ae-default-action]')
+    return this.find(n=>n.dataset?.pf1aeDefaultAction==='true');
+   return null;
+  }
+  querySelectorAll(){return []}
+  find(test){
+   for(const n of this.children){if(test(n))return n;
+    const found=n.find?.(test);if(found)return found}
+   return null;
+  }
+ }
+ const initialDocument=context.document;
+ context.document={
+  createElement:tag=>new FakeNode(tag),
+  createTextNode:text=>({textContent:text})
+ };
+ const actionChoice=render.get('renderApplication');
+ // Item type-independent: armor, feat, buff and spells with native actions.
+ for(const type of ['weapon','equipment','feat','buff','spell']){
+  const trial=new ItemPF();
+  trial.type=type;trial.actions=new Map([['one',{id:'one',name:'Only action'}]]);
+  const page=new FakeNode('div'),details=new FakeNode('div');
+  page.querySelector=sel=>sel==='.tab[data-tab="details"]'?details:
+   sel==='[data-pf1ae-default-action]'?
+    details.querySelector('[data-pf1ae-default-action]'):null;
+  const app={document:trial,window:{content:page}};
+  actionChoice(app,page);
+  assert.ok(details.querySelector('[data-pf1ae-default-action]'),
+   type+' PF1 V2 sheet supports one action');
+  const count=details.children.length;
+  actionChoice(app,page);
+  assert.equal(details.children.length,count,type+' render is idempotent');
+ }
+ const fallback=new FakeNode('form');
+ fallback.querySelector=sel=>sel==='form'?fallback:
+  sel==='[data-pf1ae-default-action]'?
+   fallback.find(n=>n.dataset?.pf1aeDefaultAction==='true'):null;
+ const fallbackItem=new ItemPF();
+ fallbackItem.type='feat';
+ fallbackItem.actions=new Map([['one',{id:'one',name:'Only action'}]]);
+ actionChoice({item:fallbackItem,window:{content:fallback}},fallback);
+ assert.ok(fallback.querySelector('[data-pf1ae-default-action]'),
+  'missing Advanced and Details tabs falls back to visible sheet content');
+ context.document=initialDocument;
+
  assert.equal(item.flags.defaultActionId,'reload','only the custom Item flag was used');
  assert.equal(src.includes("advanced.querySelectorAll('input, select, textarea')"),true,'locate actual native Advanced fields');
  assert.equal(src.includes("row.insertAdjacentElement('afterend',section)"),true,'insert inside last field container');
