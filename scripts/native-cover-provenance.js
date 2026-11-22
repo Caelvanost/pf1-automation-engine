@@ -69,10 +69,46 @@ function ncInspect({actor,defense="normal"}={}){
   evidenceCount:entries.length,coverSourceCount:cover.length
  });
 }
+
+/**
+ * Native source provenance for other conditional AC bonus types.
+ * Source details belong to each PF1 AC variant, never to the actor's
+ * global bonus ledger. Fail closed on ambiguous or untyped contributions.
+ */
+function ncInspectTypes({actor,defense="normal",types=[]}={}){
+  if(!Array.isArray(types)||types.some(t=>typeof t!=="string"||!NC_KNOWN.has(t)))
+    return {status:"uncertain",reason:"invalid-requested-native-bonus-types"};
+  const unique=[...new Set(types)];
+  if(!unique.length)return {status:"resolved",nativeTypes:{},defense};
+  const base=ncInspect({actor,defense});
+  if(base.status!=="resolved")return {status:"uncertain",reason:base.reason};
+  const path=NC_PATHS[defense];
+  let entries;
+  try{entries=actor.getSourceDetails(path)}catch(_){
+    return {status:"uncertain",reason:"native-source-details-failed"};
+  }
+  if(!Array.isArray(entries))return {status:"uncertain",reason:"native-source-details-invalid"};
+  const nativeTypes={};
+  for(const type of unique){
+    const sources=entries.filter(e=>e?.modifier===type&&e.disabled!==true);
+    if(sources.some(e=>typeof e.value!=="number"||!Number.isFinite(e.value)||e.value<0))
+      return {status:"uncertain",reason:"ambiguous-native-"+type+"-source"};
+    // PF1 source-details are contributions, not a guarantee of stacking
+    // when more than one non-stacking source reports the same bonus type.
+    if(sources.length>1&&!["dodge","circumstance","untyped"].includes(type))
+      return {status:"uncertain",reason:"multiple-native-"+type+"-sources"};
+    nativeTypes[type]=["dodge","circumstance","untyped"].includes(type)
+      ?sources.reduce((n,e)=>n+e.value,0):(sources[0]?.value??0);
+  }
+  return {status:"resolved",reason:"native-pf1-typed-ac-sources",
+    defense,path,nativeTypes,evidenceCount:entries.length};
+}
+
 Hooks.once("ready",()=>{
  const mod=game.modules.get(NC_NS);
  if(!mod)return;mod.api??={};
  mod.api.nativeCover=Object.freeze({
-  inspect:ncInspect,lastDiagnostic:()=>NC_LAST?ncClean(NC_LAST):null
+  inspect:ncInspect,
+  inspectTypes:ncInspectTypes,lastDiagnostic:()=>NC_LAST?ncClean(NC_LAST):null
  });
 });
