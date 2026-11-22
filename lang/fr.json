@@ -199,6 +199,16 @@
         "Label": "Arme improvisée",
         "Hint": "Cette arme est considérée comme une arme improvisée."
       }
+    },
+    "DirectionalCover": {
+      "ChooseTitle": "Abri directionnel — choisir un bord",
+      "ChooseHint": "Choisissez un bord de l'espace occupé par votre token.",
+      "north": "Nord",
+      "east": "Est",
+      "south": "Sud",
+      "west": "Ouest",
+      "cancel": "Annuler",
+      "Blocked": "Attaque impossible — abri total directionnel."
     }
   }
 }
