@@ -1,4 +1,4 @@
-# 1.41.10 — Lévitation native synchronisée avec le mouvement Vol
+# 1.41.11 — Lévitation native synchronisée avec le mouvement Vol
 
 - Un effet PF1 natif Levitation/Lévitation actif place automatiquement le token en mode de mouvement `fly`, sans appliquer ni créer l'état Flying.
 - Reconnaissance des noms anglais/français, statuts PF1, effets multiples, suppression/désactivation et scène/reconnexion.
