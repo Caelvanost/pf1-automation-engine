@@ -42,7 +42,7 @@ function damage(parts){
  damage(parts);
  assert.equal(parts[0].base,'floor((((1d8)) + ((4))) * 0.5)'.replace('((1d8))','(1d8)').replace('((4))','(4)'),
   'weapon dice and extra bonus halved together and rounded down');
- assert.deepEqual(parts[0].extra,[]);
+ assert.equal(parts[0].extra.length,0,'all extras are merged into same half-damage roll');
  damage(parts);
  assert.equal((parts[0].base.match(/floor\(/g)||[]).length,1,'same part list processed once');
  // Piercing attack unaffected.
