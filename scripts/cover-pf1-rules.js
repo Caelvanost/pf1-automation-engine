@@ -900,15 +900,7 @@ function cpAquaticState({attacker,target,scene}={}){
   surface:targetWater.surface,regionId:targetWater.regionId,
   attackerLand:true};
 }
-function cpInterpret(options={}){
- // Directional effects are virtual, source-bound cover. They do not alter
- // wall geometry, Reflex saves, or anyone but the protected token.
- const directional=game.modules.get(CP_NS)?.api?.directionalCover?.inspect?.(options);
- if(directional?.status==="confirmed"&&
-    directional.type==="total"&&directional.preventsDirectAttack===true){
-   CP_LAST=cpClone(directional);
-   return cpClone(directional);
- }
+function cpInterpretBaseline(options={}){
  const water=cpAquaticState(options);
  // A demonstrably fully submerged target cannot be attacked directly
  // from land, irrespective of other cover or unavailable 3D geometry.
@@ -935,6 +927,25 @@ function cpInterpret(options={}){
  }
  CP_LAST=cpClone(result);
  return cpClone(result);
+}
+function cpInterpret(options={}){
+ // This adapter supplements the existing wall/water engine without placing
+ // any real Foundry WallDocument or mutating the target's native AC.
+ const directional=game.modules.get(CP_NS)?.api?.directionalCover?.inspect?.(options);
+ if(directional?.status==="confirmed"&&directional.type==="total"&&
+    directional.preventsDirectAttack===true){
+   CP_LAST=cpClone(directional);return cpClone(directional);
+ }
+ const baseline=cpInterpretBaseline(options);
+ if(directional?.status!=="confirmed")return baseline;
+ if(baseline?.status!=="confirmed")return baseline;
+ const grades={none:0,partial:1,soft:2,normal:2,improved:3,total:4};
+ const oldGrade=grades[baseline.type]??-1;
+ const newGrade=grades[directional.type]??-1;
+ if(newGrade<=oldGrade)return baseline;
+ const combined={...baseline,...directional,source:"directional-cover",
+  geometricCoverType:baseline.type,preventsDirectAttack:false};
+ CP_LAST=cpClone(combined);return cpClone(combined);
 }
 Hooks.once("ready",()=>{
  const module=game.modules.get(CP_NS);
