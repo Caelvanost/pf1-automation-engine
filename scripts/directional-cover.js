@@ -5,7 +5,7 @@
  */
 const DC_NS="pf1-automation-engine",DC_FLAG="directionalCover";
 const DC_EDGES=new Set(["north","east","south","west"]);
-const DC_COVERS=new Set(["total"]);
+const DC_COVERS=new Set(["total","improved","normal","partial"]);
 const DC_QUEUE=new Map();
 let DC_LAST=null;
 const dcClone=x=>foundry.utils.deepClone(x);
@@ -39,13 +39,14 @@ function dcValid(data){
   Object.keys(data).every(k=>[
    "key","sourceItemUuid","defenderUuid","tokenUuid","protectedEdge",
    "coverType","duration","combatId","combatantId","targetRound",
-   "exceptions","reason"].includes(k))&&
+   "exceptions","reason","requireEquipped"].includes(k))&&
   typeof data.key==="string"&&/^[a-zA-Z0-9_-]{1,80}$/.test(data.key)&&
   typeof data.sourceItemUuid==="string"&&data.sourceItemUuid.length<450&&
   typeof data.defenderUuid==="string"&&data.defenderUuid.length<450&&
   typeof data.tokenUuid==="string"&&data.tokenUuid.length<450&&
   DC_EDGES.has(data.protectedEdge)&&DC_COVERS.has(data.coverType)&&
   data.duration==="startOfNextTurn"&&
+  (data.requireEquipped===undefined||typeof data.requireEquipped==="boolean")&&
   typeof data.combatId==="string"&&data.combatId.length<100&&
   typeof data.combatantId==="string"&&data.combatantId.length<100&&
   Number.isSafeInteger(data.targetRound)&&data.targetRound>=0&&
@@ -81,10 +82,9 @@ function dcFindToken(uuid){
  }
  return null;
 }
-function dcEquipped(item){
- // Only enforce the actual native equipped property when present. The
- // generic service intentionally does not infer a shield subtype.
- return item?.system?.equipped!==false;
+function dcEquipped(item,record){
+ // Equipment rules belong to the source declaration, not this service.
+ return record?.requireEquipped!==true||item?.system?.equipped===true;
 }
 function dcRecords(actor){
  const results=[];
@@ -104,7 +104,7 @@ function dcList({defenderActor,defenderUuid,activeOnly=true}={}){
   (typeof fromUuidSync==="function"?fromUuidSync(defenderUuid):null);
  if(!actor||actor.uuid!==defenderUuid)return [];
  return dcRecords(actor).filter(({record,item})=>
-   !activeOnly||(dcActive(record)&&dcEquipped(item)&&
+   !activeOnly||(dcActive(record)&&dcEquipped(item,record)&&
      !!dcFindToken(record.tokenUuid))).map(({record})=>dcClone(record));
 }
 async function dcRegister(data){
@@ -115,7 +115,8 @@ async function dcRegister(data){
     actor.uuid!==data?.defenderUuid)throw Error("Source Item/Actor mismatch");
  if(!game.user?.isGM&&!actor.testUserPermission?.(game.user,"OWNER"))
   throw Error("Owner or GM required");
- if(!dcEquipped(item))throw Error("Source Item must be equipped");
+ if(data?.requireEquipped===true&&item?.system?.equipped!==true)
+  throw Error("Source Item must be equipped");
  const token=await fromUuid(data?.tokenUuid);
  if(token?.documentName!=="Token"||token.actor?.uuid!==actor.uuid)
   throw Error("Token/Actor mismatch");
@@ -130,7 +131,8 @@ async function dcRegister(data){
   coverType:data.coverType??"total",duration:"startOfNextTurn",
   combatId:combat.id,combatantId:combat.combatant.id,
   targetRound:combat.round+1,
-  exceptions:data.exceptions??{},reason:data.reason??"Directional cover"
+  exceptions:data.exceptions??{},requireEquipped:data.requireEquipped===true,
+  reason:data.reason??"Directional cover"
  };
  if(!dcValid(record))throw Error("Invalid directional cover declaration");
  return dcQueue(item.uuid,async()=>{
@@ -217,14 +219,16 @@ function dcInspect({attacker,target,attackType="ranged",action,actionUse}={}){
  if(action?.hasTemplate===true&&action?.hasAttack!==true)
   return {status:"not-applicable"};
  const candidates=dcRecords(defender).filter(({record,item})=>
-  record.tokenUuid===targetDoc.uuid&&dcActive(record)&&dcEquipped(item));
+  record.tokenUuid===targetDoc.uuid&&dcActive(record)&&dcEquipped(item,record));
  if(!candidates.length)return {status:"not-applicable"};
  let uncertain=null;
  for(const {record} of candidates){
   const geometry=dcGeometry(attacker,target,record.protectedEdge);
   if(geometry.status==="confirmed"){
-   const result={status:"confirmed",type:"total",acBonus:null,reflexBonus:null,
-    preventsDirectAttack:true,source:"directional-cover",
+   const bonuses={partial:[2,1],normal:[4,2],improved:[8,4],total:[null,null]};
+   const [acBonus,reflexBonus]=bonuses[record.coverType];
+   const result={status:"confirmed",type:record.coverType,acBonus,reflexBonus,
+    preventsDirectAttack:record.coverType==="total",source:"directional-cover",
     reason:record.reason,protectedEdge:record.protectedEdge,
     key:record.key,geometry};
    DC_LAST=dcClone(result);return result;
@@ -247,7 +251,7 @@ async function dcCleanup(){
     const current=item.getFlag(DC_NS,DC_FLAG)??[];
     if(!Array.isArray(current))return;
     const keep=current.filter(r=>dcValid(r)&&dcActive(r)&&
-      dcEquipped(item)&&!!dcFindToken(r.tokenUuid));
+      dcEquipped(item,r)&&!!dcFindToken(r.tokenUuid));
     if(keep.length!==current.length)await item.setFlag(DC_NS,DC_FLAG,keep);
    });
   }
