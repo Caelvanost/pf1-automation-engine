@@ -65,7 +65,7 @@ function umIsPhysicalMelee(action){
  // do not halve damage from unrelated energy or spell damage.
  const types=entries[0]?.types??action?.item?.system?.damageType??[];
  const raw=Array.isArray(types)?types:
-  types?.values instanceof Set?[...types.values]:
+  types instanceof Set?[...types]:
   typeof types==="string"?types.split(/[,;/]/):[];
  const all=raw.map(umNorm);
  const pierce=new Set(["p","piercing","perforant","perforants"]);
@@ -143,15 +143,16 @@ function umIsDamagePhysical(part){
 function umMultiplyParts(action,parts){
  if(!Array.isArray(parts)||UM_SEEN_PARTS.has(parts))return;
  const info=UM_ACTION.get(action);
- if(!info||!Number.isFinite(info.multiplier)||
-    info.multiplier===1)return;
- // Never edit the Item or the Actor: these are ephemeral damage
- // components supplied by PF1 immediately before it rolls the dice.
+ if(!info||!Number.isFinite(info.multiplier))return;
+ // The manual multiplier applies to every damage part. Water only
+ // halves the PHYSICAL part. A user x2 + underwater x0.5 therefore
+ // leaves the physical component unchanged but still doubles any
+ // separately typed fire, cold or other energy component.
  let count=0;
  for(const part of parts){
   if(!part||typeof part.base!=="string"||!part.base.trim())continue;
-  if(info.base&&!umIsDamagePhysical(part))continue;
-  const k=info.multiplier;
+  const k=info.user*(info.base&&umIsDamagePhysical(part)?0.5:1);
+  if(k===1)continue;
   // PF1 dice parser supports floor(); PF1e rounds down. This retains
   // the native roll's dice, critical part and damage type metadata.
   // Native PF1 puts bonus formulas into the first part's "extra".
