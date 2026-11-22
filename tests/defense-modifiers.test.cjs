@@ -15,6 +15,8 @@ const item={documentName:'Item',uuid:'Actor.paladin.Item.bastion',
 actor.items.contents.push(item);
 const enemy={documentName:'Actor',uuid:'Actor.enemy',statuses:new Set()};
 const others={documentName:'Actor',uuid:'Actor.other',statuses:new Set()};
+game.actors={contents:[actor,enemy,others]};
+game.users=[gm,player];
 const registry=new Map([[actor.uuid,actor],[item.uuid,item],[enemy.uuid,enemy],[others.uuid,others]]);
 const ready=[];
 const ctx={console,game,Hooks:{once(_name,fn){ready.push(fn)}},
@@ -62,8 +64,8 @@ const evaluate=(defense='normal',options={})=>api.evaluate({
  assert.equal(result.total,10,'different bonus type and two stackable circumstances');
  result=evaluate('normal',{nativeTypes:{deflection:4,sacred:3,circumstance:0}});
  assert.equal(result.total,3,'avoid duplicate native typed bonuses');
- // Generic confirmed death expiry: source record stays auditable but no
- // longer applies. 0 HP alone is NOT death.
+ // Generic confirmed death permanently removes the source record;
+ // zero HP alone is NOT proof of death.
  const expiring={...make('death-expire','untyped',5),expiresOnDeathOf:enemy.uuid};
  await api.register(expiring);
  result=evaluate('normal',{nativeTypesComplete:true});
@@ -71,8 +73,11 @@ const evaluate=(defense='normal',options={})=>api.evaluate({
  enemy.statuses.add('dead');
  result=evaluate('normal',{nativeTypesComplete:true});
  assert.equal(result.total,10,'confirmed dead target disables only expiring modifier');
+ const expired=await api.expireConfirmed(enemy);
+ assert.equal(expired.expired,1,'confirmed death removes source record');
  enemy.statuses.delete('dead');
- assert.equal(evaluate('normal',{nativeTypesComplete:true}).total,15);
+ assert.equal(evaluate('normal',{nativeTypesComplete:true}).total,10,
+  'resurrection cannot reactivate an expired conditional bonus');
  await assert.rejects(()=>api.register({...value,key:'forged',
   defenderUuid:others.uuid}),/Source Item must belong/);
  await assert.rejects(()=>api.register({...value,key:'invalid',value:Infinity}),
@@ -85,15 +90,15 @@ const evaluate=(defense='normal',options={})=>api.evaluate({
   /owner or GM/);
  game.user=player;
  await api.register(make('player-owned','untyped',1));
- assert.equal(item.flags.defenseModifiers.length,7);
+ assert.equal(item.flags.defenseModifiers.length,6);
  assert.equal((await api.remove({key:'designated',defenderUuid:actor.uuid,
   sourceItemUuid:item.uuid})).removed,true);
  assert.equal((await api.remove({key:'designated',defenderUuid:actor.uuid,
   sourceItemUuid:item.uuid})).removed,false);
- assert.equal(item.flags.defenseModifiers.length,6);
+ assert.equal(item.flags.defenseModifiers.length,5);
  SETTINGS.set('genericEnabled',false);
  await assert.rejects(()=>api.register(make('disabled','untyped',1)),/disabled/);
  SETTINGS.set('genericEnabled',true);
- assert.equal(api.list({defenderActor:actor,defenderUuid:actor.uuid}).length,6);
+ assert.equal(api.list({defenderActor:actor,defenderUuid:actor.uuid}).length,5);
  console.log('PASS defense-modifiers: owner-authorized native Item flags, persistent identities, source filtering, stacking, native baseline, expiration');
 })().catch(error=>{console.error(error);process.exitCode=1});
