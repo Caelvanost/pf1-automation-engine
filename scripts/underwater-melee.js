@@ -154,12 +154,15 @@ function umMultiplyParts(action,parts){
   const k=info.multiplier;
   // PF1 dice parser supports floor(); PF1e rounds down. This retains
   // the native roll's dice, critical part and damage type metadata.
-  part.base=`floor((${part.base}) * ${k})`;
-  // The first PF1 damage part can include bonus formulas. Only apply
-  // extra multipliers in absence of automatic underwater half damage
-  // (mixed-type energy sources must remain full underwater).
-  if(!info.base&&Array.isArray(part.extra))
-   part.extra=part.extra.map(v=>`floor((${v}) * ${k})`);
+  // Native PF1 puts bonus formulas into the first part's "extra".
+  // Combine these BEFORE flooring, so 1d8 + 4 becomes
+  // floor((1d8 + 4) * 0.5), not floor(1d8 * 0.5) + 4.
+  // Leave separately typed energy damage untouched under water.
+  const extras=Array.isArray(part.extra)?part.extra.filter(v=>
+   typeof v==="string"&&v.trim()):[];
+  const combined=[part.base,...extras].map(v=>`(${v})`).join(" + ");
+  part.base=`floor((${combined}) * ${k})`;
+  if(Array.isArray(part.extra))part.extra=[];
   count++;
  }
  if(count){
