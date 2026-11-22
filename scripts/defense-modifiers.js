@@ -409,6 +409,7 @@ Hooks.once('ready',()=>{
  mod.api.defenseModifiers=Object.freeze({
   register:dmRegister,remove:dmRemove,list:dmList,evaluate:dmEvaluate,
   _withVerifiedRest:dmWithVerifiedRest,
+  reconcilePending:dmReconcileReceipts,
   expireConfirmed:dmExpireConfirmed,
   lastDiagnostic:()=>DM_LAST?dmClone(DM_LAST):null
  });
