@@ -148,6 +148,12 @@ async function msSyncFromMovement(token,changed){
    const wanted=type===next;
    if(active!==wanted)await actor.toggleStatusEffect(id,{active:wanted});
   }
+  // Native PF1 statuses belong to the Actor. Its linked scene tokens
+  // therefore need a consistent movement action after switching one.
+  for(const sibling of msActorTokens(actor)){
+   if(sibling===token)continue;
+   await msSetMovement(sibling,next);
+  }
  }catch(error){console.warn("PF1AE | movement action sync",error);}
  finally{MS_BUSY_ACTORS.delete(key);}
 }
