@@ -11,7 +11,7 @@ const SA_AUTO_NAMES=new Map([
  ['postUse',new Set(['PF1AE:attack:resolved','PF1AE:damage:applied',
   'PF1AE:damage:critical','PF1AE:damage:zeroHP',
   'PF1AE:bleed:before','PF1AE:bleed:applied',
-  'PF1AE:rest:daily'])]
+  'PF1AE:rest:daily','PF1AE:defense:expired'])]
 ]);
 const saLeader=()=>[...game.users].filter(u=>u.active&&u.isGM)
  .sort((a,b)=>a.id.localeCompare(b.id))[0]??null;

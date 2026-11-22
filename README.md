@@ -1,4 +1,36 @@
-# PF1 Automation Engine v1.41.7
+# PF1 Automation Engine v1.41.8
+
+## Événements génériques d'expiration des défenses (v1.41.8)
+
+Lorsqu'un modificateur de `api.defenseModifiers` est effectivement supprimé,
+PF1AE produit un événement public `Hooks.callAll("pf1aeDefenseModifierExpired", event)`
+après confirmation de l'écriture native sur l'Item source. Le payload inclut
+`eventId`, `modifierKey`, `sourceItemUuid`, `defenderUuid`,
+`attackerUuid`, `bonusType`, `value`, `reason`,
+`reasonProvenance`, `expiredActorUuid` et une copie `modifier`.
+
+Les raisons sont `death` (état PF1 `dead` confirmé), `rest`
+(repos natif vérifié par `PF1AE:rest:daily`), `manual` et `other`
+(provenance non classifiée). `remove({key,sourceItemUuid,defenderUuid})`
+demeure compatible ; une demande `reason:"rest"` sans contexte de repos
+authentifié est classée `other`.
+
+Un Script Call natif sur l'Item source, en catégorie **Après Utilisation**,
+nommé **`PF1AE:defense:expired`**, peut réagir sans macro ni listener
+supplémentaire. En mode sécurisé, il nécessite l'approbation du MJ ;
+en mode Table de confiance, son nom exact est autorisé. La suppression
+persiste via des reçus sur l'Item, et le MJ élu distribue les événements
+même après une mise à jour effectuée par un joueur, au F5 ou à la reconnexion.
+Les reçus sont réclamés avant l'exécution pour éviter les doublons :
+une fermeture brutale dans cette très courte fenêtre peut faire perdre
+la notification plutôt que la rejouer. Aucun jet ni ressource consommée.
+
+Les **trois scripts complets de Bastion du Bien** figurent dans
+[EXAMPLES-BASTION-DU-BIEN.md](EXAMPLES-BASTION-DU-BIEN.md) :
+activation, nettoyage vérifié au repos et message RP à la mort.
+Le moteur reste indépendant de toute classe ou capacité particulière.
+
+
 
 ## Abri directionnel temporaire et pavois (v1.41.7)
 

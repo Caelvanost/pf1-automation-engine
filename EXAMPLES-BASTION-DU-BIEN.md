@@ -102,10 +102,69 @@ for (const modifier of modifiers) {
   await service.remove({
     key: modifier.key,
     sourceItemUuid: item.uuid,
-    defenderUuid: actor.uuid
+    defenderUuid: actor.uuid,
+    reason: "rest",
+    restId: event.rest.id
   });
 }
 ```
+
+
+## Après Utilisation — PF1AE:defense:expired (message RP de décès)
+
+Ajouter un **troisième** Script Call natif sur le même objet, dans la
+catégorie **Après Utilisation** (`postUse`), avec le nom exact
+`PF1AE:defense:expired`. Il est découvert automatiquement et exécuté
+par le MJ élu, uniquement après suppression confirmée d'un bonus de cet
+objet. Aucun listener, macro de bootstrap ou consommation de ressource.
+
+```javascript
+// PF1AE:defense:expired — Bastion du Bien, message narratif.
+// Les règles et le texte appartiennent à l'objet, pas au moteur générique.
+if (typeof event === "undefined" ||
+    event?.type !== "defenseModifierExpired" ||
+    event?.reason !== "death" ||
+    event?.sourceItemUuid !== item?.uuid ||
+    event?.defenderUuid !== actor?.uuid ||
+    !String(event?.modifierKey ?? "").startsWith("bastion-") ||
+    event?.bonusType !== "deflection" ||
+    !event?.expiredActorUuid ||
+    event?.expiredActorUuid !== event?.modifier?.expiresOnDeathOf) {
+  return;
+}
+const fallen = await fromUuid(event.expiredActorUuid);
+if (fallen?.documentName !== "Actor" || !actor?.name) {
+  console.warn("[Bastion du Bien] Nom de l'ennemi indisponible", event.eventId);
+  return;
+}
+const escapeHtml = value => String(value).replace(
+  /[&<>"']/g,
+  char => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;",
+    '"': "&quot;", "'": "&#39;"
+  }[char])
+);
+const paladinName = escapeHtml(actor.name);
+const enemyName = escapeHtml(fallen.name);
+await ChatMessage.create({
+  speaker: ChatMessage.getSpeaker({actor}),
+  content: `<div class="pf1ae-bastion-end">
+    <p><strong>✦ Le Bastion s'éteint ✦</strong></p>
+    <p>Alors que <strong>${enemyName}</strong> s'effondre, les reflets
+    dorés qui dansaient sur le bouclier de <strong>${paladinName}</strong>
+    commencent à pâlir.</p>
+    <p>La lumière sacrée se disperse en une myriade d'étincelles, comme
+    si les puissances célestes reconnaissaient l'accomplissement
+    de leur protection.</p>
+    <p><em>Le mal désigné a été vaincu. Le serment demeure, mais le
+    Bastion a rempli son office.</em></p>
+  </div>`
+});
+```
+
+La déduplication est assurée par la suppression persistante de chaque
+modificateur et le reçu d'expiration `eventId` sur l'Item source.
+Le script ne s'exécute jamais après une suppression manuelle ou au repos.
 
 ## API et sécurité
 

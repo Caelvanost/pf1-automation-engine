@@ -1,3 +1,12 @@
+# 1.41.8 — Expirations défensives génériques avec événements persistants
+
+- Hook public `pf1aeDefenseModifierExpired` après suppression confirmée, avec identité, copie du modificateur et raison vérifiée (`death`, `rest`, `manual`, `other`).
+- Reçus d'expiration persistants sur l'Item source et distribution par le MJ élu via `updateItem` natif, avec déduplication et reprise au démarrage/F5.
+- Script Call `PF1AE:defense:expired` découvert automatiquement uniquement sur l'Item source, `postUse`, avec approbation exacte et mode Table de confiance.
+- Les suppressions exécutées par `PF1AE:rest:daily` reçoivent une provenance de repos authentifiée ; suppression manuelle rétrocompatible, raison forgée classée `other`.
+- Trois scripts complets Bastion du Bien documentés sans aucune règle spécifique codée dans PF1AE.
+- Tests de mort confirmée, suppression manuelle/repos, refus des scripts non approuvés, persistance, source et acteur synthétique ; 52 suites maintenues.
+
 # 1.41.7 — Abris directionnels temporaires (pavois)
 
 - Nouveau service générique `api.directionalCover` : déclarations Item-sources, bord N/E/S/O, types d'abri, permission OWNER/MJ, persistance native, expiration absolue au début du prochain tour et nettoyage des effets obsolètes.

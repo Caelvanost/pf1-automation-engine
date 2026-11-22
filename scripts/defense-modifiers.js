@@ -9,6 +9,8 @@
  */
 const DM_NS='pf1-automation-engine';
 const DM_FLAG='defenseModifiers';
+const DM_RECEIPTS='defenseModifierExpiryReceipts';
+const DM_REST_CONTEXTS=new Map();
 const DM_TYPES=new Set(['deflection','cover','dodge','circumstance',
  'competence','enhancement','insight','luck','morale','natural',
  'profane','racial','resistance','sacred','shield','size','untyped']);
@@ -80,7 +82,84 @@ async function dmRegister(data){
   return {id:dmIdentity(clean),record:dmClone(clean)};
  });
 }
-async function dmRemove({key,sourceItemUuid,defenderUuid}={}){
+/**
+ * Expiry receipts are stored alongside the removed records on the source
+ * Item. The elected GM can recover pending notifications after F5 or when
+ * the player's owning client performed the native write.
+ * No executable source is sent over a custom socket.
+ */
+function dmReceipt(record,reason,expiredActorUuid=null,provenance='verified'){
+ const eventId='dm:'+Date.now().toString(36)+':'+
+  (foundry.utils?.randomID?.(16)??Math.random().toString(36).slice(2,18));
+ return {
+  eventId,type:'defenseModifierExpired',
+  modifierKey:record.key,
+  sourceItemUuid:record.sourceItemUuid,
+  defenderUuid:record.defenderUuid,
+  attackerUuid:record.attackerUuid??null,
+  bonusType:record.bonusType,value:record.value,
+  reason,reasonProvenance:provenance,
+  expiredActorUuid:reason==='death'?expiredActorUuid:null,
+  modifier:dmClone(record),delivery:'pending'
+ };
+}
+function dmRestKey(actorUuid,itemUuid){return JSON.stringify([actorUuid,itemUuid]);}
+async function dmWithVerifiedRest({actorUuid,itemUuid,restId},fn){
+ if(!dmUuid(actorUuid)||!dmUuid(itemUuid)||
+    typeof restId!=='string'||!restId||typeof fn!=='function')
+  throw Error('Invalid verified native rest context');
+ const key=dmRestKey(actorUuid,itemUuid);
+ const previous=DM_REST_CONTEXTS.get(key);
+ DM_REST_CONTEXTS.set(key,restId);
+ try{return await fn()}
+ finally{
+  if(previous==null)DM_REST_CONTEXTS.delete(key);
+  else DM_REST_CONTEXTS.set(key,previous);
+ }
+}
+function dmReason(item,requested,restId){
+ if(requested==null||requested==='manual'){
+  const context=DM_REST_CONTEXTS.get(dmRestKey(item.actor.uuid,item.uuid));
+  if(context&&(!restId||restId===context))
+   return {reason:'rest',provenance:'verified-native-rest'};
+  return {reason:'manual',provenance:'explicit-removal'};
+ }
+ if(requested==='rest'){
+  const context=DM_REST_CONTEXTS.get(dmRestKey(item.actor.uuid,item.uuid));
+  return context&&context===restId?
+   {reason:'rest',provenance:'verified-native-rest'}:
+   {reason:'other',provenance:'unverified-rest-declaration'};
+ }
+ // Death cannot be asserted by a caller. It is reserved for the confirmed
+ // native condition path below.
+ if(requested==='death')return {reason:'other',provenance:'unverified-death-declaration'};
+ return {reason:'other',provenance:'unclassified'};
+}
+async function dmCommitRemoval(item,removed,next,reason,expiredActorUuid=null,provenance='verified'){
+ if(!removed.length)return [];
+ const oldReceipts=item.getFlag(DM_NS,DM_RECEIPTS)??[];
+ if(!Array.isArray(oldReceipts))throw Error('Invalid defense expiration receipts');
+ const events=removed.map(r=>dmReceipt(r,reason,expiredActorUuid,provenance));
+ // Bound retained receipts: keep pending receipts and the newest delivered
+ // events. A pending backlog must be resolved instead of silently truncated.
+ const completed=oldReceipts.filter(e=>e.delivery!=='pending').slice(-150);
+ const pending=oldReceipts.filter(e=>e.delivery==='pending');
+ const receipts=[...completed,...pending,...events];
+ // One native update commits the deleted record and the durable
+ // notification together. Legacy mocks lacking update() retain sequential
+ // writes with receipts added only after successful deletion.
+ if(typeof item.update==='function'){
+  await item.update({
+   [`flags.${DM_NS}.${DM_FLAG}`]:next,
+   [`flags.${DM_NS}.${DM_RECEIPTS}`]:receipts
+  });
+ }else{
+  await item.setFlag(DM_NS,DM_FLAG,next);
+  await item.setFlag(DM_NS,DM_RECEIPTS,receipts);
+ }
+ return events;
+}
+async function dmRemove({key,sourceItemUuid,defenderUuid,reason,restId}={}){
  if(!dmKey(key)||!dmUuid(sourceItemUuid)||!dmUuid(defenderUuid))
   throw Error('Invalid modifier identity');
  const item=await fromUuid(sourceItemUuid);
@@ -90,10 +169,17 @@ async function dmRemove({key,sourceItemUuid,defenderUuid}={}){
   throw Error('Actor owner or GM required');
  return dmQueue(item.uuid,async()=>{
   const stored=item.getFlag(DM_NS,DM_FLAG)??[];
-  const next=stored.filter(x=>x.key!==key);
-  if(stored.length===next.length)return {removed:false};
-  await item.setFlag(DM_NS,DM_FLAG,next);
-  return {removed:true};
+  if(!Array.isArray(stored))throw Error('Invalid existing defense flags');
+  const removed=stored.filter(x=>x.key===key);
+  if(!removed.length)return {removed:false};
+  const classification=dmReason(item,reason,restId);
+  const events=await dmCommitRemoval(item,removed,
+   stored.filter(x=>x.key!==key),classification.reason,null,classification.provenance);
+  // Only the elected GM publishes. A player write will be picked up
+  // through native updateItem or on the next GM reconciliation.
+  if(dmLeader())void dmDeliverReceipts(item).catch(e=>
+   console.error('[PF1AE] Expiration notification failed',e));
+  return {removed:true,eventIds:events.map(e=>e.eventId)};
  });
 }
 function dmRaw({defenderActor,defenderUuid}={}){
@@ -203,12 +289,115 @@ async function dmExpireConfirmed(target){
     if(!Array.isArray(current))return;
     const keep=current.filter(x=>x.expiresOnDeathOf!==target.uuid);
     if(keep.length===current.length)return;
-    expired+=current.length-keep.length;
-    await item.setFlag(DM_NS,DM_FLAG,keep);
+    const removed=current.filter(x=>x.expiresOnDeathOf===target.uuid);
+    await dmCommitRemoval(item,removed,keep,'death',target.uuid,
+      'verified-native-dead-status');
+    expired+=removed.length;
    });
   }
  }
+ if(expired>0)void dmReconcileReceipts().catch(e=>
+  console.error('[PF1AE] Death expiry notification error',e));
  return {expired};
+}
+/**
+ * A durable source-bound outbox makes GM delivery independent of the actor
+ * owner's browser. The elected GM claims an event BEFORE invoking any
+ * executable script: concurrent hooks/F5/leader changes never replay it.
+ * A crash during the small claim->invoke window may lose a notification;
+ * at-most-once is intentional to prevent duplicate RP/chat messages.
+ */
+const dmCalls=item=>item?.scriptCalls?.contents??
+ (typeof item?.scriptCalls?.values==='function'?[...item.scriptCalls.values()]:
+  Array.isArray(item?.scriptCalls)?item.scriptCalls:item?.system?.scriptCalls??[]);
+function dmValidReceipt(item,receipt){
+ const r=receipt,m=r?.modifier;
+ if(!r||typeof r!=='object'||!dmValidate(m)||
+   !/^dm:[a-z0-9]+:[a-z0-9]+$/i.test(String(r.eventId??''))||
+   r.type!=='defenseModifierExpired'||
+   r.sourceItemUuid!==item.uuid||
+   r.defenderUuid!==(item.actor??item.parent)?.uuid||
+   m.sourceItemUuid!==item.uuid||m.defenderUuid!==r.defenderUuid||
+   r.modifierKey!==m.key||r.attackerUuid!==(m.attackerUuid??null)||
+   r.bonusType!==m.bonusType||r.value!==m.value||
+   !['death','rest','manual','other'].includes(r.reason)||
+   typeof r.reasonProvenance!=='string'||r.reasonProvenance.length>90||
+   (r.reason==='death'&&
+    (r.expiredActorUuid!==m.expiresOnDeathOf||!dmUuid(r.expiredActorUuid)))||
+   (r.reason!=='death'&&r.expiredActorUuid!==null))
+  return false;
+ return true;
+}
+async function dmDeliverReceipts(item){
+ if(!dmLeader()||!dmEnabled()||item?.documentName!=='Item')return {skipped:true};
+ return dmQueue(item.uuid,async()=>{
+  const current=item.getFlag?.(DM_NS,DM_RECEIPTS)??[];
+  if(!Array.isArray(current))return {skipped:true};
+  const pending=current.filter(e=>e?.delivery==='pending'&&
+   dmValidReceipt(item,e));
+  let emitted=0,executed=0,blocked=0;
+  for(const receipt of pending){
+   if(!dmLeader())break;
+   // An event may only be claimed when its actual source modifier is gone.
+   const mods=item.getFlag?.(DM_NS,DM_FLAG)??[];
+   if(!Array.isArray(mods)||mods.some(x=>x.key===receipt.modifierKey))continue;
+   const latest=item.getFlag?.(DM_NS,DM_RECEIPTS)??[];
+   if(!Array.isArray(latest)||!latest.some(e=>
+      e.eventId===receipt.eventId&&e.delivery==='pending'))continue;
+   const claimed=latest.map(e=>e.eventId===receipt.eventId?
+    {...e,delivery:'claimed'}:e);
+   await item.setFlag(DM_NS,DM_RECEIPTS,claimed);
+   // Event has been irreversibly claimed, so publish only once.
+   const {delivery,...payload}=receipt;
+   const event=Object.freeze(dmClone(payload));
+   try{Hooks.callAll?.('pf1aeDefenseModifierExpired',event);emitted++}
+   catch(error){console.error('[PF1AE] Defense expiry hook failed',error)}
+   const actor=item.actor??item.parent;
+   if(actor?.uuid!==event.defenderUuid)continue;
+   const matching=dmCalls(item).filter(call=>call?.category==='postUse'&&
+     call?.name==='PF1AE:defense:expired'&&
+     typeof call.execute==='function'&&(call.id??call._id));
+   if(matching.length!==1){
+    if(matching.length>1)console.warn('[PF1AE] Ambiguous defense expiry Script Call',item.uuid);
+    continue;
+   }
+   const call=matching[0];
+   const approval=game.modules.get(DM_NS)?.api?.scriptApprovals
+     ?.check?.(actor,item,call);
+   if(approval?.approved!==true){
+    blocked++;
+    console.warn('[PF1AE] Defense expiry Script Call not approved',{
+     actorUuid:actor.uuid,itemUuid:item.uuid,scriptId:call.id??call._id,
+     reason:approval?.reason??'approval-service-unavailable'
+    });
+    continue;
+   }
+   try{
+    // Native PF1 Script Call executes on elected GM. The source and
+    // fingerprint are checked by scriptApprovals, never from a socket.
+    await call.execute({action:null},{event,state:null,
+     api:game.modules.get(DM_NS)?.api?.defenseModifiers});
+    executed++;
+   }catch(error){
+    console.error('[PF1AE] Expiration native Script Call failed',
+      item.uuid,receipt.eventId,error);
+   }
+  }
+  return {emitted,executed,blocked};
+ });
+}
+async function dmReconcileReceipts(){
+ if(!dmLeader()||!dmEnabled())return {skipped:true};
+ const seen=new Set(),results=[];
+ for(const actor of dmWorldActors()){
+  for(const item of dmItems(actor)){
+   if(item?.documentName!=='Item'||seen.has(item.uuid))continue;
+   seen.add(item.uuid);
+   if((item.getFlag?.(DM_NS,DM_RECEIPTS)??[]).some?.(r=>r.delivery==='pending'))
+    results.push(await dmDeliverReceipts(item));
+  }
+ }
+ return {results};
 }
 function dmCheckDeath(doc){
  const actor=doc?.documentName==="Actor"?doc:
@@ -221,6 +410,15 @@ Hooks.once("init",()=>{
  for(const name of ["createActiveEffect","updateActiveEffect","deleteActiveEffect"])
   Hooks.on(name,dmCheckDeath);
  Hooks.on("updateActor",dmCheckDeath);
+ // Foundry's native updateItem propagates a player-owned removal to the
+ // elected GM, with its durable event receipt. No custom socket is needed.
+ Hooks.on("updateItem",item=>{
+  if(item?.getFlag?.(DM_NS,DM_RECEIPTS)?.some?.(x=>x.delivery==='pending'))
+   void dmDeliverReceipts(item).catch(e=>
+    console.error('[PF1AE] Expiration delivery failed',e));
+ });
+ Hooks.on("canvasReady",()=>{void dmReconcileReceipts().catch(console.error)});
+ Hooks.on("updateUser",()=>{void dmReconcileReceipts().catch(console.error)});
 });
 
 Hooks.once('ready',()=>{
@@ -228,6 +426,8 @@ Hooks.once('ready',()=>{
  mod.api??={};
  mod.api.defenseModifiers=Object.freeze({
   register:dmRegister,remove:dmRemove,list:dmList,evaluate:dmEvaluate,
+  _withVerifiedRest:dmWithVerifiedRest,
+  reconcilePending:dmReconcileReceipts,
   expireConfirmed:dmExpireConfirmed,
   lastDiagnostic:()=>DM_LAST?dmClone(DM_LAST):null
  });
@@ -235,5 +435,8 @@ Hooks.once('ready',()=>{
 
 // Reconcile conditions present before the elected GM connected.
 Hooks.once("ready",()=>{
- if(dmLeader())for(const actor of dmWorldActors())dmCheckDeath(actor);
+ if(dmLeader()){
+  for(const actor of dmWorldActors())dmCheckDeath(actor);
+  void dmReconcileReceipts().catch(console.error);
+ }
 });

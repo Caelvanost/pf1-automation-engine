@@ -63,10 +63,18 @@ async function rdDispatch(event){
         rest:event.rest
       }));
       // Execute the actual PF1 ItemScriptCall, not the parent Item action.
-      await call.execute({action:null},{
+      const execute=()=>call.execute({action:null},{
         event:scriptedEvent,state:null,
         api:game.modules.get(RD_NS)?.api?.generic
       });
+      const defenses=game.modules.get(RD_NS)?.api?.defenseModifiers;
+      // Verified rest provenance is available only while PF1AE executes
+      // the approved native Script Call from an authenticated rest event.
+      if(typeof defenses?._withVerifiedRest==='function')
+        await defenses._withVerifiedRest({
+          actorUuid:actor.uuid,itemUuid:item.uuid,restId:event.rest.id
+        },execute);
+      else await execute();
       executed++;
     }catch(error){
       console.error("[PF1AE][Daily rest] Native ItemScriptCall failed",{
