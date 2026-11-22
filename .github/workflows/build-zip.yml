@@ -27,7 +27,7 @@ jobs:
             'bootstrap','combat-cleanup','damage-events','discovery','distraction',
             'duration','effect-groups-silent','migration','native-save-bridge',
             'native-save-context','native-save-outcome-dispatch',
-            'native-save-post-chatmessage','neutrality','rest-hooks',
+            'native-save-post-chatmessage','neutrality','rest-hooks','rest-daily',
             'save-outcomes','template-save-outcomes','timed-save-outcomes',
             'turn-phases','trusted-table','range-automation','i18n','reload-core',
             'attack-resolution','attack-resolution-integration','item-default-action','chat-actions','chat-action-bootstrap','bleed','bleed-manual','bleed-display','ranged-melee','script-approval-menu','tactical-positioning',
@@ -55,6 +55,7 @@ jobs:
             if ($null -eq $archive.GetEntry('scripts/effect-groups.js')) { throw 'Missing multi-target effect service.' }
             if ($null -eq $archive.GetEntry('scripts/duration-manager.js')) { throw 'Missing world-time duration manager.' }
             if ($null -eq $archive.GetEntry('scripts/rest-automation.js')) { throw 'Missing native PF1 rest bridge.' }
+            if ($null -eq $archive.GetEntry('scripts/rest-daily.js')) { throw 'Missing native PF1 daily-rest Script Call discovery.' }
             if ($null -eq $archive.GetEntry('scripts/save-overrides.js')) { throw 'Missing saving throw override service.' }
             if ($null -eq $archive.GetEntry('scripts/save-context.js')) { throw 'Missing native PF1 save context bridge.' }
             if ($null -eq $archive.GetEntry('scripts/range-automation.js')) { throw 'Missing native PF1 range increment bridge.' }
