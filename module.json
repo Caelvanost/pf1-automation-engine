@@ -2,7 +2,7 @@
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
   "description": "A modular Pathfinder 1e automation engine for attacks, range, underwater ranged penalties, melee engagement, damage, saves, bleeding, effects, rests, persistent scripts, and secure multiplayer chat actions.",
-  "version": "1.41.6",
+  "version": "1.41.7",
   "authors": [
     {
       "name": "Caelvanost"
@@ -59,6 +59,7 @@
     "scripts/cover-detection.js",
     "scripts/cover-3d-diagnostics.js",
     "scripts/cover-mode.js",
+    "scripts/directional-cover.js",
     "scripts/cover-pf1-rules.js",
     "scripts/melee-reach.js",
     "scripts/cover-native-bridge.js",
@@ -95,5 +96,5 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.41.6/pf1-automation-engine-v1.41.6.zip"
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.41.7/pf1-automation-engine-v1.41.7.zip"
 }

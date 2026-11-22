@@ -149,7 +149,8 @@ async function aeDeliver(source,results,actionUse,message) {
            moduleApi?.coverPF1?.inspect){
           try{
             coverDiagnosis=moduleApi.coverPF1.inspect({
-              attacker:attackPlaceable,target:token.object,attackType:kind
+              attacker:attackPlaceable,target:token.object,attackType:kind,
+              action,actionUse
             });
           }catch(error){
             aeLog('PF1 cover assessment failed',{error:String(error)});

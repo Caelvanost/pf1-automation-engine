@@ -199,6 +199,16 @@
         "Label": "Improvised Weapon",
         "Hint": "This weapon is considered an improvised weapon."
       }
+    },
+    "DirectionalCover": {
+      "ChooseTitle": "Directional cover — choose an edge",
+      "ChooseHint": "Choose an edge of the token's occupied space.",
+      "north": "North",
+      "east": "East",
+      "south": "South",
+      "west": "West",
+      "cancel": "Cancel",
+      "Blocked": "Attack blocked — directional total cover."
     }
   }
 }

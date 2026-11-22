@@ -1,4 +1,13 @@
-# PF1 Automation Engine v1.41.6
+# PF1 Automation Engine v1.41.7
+
+## Abri directionnel temporaire et pavois (v1.41.7)
+
+Nouveau service générique `api.directionalCover` : enregistrement d'un bord protégé sur un Item source et un token précis, abris partiel/normal/amélioré/total, géométrie prudente par rayons depuis les cases occupées, expiration au début du prochain tour, nettoyage par le MJ élu et contrôles OWNER/MJ. Les protections suivent automatiquement les positions des tokens, sans `WallDocument`. Le moteur d'abris `api.coverPF1.inspect()` intègre ces protections ; son garde `cover-native-bridge.js` annule avant le jet les attaques directes avec abri total confirmé.
+
+Les cas diagonaux mixtes et les situations 3D non prouvées restent indéterminés. Les sorts ciblés sans jet d'attaque, zones et effets d'étendue ne sont pas interceptés. Aucun changement à la CA native, aux dégâts, aux munitions ou aux bonus de Réflexes.
+
+L'exemple de **Grant Total Cover** avec la boîte de dialogue à quatre directions et son Script Call natif complet est documenté dans [DIRECTIONAL-COVER.md](DIRECTIONAL-COVER.md). Le moteur ne contient aucune règle ni aucun nom propres au pavois.
+
 
 ## Défenses conditionnelles typées, fin permanente à la mort et Script Call de repos (v1.41.6)
 
