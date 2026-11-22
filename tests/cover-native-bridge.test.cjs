@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const callbacks=new Map(),ready=[],init=[],alerts=[],cards=[];
 const pf1aeModule={active:true,api:{}};
-const scene={id:'s',grid:{type:1,units:'ft'},walls:{contents:[]},tiles:{contents:[]},regions:{contents:[]}};
+const scene={id:'s',grid:{type:1,units:'ft',distance:5},walls:{contents:[]},tiles:{contents:[]},regions:{contents:[]}};
 const tokens=[],system={modules:new Map([['pf1-automation-engine',pf1aeModule]]),
  settings:{get(_n,k){return k==='genericEnabled'?true:'2d'}},
  user:{id:'player',isGM:false,targets:new Set()},
@@ -138,30 +138,38 @@ const onceGuard=actionUse.createAttackDialog;
 callbacks.get('pf1CreateActionUse')(actionUse);
 assert.equal(actionUse.createAttackDialog,onceGuard,'dialog guard is idempotent');
 assert.equal(before(actionUse),undefined,'empty battlefield does not block');
-// Skull & Shackles integration: read flags.world.underwater on the
-// actual targeted TokenDocument, with no intervening creature/wall.
+// Skull & Shackles water-region surface is 0 and token height 5ft.
+const waterRegion={id:'water',parent:{id:'s'},elevation:0,
+ flags:{'pf1-skull-and-shackles':{waterRegion:{enabled:true,surface:0}}},
+ testPoint:({x})=>x>=250&&x<500};
+scene.regions.contents.push(waterRegion);
 target.document.flags={world:{underwater:true}};
+target.document.elevation=-2.5;
 for(const actionType of ['rwak','mwak','msak']){
  action.actionType=actionType;
  const waterResult=pf1aeModule.api.coverNativeBridge.preview(actionUse);
  assert.equal(waterResult?.status,'confirmed');
- assert.equal(waterResult?.type,'soft',
-  actionType+' target underwater must gain intrinsic soft cover');
- assert.equal(waterResult?.acBonus,4);
- assert.equal(waterResult?.reflexBonus,0);
+ assert.equal(waterResult?.type,'improved',
+  actionType+' chest-deep target should gain improved water cover');
+ assert.equal(waterResult?.acBonus,8);
+ assert.equal(waterResult?.reflexBonus,4);
 }
 action.actionType='rwak';
 const waterHtml=pf1aeModule.api.coverNativeBridge.patchTargetAC(
  '<div class="attack-targets"><div class="target" data-uuid="Scene.s.Token.b"><div class="ac"><div class="normal"><span class="value">16</span></div></div></div></div>',
  {rollIndex:0,targetResults:[{targetTokenUuid:target.document.uuid,
   coverDiagnosis:pf1aeModule.api.coverNativeBridge.preview(actionUse)}]});
-assert.ok(waterHtml.includes('>Soft cover</span>'),
- 'native card explicitly labels underwater soft cover in English');
-assert.ok(waterHtml.includes('>+4 AC</span>'));
-target.document.flags.world.underwater=false;
+assert.ok(waterHtml.includes('>Improved cover</span>'),
+ 'native card labels chest-deep water as improved cover in English');
+assert.ok(waterHtml.includes('>+8 AC</span>'));
+target.document.elevation=-5;
+assert.equal(pf1aeModule.api.coverNativeBridge.preview(actionUse)?.type,'total',
+ 'fully submerged target blocks direct attack from land');
+target.document.elevation=0;
 assert.equal(pf1aeModule.api.coverNativeBridge.preview(actionUse)?.type,'none',
- 'submergence removed: intrinsic soft cover must disappear');
-
+ 'target at surface does not gain aquatic cover');
+target.document.flags.world.underwater=false;
+scene.regions.contents.length=0;
 scene.walls.contents.push({id:'wall',c:[200,-200,200,300],
  uuid:'Scene.s.Wall.w',move:20,door:0,ds:0});
 const diagnosis=pf1aeModule.api.coverNativeBridge.preview(actionUse);
