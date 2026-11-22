@@ -59,6 +59,7 @@
     "scripts/cover-detection.js",
     "scripts/cover-3d-diagnostics.js",
     "scripts/cover-mode.js",
+    "scripts/directional-cover.js",
     "scripts/cover-pf1-rules.js",
     "scripts/melee-reach.js",
     "scripts/cover-native-bridge.js",
