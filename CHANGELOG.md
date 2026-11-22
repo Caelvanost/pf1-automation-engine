@@ -1,3 +1,10 @@
+# 1.41.12 — Détection exacte du statut natif Levitating sur les tokens
+
+- Prise en compte explicite du statut `Levitating` attribué depuis le HUD natif PF1 et synchronisation de `TokenDocument.movementAction` vers `fly`.
+- Correspondance des tokens par UUID d'acteur stable, ainsi que réconciliation sur les mises à jour natives `updateActor` et `updateToken` lorsque le HUD ne produit pas un hook distinct d'effet.
+- Tests du libellé exact `Levitating`, acteurs synthétiques ayant différents objets JS, mises à jour de HUD et retrait de l'effet.
+- Aucun nouvel effet Flying, aucune modification des règles ou vitesses de déplacement de PF1.
+
 # 1.41.11 — Lévitation native synchronisée avec le mouvement Vol
 
 - Un effet PF1 natif Levitation/Lévitation actif place automatiquement le token en mode de mouvement `fly`, sans appliquer ni créer l'état Flying.

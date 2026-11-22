@@ -1,4 +1,10 @@
-# PF1 Automation Engine v1.41.11
+# PF1 Automation Engine v1.41.12
+
+## Statut natif « Levitating » sur les tokens (v1.41.12)
+
+Le statut PF1 natif **Levitating** appliqué depuis le HUD d'un token synchronise directement le mode de mouvement du TokenDocument en **fly**. Le moteur rapproche désormais les acteurs par leur UUID stable, même si la représentation de l'acteur du token diffère de celle de l'effet. Il réagit aussi aux mises à jour natives de l'acteur et des effets du token en complément des hooks ActiveEffect. Le retrait du dernier effet Levitating restitue le mode natif approprié. Aucun statut Flying ajouté et aucune capacité de vol horizontal créée.
+
+
 
 ## Lévitation → mode de déplacement Vol (v1.41.11)
 

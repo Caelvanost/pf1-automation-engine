@@ -167,6 +167,44 @@ const tick=async()=>{await new Promise(resolve=>setImmediate(resolve));};
  actor.statuses.delete('pf1_levitation');
  fire('deleteActiveEffect',levitation);
  await tick();
+ // Exact native PF1 "Levitating" status, as applied from the token HUD.
+ const nativeLevitating={
+  parent:actor,name:'Levitating',
+  statuses:new Set(['levitating']),disabled:false
+ };
+ effects.push(nativeLevitating);
+ actor.statuses.add('levitating');
+ fire('createActiveEffect',nativeLevitating);
+ await tick();
+ assert.equal(a.movementAction,'fly','native Levitating selects Fly');
+ assert.equal(b.movementAction,'fly');
+ assert.equal(actor.statuses.has('pf1_flying'),false,
+  'native Levitating never toggles Flying');
+ // Regression: token documents can expose a distinct JS Actor wrapper
+ // carrying the same synthetic Actor UUID; stable identity must match.
+ const priorBActor=b.actor;
+ b.actor={...actor,uuid:actor.uuid};
+ b.movementAction='walk';
+ fire('updateActiveEffect',nativeLevitating,{disabled:false});
+ await tick();
+ assert.equal(b.movementAction,'fly','matches Actor UUID, not JS reference');
+ b.actor=priorBActor;
+ // Some native token HUD paths change Actor statuses without the
+ // ActiveEffect callback: updateActor and updateToken must reconcile.
+ a.movementAction='walk';
+ fire('updateActor',actor,{statuses:['levitating']});
+ await tick();
+ assert.equal(a.movementAction,'fly','native actor status update restores Fly');
+ a.movementAction='walk';
+ fire('updateToken',a,{effects:['levitating']});
+ await tick();
+ assert.equal(a.movementAction,'fly','native token HUD update restores Fly');
+ effects.splice(effects.indexOf(nativeLevitating),1);
+ actor.statuses.delete('levitating');
+ fire('deleteActiveEffect',nativeLevitating);
+ await tick();
+ assert.equal(a.movementAction,'walk','removing Levitating restores Walk');
+ assert.equal(b.movementAction,'walk');
  // Non-leading player must not run a competing synchronization.
  game.user={id:'player',isGM:false};
  await a.update({movementAction:'fly'});
