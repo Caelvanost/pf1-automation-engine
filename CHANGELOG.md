@@ -1,3 +1,10 @@
+# 1.41.10 — Lévitation native synchronisée avec le mouvement Vol
+
+- Un effet PF1 natif Levitation/Lévitation actif place automatiquement le token en mode de mouvement `fly`, sans appliquer ni créer l'état Flying.
+- Reconnaissance des noms anglais/français, statuts PF1, effets multiples, suppression/désactivation et scène/reconnexion.
+- Le mode Vol ne confère aucune vitesse horizontale ou autre mécanique du sort Vol ; règles de Lévitation inchangées.
+- Régressions ajoutées au test de synchronisation des effets natifs et mouvements.
+
 # 1.41.10 — Abri aquatique selon l'immersion de PF1 Waters
 
 - Source prioritaire : API PF1 Waters `getTokenWaterState()`, avec hauteur physique personnalisée et profondeur réellement occupée.
