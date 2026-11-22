@@ -1,4 +1,25 @@
-# PF1 Automation Engine v1.41.1
+# PF1 Automation Engine v1.41.2
+
+## Abri aquatique d'après les régions Skull & Shackles (v1.41.2)
+
+**Ce correctif remplace entièrement le bonus automatique d'abri mou de v1.40.11.** Le flag `flags.world.underwater` indique que la base du token est sous l'eau, mais ne suffit pas à déterminer son degré d'immersion ni à accorder un abri.
+
+PF1AE lit la région Skull & Shackles sur la scène :
+- `flags["pf1-skull-and-shackles"].waterRegion.enabled === true`
+- `flags["pf1-skull-and-shackles"].waterRegion.surface` (niveau de surface dans l'unité d'élévation de la scène)
+- l'altitude de la **base** du token (`TokenDocument.elevation`) et sa hauteur de corps, estimée selon son empreinte (`max(width,height) × scene.grid.distance`).
+- `RegionDocument.testPoint()` au **centre horizontal du token**, en utilisant l'élévation de la région, comme Skull & Shackles.
+
+**Attaquant non immergé → cible dans la région :**
+- si `base > surface - hauteur/2`, **aucun abri aquatique** ;
+- si `surface - hauteur < base <= surface - hauteur/2`, **abri supérieur : +8 CA / +4 Réflexes** ;
+- si `base <= surface - hauteur`, **abri total**, l'attaque directe est annulée.
+
+Les seuils sont **inclusifs**. Exemple avec `surface = 0` et une créature de taille M représentée par 1×1 case sur grille de **1,50 m** : à **−0,75 m**, abri supérieur ; à **−1,50 m**, abri total. La même logique s'applique dans les scènes mesurées en pieds (1×1 / 5 ft : −2,5 ft, −5 ft), et aux autres niveaux de surface.
+
+Le bonus aquatique **ne se cumule pas** avec un abri dû à un mur. Un attaquant lui-même sous la surface de l'eau ne donne aucun abri aquatique supplémentaire à une cible immergée. Les régions d'eau reconnues ne sont pas considérées comme des murs solides pour la géométrie 3D ; les régions inconnues restent indéterminées. L'abri normal, partiel, supérieur et total géométrique est conservé ; l'abri supérieur aquatique remplace un abri inférieur, l'abri total bloque l'attaque. Les diagnostics conservent la région et la profondeur. Une cible hors de la région ne reçoit aucun bonus aquatique, même avec un ancien flag `underwater=true`.
+
+La vignette d'attaque native PF1 affiche le libellé existant « **Abri supérieur / +8 CA** » ou signale l'impossibilité d'une attaque directe en cas d'abri total. Les autres automatismes de **tir à travers l'eau**, y compris les malus en fonction de la distance immergée, ne changent pas. Les attaques d'opportunité restent manuelles.
 
 ## Tirs à travers l’eau
 
@@ -10,7 +31,7 @@ Le calcul est effectué avant le jet natif PF1 et s’additionne aux malus de po
 
 Generic, rules-neutral automation services for native PF1 Item Script Calls. This module does not ship standalone example character scripts; abilities remain configured on their Foundry Items.
 
-## Underwater targets gain intrinsic soft cover (v1.40.11)
+## Historique : ancien abri mou sous l'eau (v1.40.11, remplacé en v1.41.2)
 
 Skull & Shackles v1.23.0 sets the **generic TokenDocument flag** `flags.world.underwater = true` when a creature is below a water-region surface. PF1AE now reads that exact token flag, without requiring a runtime dependency on Skull & Shackles or modifying the token.
 
