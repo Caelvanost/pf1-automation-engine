@@ -1,3 +1,12 @@
+# 1.41.3 — Synchronisation bidirectionnelle entre Vol/Nager et le déplacement Foundry
+
+- **PF1 effet natif Vol / Flying activé** → `TokenDocument.movementAction = "fly"` ; **Nager / Swimming activé** → `"swim"`.
+- **Effet natif désactivé ou supprimé** → mouvement normal `"walk"` (ou autre effet de déplacement toujours présent).
+- **Mode de déplacement `fly` / `swim` sélectionné sur un token** → activation de l'état natif PF1 correspondant par `Actor.toggleStatusEffect()`, désactivation de l'état incompatible. Retour à `walk` → désactivation de Vol et Nager.
+- Identifiants d'états résolus depuis le registre natif `CONFIG.statusEffects` sans effets artificiels ou nouveaux modes de vitesse. Libellés anglais et français acceptés.
+- Seul le MJ actif synchronise les modifications en présence d'un MJ connecté ; protections contre les boucles d'événements et les effets dupliqués. Plusieurs tokens du même acteur sur la scène utilisent le même mode.
+- Tests de régression dédiés ajoutés au workflow de construction Windows ; aucune modification aux vitesses, abris, tirs ou malus aquatiques.
+
 # 1.41.2 — Abri aquatique selon profondeur et niveau d'eau Skull & Shackles
 
 - Remplace l'**abri mou +4 CA automatique** fondé sur `flags.world.underwater` (v1.40.11) par la détermination de la profondeur réelle dans une Region d'eau Skull & Shackles (`flags["pf1-skull-and-shackles"].waterRegion.enabled/surface`).
