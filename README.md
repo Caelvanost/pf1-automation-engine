@@ -1,4 +1,19 @@
-# PF1 Automation Engine v1.41.9
+# PF1 Automation Engine v1.41.10
+
+## Abri aquatique via PF1 Waters (v1.41.10)
+
+**PF1AE gère les bonus et les interdictions d'attaque.** PF1 Waters fournit uniquement l'état géométrique du token : sa Region, sa hauteur physique et la fraction réellement immergée. PF1AE lit en priorité l'API `game.modules.get("pf1-waters")?.api?.getTokenWaterState(token)`.
+
+Face à un adversaire **situé hors de l'eau** :
+- **moins de 50 % d'immersion** : aucun abri aquatique ;
+- **de 50 % inclus à moins de 100 %** : **abri supérieur** (`improved`, +8 CA et +4 Réflexes dans les situations applicables) ;
+- **100 % d'immersion** : **abri total** (`total`), ce qui bloque les attaques directes depuis la terre.
+
+Le niveau d'abri ne se cumule pas avec celui des murs : PF1AE retient le plus protecteur. La vérification des bonus de CA existants et le traitement de la carte d'attaque native ne changent pas. Le bonus de Réflexes n'est pas appliqué indistinctement à tous les jets : il dépend toujours de la provenance et des protections reconnues par le pont de sauvegarde de PF1AE.
+
+Quand PF1 Waters est désactivé ou son API indisponible, le moteur lit les Regions `flags.pf1-waters.waterRegion` avec un repli sur `flags.pf1-skull-and-shackles.waterRegion`, sans réactiver d'anciennes Regions désormais désactivées. Dans ce mode de secours, il respecte les profondeurs finies et `flags.pf1-waters.physicalHeight`.
+
+Ce changement ne modifie ni la CA native de l'acteur, ni la position du token, ni les scripts des capacités. Les exceptions spécifiques à *liberté de mouvement* et les effets de sorts sans jet d'attaque ne sont pas étendus par cette version ; les cas particuliers restent à arbitrer par le MJ.
 
 ## Correction — sélection de l'action par défaut dans les fiches PF1 (v1.41.9)
 
@@ -98,7 +113,7 @@ Le module résout les identifiants de **vrais états natifs** depuis `CONFIG.sta
 
 Les événements `createActiveEffect`, `updateActiveEffect`, `deleteActiveEffect` et `updateToken` assurent la synchronisation, avec des garde-fous contre les boucles et l'exécution simultanée sur plusieurs clients. Lorsqu'un MJ est connecté, la mise à jour est effectuée uniquement par le MJ actif. Le module reste compatible avec les autres automatismes, notamment Skull & Shackles et les abris aquatiques.
 
-## Abri aquatique d'après les régions Skull & Shackles (v1.41.2)
+## Historique — abri aquatique d'après les anciennes régions Skull & Shackles (v1.41.2)
 
 **Ce correctif remplace entièrement le bonus automatique d'abri mou de v1.40.11.** Le flag `flags.world.underwater` indique que la base du token est sous l'eau, mais ne suffit pas à déterminer son degré d'immersion ni à accorder un abri.
 

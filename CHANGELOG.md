@@ -1,3 +1,11 @@
+# 1.41.10 — Abri aquatique selon l'immersion de PF1 Waters
+
+- Source prioritaire : API PF1 Waters `getTokenWaterState()`, avec hauteur physique personnalisée et profondeur réellement occupée.
+- Attaque venant de la terre : immersion ≥ 50 % et < 100 % = abri supérieur (+8 CA / +4 Réflexes applicables) ; immersion totale = abri total.
+- PF1AE seul gère l'évaluation du niveau d'abri, le non-cumul, la comparaison de CA native et le blocage des attaques directes ; aucun bonus injecté dans PF1 Waters.
+- Compatibilité des anciennes scènes conservée : flags canoniques `pf1-waters.waterRegion` puis historiques `pf1-skull-and-shackles.waterRegion`, avec désactivation prioritaire.
+- Régressions couvrant seuils d'immersion, hauteur du token, fonds limités, désactivation et cas d'attaquant déjà dans l'eau.
+
 # 1.41.9 — Restauration de l'option « Action par défaut » pour les fiches Item PF1 v11.11
 
 - Rendu pris en charge via `renderApplication` (Foundry ApplicationV2) en complément des hooks `renderItemSheet` et `renderItemSheetV2`.
