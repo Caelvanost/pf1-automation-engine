@@ -438,7 +438,7 @@ function cpInterpretGeometry({attacker,target,attackType="ranged",scene,
   return d?.overhead||d?.flags?.levels?.blockSightMovement||
     d?.flags?.betterroofs?.brMode||d?.flags?.levels?.rangeTop!=null;
  }))return cpResult("uncertain","roof-or-floor-line-of-effect-unverified");
- // Skull & Shackles water Regions represent WATER, not opaque solid
+ // Canonical PF1 Waters and legacy Regions represent WATER, not opaque solid
  // geometry. They may contribute aquatic cover separately, but cannot
  // invalidate otherwise known 3D wall/Levels line of effect. Unknown
  // non-water Regions remain conservative and block auto-adjudication.
@@ -837,16 +837,19 @@ function cpInterpretGeometry({attacker,target,attackType="ranged",scene,
 
 }
 /**
- * Skull & Shackles v1.23+: a water Region carries
- *   flags["pf1-skull-and-shackles"].waterRegion = {enabled:true,surface:0}
- * while a token base lies at TokenDocument.elevation.
- * A generic flags.world.underwater flag means only "base below surface";
- * it does NOT itself grant cover, nor distinguish chest/full immersion.
+ * PF1 Waters owns Region geometry and true body immersion. PF1AE owns
+ * the PF1e cover types, native attack gate and effective defenses.
  */
 function cpWaterRegionData(region){
- const raw=cpDoc(region)?.flags?.["pf1-skull-and-shackles"]?.waterRegion;
- return raw?.enabled===true&&cpFinite(raw.surface)?
-  {surface:raw.surface}:null;
+ const flags=cpDoc(region)?.flags??{};
+ const modern=flags["pf1-waters"]?.waterRegion;
+ const legacy=flags["pf1-skull-and-shackles"]?.waterRegion;
+ const raw=modern!==undefined?modern:legacy;
+ if(raw?.enabled!==true||!cpFinite(raw.surface))return null;
+ const depth=raw.depth===null||raw.depth===undefined||raw.depth===""?
+  null:Number(raw.depth);
+ return {surface:raw.surface,
+  bottom:cpFinite(depth)&&depth>=0?raw.surface-depth:null};
 }
 function cpWaterAtToken(doc,scene,regions,gridSize){
  if(!doc||!scene||!cpFinite(doc.x)||!cpFinite(doc.y)||
@@ -865,9 +868,37 @@ function cpWaterAtToken(doc,scene,regions,gridSize){
    elevation:cpFinite(r.elevation)?r.elevation:0})===true;}
   catch(_){continue;}
   if(inside&&(!found||data.surface>found.surface))
-   found={surface:data.surface,regionId:r.uuid??r.id};
+   found={...data,regionId:r.uuid??r.id};
  }
  return found;
+}
+function cpWatersState(token,scene){
+ const module=game.modules?.get?.("pf1-waters");
+ if(module?.active!==true)return null;
+ const query=module.api?.getTokenWaterState??module.api?.waterAutomation?.getState;
+ if(typeof query!=="function")return null;
+ try{
+  const state=query(token);
+  if(!state||typeof state!=="object"||
+    typeof state.inWater!=="boolean"||
+    !cpFinite(state.tokenHeight)||!cpFinite(state.immersion)||
+    !cpFinite(state.tokenBottom)||
+    (state.inWater&&!cpFinite(state.surface))||
+    state.immersion<0||state.immersion>1+CP_EPS)return null;
+  if(cpDoc(token)?.parent?.id!==scene.id)return null;
+  return state;
+ }catch(error){
+  console.warn("[PF1AE][AquaticCover] PF1 Waters state unavailable",error);
+  return null;
+ }
+}
+function cpWaterFraction(water,bottom,height){
+ if(!water||!cpFinite(height)||height<=0||
+    bottom>=water.surface-CP_EPS)return 0;
+ const top=bottom+height;
+ const overlap=Math.max(0,Math.min(top,water.surface)-
+   Math.max(bottom,water.bottom??-Infinity));
+ return Math.max(0,Math.min(1,overlap/height));
 }
 function cpAquaticState({attacker,target,scene}={}){
  const s=scene??globalThis.canvas?.scene;
@@ -876,29 +907,43 @@ function cpAquaticState({attacker,target,scene}={}){
  const a=cpDoc(attacker),t=cpDoc(target);
  if(!s||!Array.isArray(regions)||!a||!t||
     a.parent?.id!==s.id||t.parent?.id!==s.id)return null;
- const targetWater=cpWaterAtToken(t,s,regions,gridSize);
- if(!targetWater||!cpFinite(t.elevation))return null;
- const targetSpace=cpSpace(target,s,gridSize);
- const height=targetSpace?cpTokenBodyHeight(targetSpace,s):null;
- if(!cpFinite(height)||height<=0)return null;
- const depth=targetWater.surface-t.elevation;
- // The user's explicitly chosen model:
- // chest-deep: base <= water surface - height/2
- // fully submerged: base <= water surface - height.
- const immersion=depth+CP_EPS>=height?"full":
-  depth+CP_EPS>=height/2?"chest":null;
+
+ const tState=cpWatersState(target,s);
+ let fraction,height,depth,water,source;
+ if(tState){
+  if(!tState.inWater)return null;
+  fraction=tState.immersion;height=tState.tokenHeight;
+  depth=tState.surface-tState.tokenBottom;
+  water={surface:tState.surface,
+   regionId:tState.region?.uuid??tState.regionId};
+  source="pf1-waters";
+ }else{
+  water=cpWaterAtToken(t,s,regions,gridSize);
+  if(!water||!cpFinite(t.elevation))return null;
+  const space=cpSpace(target,s,gridSize);
+  height=space?cpTokenBodyHeight(space,s):null;
+  const custom=t.flags?.["pf1-waters"]?.physicalHeight;
+  if(cpFinite(custom)&&custom>0)height=custom;
+  if(!cpFinite(height)||height<=0)return null;
+  depth=water.surface-t.elevation;
+  fraction=cpWaterFraction(water,t.elevation,height);
+  source="water-region-fallback";
+ }
+ if(!cpFinite(height)||height<=0||!cpFinite(fraction))return null;
+ const immersion=fraction+CP_EPS>=1?"full":
+  fraction+CP_EPS>=0.5?"chest":null;
  if(!immersion)return null;
- const attackerWater=cpWaterAtToken(a,s,regions,gridSize);
- // Native generic flag is retained as a secondary safeguard against
- // declaring an actively submerged attacker "on land" when water
- // geometry is temporarily out of sync.
- const attackerSubmerged=a.flags?.world?.underwater===true||
-  (attackerWater&&cpFinite(a.elevation)&&
-   a.elevation<attackerWater.surface-CP_EPS);
- if(attackerSubmerged)return null;
- return {immersion,depth,bodyHeight:height,
-  surface:targetWater.surface,regionId:targetWater.regionId,
-  attackerLand:true};
+
+ const aState=cpWatersState(attacker,s);
+ const aWater=aState?null:cpWaterAtToken(a,s,regions,gridSize);
+ const attackerUnderwater=aState?.inWater===true||
+  a.flags?.world?.underwater===true||
+  (aWater&&cpFinite(a.elevation)&&cpFinite(s.grid?.distance)&&
+   cpWaterFraction(aWater,a.elevation,
+    Math.max(a.width??1,a.height??1)*s.grid.distance)>CP_EPS);
+ if(attackerUnderwater)return null;
+ return {immersion,immersionFraction:fraction,depth,bodyHeight:height,
+  surface:water.surface,regionId:water.regionId,attackerLand:true,source};
 }
 function cpInterpretBaseline(options={}){
  const water=cpAquaticState(options);
@@ -908,7 +953,7 @@ function cpInterpretBaseline(options={}){
   return cpResult("confirmed","aquatic-full-submersion-total",{
    type:"total",preventsDirectAttack:true,mode:options?.mode??
     game.modules?.get?.(CP_NS)?.api?.coverMode?.get?.()??"2d",
-   source:"skull-and-shackles-water-region",aquaticCover:water});
+   source:water.source,aquaticCover:water});
  const result=cpInterpretGeometry(options);
  if(!water||result.status!=="confirmed")return result;
  if(water.immersion==="chest"){
@@ -922,7 +967,7 @@ function cpInterpretBaseline(options={}){
    result.reflexBonus=4;
    result.preventsDirectAttack=false;
    result.reason="aquatic-chest-deep-improved";
-   result.source="skull-and-shackles-water-region";
+   result.source=water.source;
   }
  }
  CP_LAST=cpClone(result);

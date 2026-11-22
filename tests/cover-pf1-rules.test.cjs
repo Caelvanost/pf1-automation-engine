@@ -83,6 +83,61 @@ target.document.x=300;
 // A target at exactly the surface is not chest-deep.
 target.document.elevation=0;
 assert.equal(check({mode:'2d'}).type,'none');
+// Canonical PF1 Waters Region flags work without Skull & Shackles API.
+waterRegion.flags['pf1-waters']={waterRegion:{enabled:true,surface:0,depth:12}};
+target.document.elevation=-2.5;
+assert.equal(check({mode:'2d'}).type,'improved',
+ 'canonical PF1 Waters Region grants improved cover at half immersion');
+assert.equal(check({mode:'2d'}).source,'water-region-fallback');
+target.document.elevation=-5;
+assert.equal(check({mode:'2d'}).type,'total',
+ 'canonical PF1 Waters Region grants total cover fully submerged');
+waterRegion.flags['pf1-waters'].waterRegion.enabled=false;
+assert.equal(check({mode:'2d'}).type,'none',
+ 'disabled canonical Region overrides an enabled old Skull & Shackles flag');
+waterRegion.flags['pf1-waters'].waterRegion.enabled=true;
+waterRegion.flags['pf1-waters'].waterRegion.depth=2;
+target.document.elevation=-5;
+assert.equal(check({mode:'2d'}).type,'none',
+ 'being entirely below the actual bottom is not immersion');
+waterRegion.flags['pf1-waters'].waterRegion.depth=12;
+// Prefer the active Waters API: explicit physical token height wins.
+const waters={active:true,api:{getTokenWaterState(token){
+ const doc=token?.document??token,physicalHeight=doc.id==='target'?2:5;
+ const base=doc.elevation, top=base+physicalHeight;
+ const fraction=Math.max(0,Math.min(1,
+   (Math.min(top,0)-Math.max(base,-12))/physicalHeight));
+ return {inWater:fraction>0,immersion:fraction,tokenBottom:base,
+   tokenHeight:physicalHeight,surface:0,regionId:'water-a',
+   region:waterRegion};
+}}};
+modules.set('pf1-waters',waters);
+target.document.elevation=-0.99;
+assert.equal(check({mode:'2d'}).type,'none',
+ 'less than half immersion is no water cover');
+target.document.elevation=-1;
+result=check({mode:'2d'});
+assert.equal(result.type,'improved');
+assert.equal(result.acBonus,8);
+assert.equal(result.reflexBonus,4);
+assert.equal(result.source,'pf1-waters');
+assert.equal(result.aquaticCover.immersionFraction,0.5);
+assert.equal(result.aquaticCover.bodyHeight,2);
+target.document.elevation=-2;
+assert.equal(check({mode:'2d'}).type,'total',
+ 'full body immersion prevents direct attacks from land');
+attacker.document.elevation=-1;
+assert.equal(check({mode:'2d'}).type,'none',
+ 'aquatic surface cover is unavailable against an immersed attacker');
+attacker.document.elevation=0;
+// An active API stating OUTSIDE must win over stale Region flags.
+waters.api.getTokenWaterState=()=>({
+ inWater:false,immersion:0,tokenBottom:0,tokenHeight:2,surface:null,regionId:null
+});
+assert.equal(check({mode:'2d'}).type,'none');
+modules.delete('pf1-waters');
+delete waterRegion.flags['pf1-waters'];
+target.document.elevation=0;
 // Restore normal geometry tests, and separate water setup from their
 // existing deliberately comprehensive wall/movement regression suite.
 target.document.elevation=0;
