@@ -58,7 +58,7 @@ function cbGeometry(actionUse){
  const cover=game.modules.get(CB_NS)?.api?.coverPF1;
  if(!cover?.inspect)return null;
  let assessment;
- try{assessment=cover.inspect({attacker,target,attackType:kind})}
+ try{assessment=cover.inspect({attacker,target,attackType:kind,action,actionUse})}
  catch(error){console.warn("[PF1AE][CoverBridge] Pre-attack assessment error",error);return null}
  return {assessment,attacker,target,kind};
 }
