@@ -1,3 +1,12 @@
+# 1.41.4 — Combat de mêlée sous l'eau et multiplicateur natif de dégâts
+
+- Attaques de mêlée **tranchantes ou contondantes** effectuées par un acteur immergé : **–2 au jet d'attaque** via `pf1CreateActionUse.shared.attackBonus` et **dégâts physiques ×0,5** via le hook natif `pf1PreDamageRoll`, arrondis au plancher après les bonus de dégâts applicables.
+- Détection de l'immersion par `Skull & Shackles.waterAutomation.getState` (avec fallback sur le flag `world.underwater`), sans mutation de la fiche ou des objets.
+- Attaques perforantes non pénalisées ; types ambigus et inconnus laissés intacts ; liberté de mouvement identifiable sur l'acteur ignorée pour les malus aquatiques. Lignes séparées de dégâts d'énergie non réduites.
+- Nouveau champ **Multiplicateur de dégâts** intégré au dialogue natif PF1 : 1 (normal), 0,5 (moitié), 2 (double), etc. La valeur se combine au multiplicateur aquatique sans cumul d'arrondis intermédiaires ; aucune duplication de dés ou modification après le jet.
+- Remplacement du champ **Damage Multiplier** de Roll Bonuses lorsque présent (ancien contrôle neutralisé et valeur de formulaire purgée). **Les autres fonctions de Roll Bonuses restent indépendantes et ne sont pas migrées par cette version.**
+- Deux paramètres de monde indépendants et tests de régression dédiés intégrés aux workflows Windows et de publication.
+
 # 1.41.3 — Synchronisation bidirectionnelle entre Vol/Nager et le déplacement Foundry
 
 - **PF1 effet natif Vol / Flying activé** → `TokenDocument.movementAction = "fly"` ; **Nager / Swimming activé** → `"swim"`.
