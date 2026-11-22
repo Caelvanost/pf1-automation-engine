@@ -10,7 +10,8 @@ const SA_AUTO_NAMES=new Map([
  ['toggle',new Set(['PF1AE:bootstrap','PF1AE:rangedMelee:override'])],
  ['postUse',new Set(['PF1AE:attack:resolved','PF1AE:damage:applied',
   'PF1AE:damage:critical','PF1AE:damage:zeroHP',
-  'PF1AE:bleed:before','PF1AE:bleed:applied'])]
+  'PF1AE:bleed:before','PF1AE:bleed:applied',
+  'PF1AE:rest:daily'])]
 ]);
 const saLeader=()=>[...game.users].filter(u=>u.active&&u.isGM)
  .sort((a,b)=>a.id.localeCompare(b.id))[0]??null;
