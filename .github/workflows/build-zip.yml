@@ -32,7 +32,7 @@ jobs:
             'turn-phases','trusted-table','range-automation','i18n','reload-core',
             'attack-resolution','attack-resolution-integration','item-default-action','chat-actions','chat-action-bootstrap','bleed','bleed-manual','bleed-display','ranged-melee','script-approval-menu','tactical-positioning',
             'defense-modifiers','cover-detection','cover-saves',
-            'cover-3d-diagnostics','cover-pf1-rules','native-cover-provenance','movement-status-sync','underwater-melee',
+            'cover-3d-diagnostics','cover-pf1-rules','native-cover-provenance','movement-status-sync','underwater-melee','weapon-properties-ui',
             'native-cover-attack-integration','cover-mode','cover-native-bridge'
           )
           foreach ($name in $tests) {
@@ -51,6 +51,7 @@ jobs:
           $archive = [System.IO.Compression.ZipFile]::OpenRead($zips[0].FullName)
           try {
             if ($null -eq $archive.GetEntry('module.json')) { throw 'module.json is not at ZIP root.' }
+            if ($null -eq $archive.GetEntry('scripts/weapon-properties-ui.js')) { throw 'Missing improvised weapon UI service.' }
             if ($null -eq $archive.GetEntry('scripts/effect-groups.js')) { throw 'Missing multi-target effect service.' }
             if ($null -eq $archive.GetEntry('scripts/duration-manager.js')) { throw 'Missing world-time duration manager.' }
             if ($null -eq $archive.GetEntry('scripts/rest-automation.js')) { throw 'Missing native PF1 rest bridge.' }
