@@ -63,7 +63,8 @@ function msResolve(){
  * Never synthesize or toggle a Levitation/Flying status to implement this.
  */
 const MS_LEVITATION_NAMES=new Set([
- "levitation","levitating","pf1levitation","pf1levitating"
+ // PF1 native condition: "Levitating" (not a required spell or Buff).
+ "levitating","levitation","pf1levitating","pf1levitation"
 ]);
 const msLevitationText=x=>MS_LEVITATION_NAMES.has(msNorm(x));
 function msLevitationIds(){
@@ -117,8 +118,11 @@ function msIsActive(actor,type,ids){
 function msActorTokens(actor){
  const scene=globalThis.canvas?.scene;
  const tokens=globalThis.canvas?.tokens?.placeables??[];
+ // TokenDocument.actor may be another wrapper of the same synthetic Actor.
+ // Compare stable Actor UUID instead of JS object identity, which fails
+ // with native token HUD statuses and some PF1 v11.11 sheet contexts.
  return tokens.map(t=>t?.document??t).filter(doc=>
-  doc?.actor&&doc.actor===actor&&
+  actor?.uuid&&doc?.actor?.uuid===actor.uuid&&
   (!scene||doc.parent?.id===scene.id));
 }
 function msCanWrite(actor){
@@ -137,7 +141,8 @@ async function msSetMovement(doc,type){
  finally{MS_BUSY_TOKENS.delete(key);}
 }
 async function msSyncFromEffect(effect,operation){
- const actor=effect?.parent;
+ const parent=effect?.parent;
+ const actor=parent?.documentName==="Actor"?parent:parent?.actor;
  if(!actor||!msCanWrite(actor))return;
  const ids=msResolve();
  const levitation=msEffectIsLevitation(effect);
@@ -169,8 +174,14 @@ async function msSyncFromEffect(effect,operation){
  finally{MS_BUSY_ACTORS.delete(key);}
 }
 async function msSyncFromMovement(token,changed){
- if(!Object.prototype.hasOwnProperty.call(changed??{},"movementAction"))return;
+ // A native HUD status can change without movementAction appearing in the
+ // token update. Detect the existing Levitating state on those updates.
  const actor=token?.actor;
+ if(actor&&msCanWrite(actor)&&msIsLevitating(actor)){
+  if(token.movementAction!=="fly")await msSetMovement(token,"fly");
+  if(!Object.prototype.hasOwnProperty.call(changed??{},"movementAction"))return;
+ }
+ if(!Object.prototype.hasOwnProperty.call(changed??{},"movementAction"))return;
  if(!actor||!msCanWrite(actor))return;
  const next=token.movementAction;
  if(typeof next!=="string")return;
@@ -208,6 +219,14 @@ async function msSyncFromMovement(token,changed){
 }
 Hooks.on("updateToken",(token,changes)=>{
  void msSyncFromMovement(token,changes);
+});
+// PF1 can apply native conditions through an Actor update rather than
+// emit a distinct createActiveEffect event on every token-hud path.
+Hooks.on("updateActor",actor=>{
+ if(!actor||!msCanWrite(actor)||!msIsLevitating(actor))return;
+ for(const token of msActorTokens(actor))
+  void msSetMovement(token,"fly").catch(error=>
+   console.warn("PF1AE | Levitating actor sync",error));
 });
 Hooks.on("createActiveEffect",effect=>{
  void msSyncFromEffect(effect,"create");
