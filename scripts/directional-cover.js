@@ -216,9 +216,10 @@ function dcInspect({attacker,target,attackType="ranged",action,actionUse}={}){
  // this direct-attack bridge. Rays/touch attacks are handled as attacks.
  if(!["ranged","melee","reach"].includes(attackType))
   return {status:"not-applicable"};
- if(action?.hasAttack===false)return {status:"not-applicable"};
- if(action?.hasTemplate===true&&action?.hasAttack!==true)
-  return {status:"not-applicable"};
+ // Require positive native evidence of an attack roll; a caller asking for
+ // generic cover or Reflex protection must never inherit total-cover denial.
+ if(action?.hasAttack!==true)return {status:"not-applicable"};
+ if(action?.hasTemplate===true)return {status:"not-applicable"};
  const candidates=dcRecords(defender).filter(({record,item})=>
   record.tokenUuid===targetDoc.uuid&&dcActive(record)&&dcEquipped(item,record));
  if(!candidates.length)return {status:"not-applicable"};
