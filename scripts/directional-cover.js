@@ -185,13 +185,14 @@ function dcGeometry(attacker,target,edge){
   return {status:"uncertain",reason:"3d-line-of-effect-unverified"};
  const line=dcEdge(d,edge);
  if(!line)return {status:"uncertain",reason:"invalid-protected-edge"};
+ // Sample just inside occupied corners to resolve cardinal adjacency
+ // without falsely treating a touching origin as a grazing trajectory.
+ const ae=Math.min(a.right-a.left,a.bottom-a.top)/1000;
  const origins=[
-  {x:a.left,y:a.top},{x:a.right,y:a.top},
-  {x:a.left,y:a.bottom},{x:a.right,y:a.bottom}
+  {x:a.left+ae,y:a.top+ae},{x:a.right-ae,y:a.top+ae},
+  {x:a.left+ae,y:a.bottom-ae},{x:a.right-ae,y:a.bottom-ae}
  ];
- // Sample interior endpoints, not exactly on the boundary: a wall-like
- // barrier must interrupt EVERY possible corner ray before total cover.
- const e=Math.max(0.01,Math.min(d.right-d.left,d.bottom-d.top)/1000);
+ const e=Math.min(d.right-d.left,d.bottom-d.top)/1000;
  const ends=[
   {x:d.left+e,y:d.top+e},{x:d.right-e,y:d.top+e},
   {x:d.left+e,y:d.bottom-e},{x:d.right-e,y:d.bottom-e}
