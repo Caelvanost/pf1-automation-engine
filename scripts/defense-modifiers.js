@@ -300,6 +300,87 @@ async function dmExpireConfirmed(target){
   console.error('[PF1AE] Death expiry notification error',e));
  return {expired};
 }
+/**
+ * A durable source-bound outbox makes GM delivery independent of the actor
+ * owner's browser. The elected GM claims an event BEFORE invoking any
+ * executable script: concurrent hooks/F5/leader changes never replay it.
+ * A crash during the small claim->invoke window may lose a notification;
+ * at-most-once is intentional to prevent duplicate RP/chat messages.
+ */
+const dmCalls=item=>item?.scriptCalls?.contents??
+ (typeof item?.scriptCalls?.values==='function'?[...item.scriptCalls.values()]:
+  Array.isArray(item?.scriptCalls)?item.scriptCalls:item?.system?.scriptCalls??[]);
+async function dmDeliverReceipts(item){
+ if(!dmLeader()||!dmEnabled()||item?.documentName!=='Item')return {skipped:true};
+ return dmQueue(item.uuid,async()=>{
+  const current=item.getFlag?.(DM_NS,DM_RECEIPTS)??[];
+  if(!Array.isArray(current))return {skipped:true};
+  const pending=current.filter(e=>e?.delivery==='pending'&&
+   e?.sourceItemUuid===item.uuid);
+  let emitted=0,executed=0,blocked=0;
+  for(const receipt of pending){
+   if(!dmLeader())break;
+   // An event may only be claimed when its actual source modifier is gone.
+   const mods=item.getFlag?.(DM_NS,DM_FLAG)??[];
+   if(!Array.isArray(mods)||mods.some(x=>x.key===receipt.modifierKey))continue;
+   const latest=item.getFlag?.(DM_NS,DM_RECEIPTS)??[];
+   if(!Array.isArray(latest)||!latest.some(e=>
+      e.eventId===receipt.eventId&&e.delivery==='pending'))continue;
+   const claimed=latest.map(e=>e.eventId===receipt.eventId?
+    {...e,delivery:'claimed'}:e);
+   await item.setFlag(DM_NS,DM_RECEIPTS,claimed);
+   // Event has been irreversibly claimed, so publish only once.
+   const {delivery,...payload}=receipt;
+   const event=Object.freeze(dmClone(payload));
+   try{Hooks.callAll?.('pf1aeDefenseModifierExpired',event);emitted++}
+   catch(error){console.error('[PF1AE] Defense expiry hook failed',error)}
+   const actor=item.actor??item.parent;
+   if(actor?.uuid!==event.defenderUuid)continue;
+   const matching=dmCalls(item).filter(call=>call?.category==='postUse'&&
+     call?.name==='PF1AE:defense:expired'&&
+     typeof call.execute==='function'&&(call.id??call._id));
+   if(matching.length!==1){
+    if(matching.length>1)console.warn('[PF1AE] Ambiguous defense expiry Script Call',item.uuid);
+    continue;
+   }
+   const call=matching[0];
+   const approval=game.modules.get(DM_NS)?.api?.scriptApprovals
+     ?.check?.(actor,item,call);
+   if(approval?.approved!==true){
+    blocked++;
+    console.warn('[PF1AE] Defense expiry Script Call not approved',{
+     actorUuid:actor.uuid,itemUuid:item.uuid,scriptId:call.id??call._id,
+     reason:approval?.reason??'approval-service-unavailable'
+    });
+    continue;
+   }
+   try{
+    // Native PF1 Script Call executes on elected GM. The source and
+    // fingerprint are checked by scriptApprovals, never from a socket.
+    await call.execute({action:null},{event,state:null,
+     api:game.modules.get(DM_NS)?.api?.defenseModifiers});
+    executed++;
+   }catch(error){
+    console.error('[PF1AE] Expiration native Script Call failed',
+      item.uuid,receipt.eventId,error);
+   }
+  }
+  return {emitted,executed,blocked};
+ });
+}
+async function dmReconcileReceipts(){
+ if(!dmLeader()||!dmEnabled())return {skipped:true};
+ const seen=new Set(),results=[];
+ for(const actor of dmWorldActors()){
+  for(const item of dmItems(actor)){
+   if(item?.documentName!=='Item'||seen.has(item.uuid))continue;
+   seen.add(item.uuid);
+   if((item.getFlag?.(DM_NS,DM_RECEIPTS)??[]).some?.(r=>r.delivery==='pending'))
+    results.push(await dmDeliverReceipts(item));
+  }
+ }
+ return {results};
+}
 function dmCheckDeath(doc){
  const actor=doc?.documentName==="Actor"?doc:
   doc?.parent?.documentName==="Actor"?doc.parent:null;
@@ -311,6 +392,15 @@ Hooks.once("init",()=>{
  for(const name of ["createActiveEffect","updateActiveEffect","deleteActiveEffect"])
   Hooks.on(name,dmCheckDeath);
  Hooks.on("updateActor",dmCheckDeath);
+ // Foundry's native updateItem propagates a player-owned removal to the
+ // elected GM, with its durable event receipt. No custom socket is needed.
+ Hooks.on("updateItem",item=>{
+  if(item?.getFlag?.(DM_NS,DM_RECEIPTS)?.some?.(x=>x.delivery==='pending'))
+   void dmDeliverReceipts(item).catch(e=>
+    console.error('[PF1AE] Expiration delivery failed',e));
+ });
+ Hooks.on("canvasReady",()=>{void dmReconcileReceipts().catch(console.error)});
+ Hooks.on("updateUser",()=>{void dmReconcileReceipts().catch(console.error)});
 });
 
 Hooks.once('ready',()=>{
@@ -326,5 +416,8 @@ Hooks.once('ready',()=>{
 
 // Reconcile conditions present before the elected GM connected.
 Hooks.once("ready",()=>{
- if(dmLeader())for(const actor of dmWorldActors())dmCheckDeath(actor);
+ if(dmLeader()){
+  for(const actor of dmWorldActors())dmCheckDeath(actor);
+  void dmReconcileReceipts().catch(console.error);
+ }
 });
