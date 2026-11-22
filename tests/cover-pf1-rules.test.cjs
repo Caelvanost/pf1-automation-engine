@@ -87,6 +87,39 @@ assert.equal(check({mode:'2d'}).type,'none');
 // existing deliberately comprehensive wall/movement regression suite.
 target.document.elevation=0;
 target.document.flags.world.underwater=false;
+// Metric threshold regression: one square is 1.50m; chest at -0.75m,
+// full immersion at -1.50m, boundaries inclusive.
+scene.grid.distance=1.5;scene.grid.units='m';
+target.document.elevation=-0.75;
+result=check({mode:'2d'});
+assert.equal(result.type,'improved','1.50m token: -0.75m is chest deep');
+assert.equal(result.aquaticCover.bodyHeight,1.5);
+target.document.elevation=-1.5;
+assert.equal(check({mode:'2d'}).type,'total',
+ '1.50m token: -1.50m is fully submerged');
+// A different surface datum translates both boundaries identically.
+waterRegion.flags['pf1-skull-and-shackles'].waterRegion.surface=3;
+target.document.elevation=2.25;
+assert.equal(check({mode:'2d'}).type,'improved');
+target.document.elevation=1.5;
+assert.equal(check({mode:'2d'}).type,'total');
+// Water-region diagnostics must be compatible with 3D mode and
+// Levels when the attacker and target have different elevations.
+const waterLevelModule={active:true};
+modules.set('levels',waterLevelModule);
+ctx.CONFIG={Levels:{API:{testCollision:()=>false}}};
+target.document.elevation=2.25;
+result=check({mode:'3d'});
+assert.equal(result.status,'confirmed');
+assert.equal(result.type,'improved',
+ 'recognized water Regions must not invalidate known 3D geometry');
+assert.equal(result.reflexBonus,4);
+target.document.elevation=1.5;
+assert.equal(check({mode:'3d'}).type,'total');
+modules.delete('levels');delete ctx.CONFIG;
+scene.grid.distance=5;scene.grid.units='ft';
+target.document.elevation=0;
+waterRegion.flags['pf1-skull-and-shackles'].waterRegion.surface=0;
 scene.regions.contents.length=0;
 scene.walls.contents.push(wall('full',200,-200,200,300));
 result=check();
