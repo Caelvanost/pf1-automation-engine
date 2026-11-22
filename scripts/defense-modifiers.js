@@ -174,7 +174,7 @@ function dmEvaluate({defenderActor,defenderUuid,attackerUuid,defense,nativeTypes
  * conditional defenses. HP 0 alone never qualifies. Check at the moment
  * of the write, so transient / unrelated ActiveEffects cannot expire them.
  */
-const dmLeader=()=>[...game.users].filter(u=>u.active&&u.isGM)
+const dmLeader=()=>[...(game.users??[])].filter(u=>u.active&&u.isGM)
  .sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user?.id;
 function dmWorldActors(){
  const found=new Map();
@@ -217,6 +217,7 @@ function dmCheckDeath(doc){
   void dmExpireConfirmed(actor).catch(e=>console.error("[PF1AE] Death expiration failed",e));
 }
 Hooks.once("init",()=>{
+ if(typeof Hooks.on!=="function")return;
  for(const name of ["createActiveEffect","updateActiveEffect","deleteActiveEffect"])
   Hooks.on(name,dmCheckDeath);
  Hooks.on("updateActor",dmCheckDeath);
