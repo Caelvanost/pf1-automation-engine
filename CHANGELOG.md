@@ -1,3 +1,11 @@
+# 1.41.7 — Abris directionnels temporaires (pavois)
+
+- Nouveau service générique `api.directionalCover` : déclarations Item-sources, bord N/E/S/O, types d'abri, permission OWNER/MJ, persistance native, expiration absolue au début du prochain tour et nettoyage des effets obsolètes.
+- Lecture de la géométrie des rectangles occupés et rayons entre coins intérieurs. Les attaques dont toutes les trajectoires franchissent le bord protégé reçoivent un abri total confirmé ; incertitude sur les diagonales mixtes/élévations non vérifiées.
+- Pont vers `coverPF1.inspect()` et garde natif pré-jet `cover-native-bridge.js`, sans murs réels, CA ou bonus de Réflexes artificiels.
+- Sélecteur natif DialogV2 à quatre directions et exemple complet de l'action `Grant Total Cover` dans `DIRECTIONAL-COVER.md`.
+- Régressions dédiées, documentation et traductions FR/EN ; validation manuelle requise pour le cycle exact du Script Call PF1 et les scènes complexes.
+
 # 1.41.6 — Provenance typée des défenses, Script Call de repos et expiration définitive
 
 - Vérification des bonus typés déjà présents dans les CA natives normale/contact/prise au dépourvu par `api.nativeCover.inspectTypes()` ; intégration aux défense conditionnelles sans double cumul de parade et sans réécrire l'Actor. Sources indéterminées : diagnostic `uncertain` conservé.
