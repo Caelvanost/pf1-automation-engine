@@ -62,6 +62,20 @@ function damage(parts){
  await open(cancel);
  parts=[{base:'1d6',extra:['3'],damageType:{values:['slashing']},type:'normal'}];
  damage(parts);assert.equal(parts[0].base,'1d6');
+ // User x2 is independent from underwater x0.5 on energy damage:
+ // physical returns to normal while fire stays doubled.
+ const mixedDamage=base();mixedDamage.formData['pf1ae-damage-multiplier']='2';
+ await open(mixedDamage);
+ parts=[{base:'1d8',extra:['4'],damageType:{values:['slashing']},type:'normal'},
+  {base:'1d6',extra:[],damageType:{values:['fire']},type:'nonCrit'}];
+ damage(parts);
+ assert.equal(parts[0].base,'1d8');
+ assert.match(parts[1].base,/\* 2\)/);
+ // Native PF1 may store damage types as a Set as well as an Array.
+ action.damage.parts[0].types=new Set(['bludgeoning']);
+ const blunt=base();await open(blunt);
+ assert.equal(blunt.shared.attackBonus.length,1);
+ action.damage.parts[0].types=['slashing'];
  // Freedom of movement exempts melee penalties.
  actor.statuses.add('freedomOfMovement');
  const freedom=base();await open(freedom);
