@@ -79,6 +79,37 @@ function damage(parts){
  damage(parts);
  assert.match(parts[0].base,/\* 0.5\)/);
  assert.equal(parts[1].base,'1d6');
+ // Native PF1 AttackDialog: own control replaces Roll Bonuses' field,
+ // leaving its other conditional bonuses operational.
+ class AttackDialog{}
+ const nativeDialog=new AttackDialog();
+ let removed=0,installed=null;
+ const oldInput={value:'3',disabled:false,
+  closest:()=>({remove(){removed++;}})};
+ const anchorGroup={after(group){installed=group;}};
+ const root={querySelector(selector){
+  if(selector.includes('pf1ae-damage-multiplier'))return null;
+  if(selector.includes('global-bonus_damage-multiplier'))return oldInput;
+  if(selector.includes('damage-bonus'))return {closest:()=>anchorGroup};
+  return null;
+ }};
+ const oldPf1=ctx.pf1,oldDocument=ctx.document;
+ ctx.pf1={applications:{AttackDialog}};
+ ctx.document={createElement(tag){
+  return {tagName:tag,children:[],appendChild(x){this.children.push(x)},
+   append(...xs){this.children.push(...xs)}};
+ }};
+ handlers.get('renderApplication')(nativeDialog,[root]);
+ assert.equal(removed,1);
+ assert.equal(oldInput.disabled,true);
+ assert.ok(installed,'our multiplier control inserted next to damage bonus');
+ assert.equal(installed.children[1].children[0].name,'pf1ae-damage-multiplier');
+ assert.equal(installed.children[1].children[0].value,'1');
+ ctx.pf1=oldPf1;ctx.document=oldDocument;
+ const rollback=base();rollback.formData['global-bonus_damage-multiplier']='3';
+ await open(rollback);
+ assert.equal(Object.hasOwn(rollback.formData,'global-bonus_damage-multiplier'),false,
+  'legacy Roll Bonuses multiplier value removed to avoid stacking');
  // Inactive setting completely removes rule.
  settings.set('autoUnderwaterMelee',false);
  const disabled=base();await open(disabled);
