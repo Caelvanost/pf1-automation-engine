@@ -1,5 +1,13 @@
 # PF1 Automation Engine v1.41.10
 
+## Lévitation → mode de déplacement Vol (v1.41.10)
+
+Lorsqu'un acteur possède l'état natif **Levitation / Lévitation**, ses tokens utilisent automatiquement `TokenDocument.movementAction = "fly"` (mode **Vol**) dans Foundry. Le synchroniseur accepte les noms natifs anglais/français et identifiants `pf1_levitation` / `pf1_levitating`, prend en compte l'activation/la désactivation/la suppression d'effets, les sources multiples, le rechargement et le changement de scène.
+
+Ceci ne crée **aucun effet Flying supplémentaire**, ne modifie pas les vitesses ni les jets, et ne confond pas les règles de *lévitation* avec le sort *vol* : en Pathfinder 1e, Lévitation permet le déplacement vertical mais pas le vol horizontal autonome. Le choix « Vol » est uniquement une synchronisation de l'indicateur de déplacement du token. Les effets natifs Flying et Swimming existants conservent leur fonctionnement.
+
+
+
 ## Abri aquatique via PF1 Waters (v1.41.10)
 
 **PF1AE gère les bonus et les interdictions d'attaque.** PF1 Waters fournit uniquement l'état géométrique du token : sa Region, sa hauteur physique et la fraction réellement immergée. PF1AE lit en priorité l'API `game.modules.get("pf1-waters")?.api?.getTokenWaterState(token)`.
