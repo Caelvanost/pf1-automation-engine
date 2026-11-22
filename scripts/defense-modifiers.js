@@ -168,11 +168,72 @@ function dmEvaluate({defenderActor,defenderUuid,attackerUuid,defense,nativeTypes
   suppressed,unknownTypes};
  DM_LAST=result;return dmClone(result);
 }
+
+/**
+ * A confirmed PF1 dead condition permanently retires source-bound
+ * conditional defenses. HP 0 alone never qualifies. Check at the moment
+ * of the write, so transient / unrelated ActiveEffects cannot expire them.
+ */
+const dmLeader=()=>[...(game.users??[])].filter(u=>u.active&&u.isGM)
+ .sort((a,b)=>a.id.localeCompare(b.id))[0]?.id===game.user?.id;
+function dmWorldActors(){
+ const found=new Map();
+ for(const actor of game.actors?.contents??[])if(actor?.uuid)found.set(actor.uuid,actor);
+ for(const scene of game.scenes?.contents??[]){
+  for(const token of scene.tokens?.contents??[]){
+   if(token.actorLink)continue;
+   const actor=token.actor;
+   if(actor?.uuid)found.set(actor.uuid,actor);
+  }
+ }
+ return [...found.values()];
+}
+async function dmExpireConfirmed(target){
+ if(!dmEnabled()||!dmLeader()||target?.documentName!=="Actor"||
+    !target.statuses?.has?.("dead"))return {expired:0};
+ let expired=0;
+ for(const defender of dmWorldActors()){
+  for(const item of dmItems(defender)){
+   if(item?.documentName!=="Item")continue;
+   const stored=item.getFlag?.(DM_NS,DM_FLAG);
+   if(!Array.isArray(stored)||!stored.some(x=>x.expiresOnDeathOf===target.uuid))continue;
+   await dmQueue(item.uuid,async()=>{
+    if(!target.statuses?.has?.("dead"))return;
+    const current=item.getFlag?.(DM_NS,DM_FLAG);
+    if(!Array.isArray(current))return;
+    const keep=current.filter(x=>x.expiresOnDeathOf!==target.uuid);
+    if(keep.length===current.length)return;
+    expired+=current.length-keep.length;
+    await item.setFlag(DM_NS,DM_FLAG,keep);
+   });
+  }
+ }
+ return {expired};
+}
+function dmCheckDeath(doc){
+ const actor=doc?.documentName==="Actor"?doc:
+  doc?.parent?.documentName==="Actor"?doc.parent:null;
+ if(actor?.statuses?.has?.("dead"))
+  void dmExpireConfirmed(actor).catch(e=>console.error("[PF1AE] Death expiration failed",e));
+}
+Hooks.once("init",()=>{
+ if(typeof Hooks.on!=="function")return;
+ for(const name of ["createActiveEffect","updateActiveEffect","deleteActiveEffect"])
+  Hooks.on(name,dmCheckDeath);
+ Hooks.on("updateActor",dmCheckDeath);
+});
+
 Hooks.once('ready',()=>{
  const mod=game.modules.get(DM_NS);if(!mod)return;
  mod.api??={};
  mod.api.defenseModifiers=Object.freeze({
   register:dmRegister,remove:dmRemove,list:dmList,evaluate:dmEvaluate,
+  expireConfirmed:dmExpireConfirmed,
   lastDiagnostic:()=>DM_LAST?dmClone(DM_LAST):null
  });
+});
+
+// Reconcile conditions present before the elected GM connected.
+Hooks.once("ready",()=>{
+ if(dmLeader())for(const actor of dmWorldActors())dmCheckDeath(actor);
 });

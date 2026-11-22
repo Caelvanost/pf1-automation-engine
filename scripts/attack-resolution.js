@@ -176,6 +176,27 @@ async function arResolve(context={}){
   Math.max(0,cover-baselineCover):cover;
  const typedBaseline=validCover?
   {...nativeTypes,cover:Math.max(baselineCover,cover)}:nativeTypes;
+ // Ask PF1 for only those types actually used by conditional defenses.
+ // Existing native AC has already counted them; add the positive difference,
+ // not the full value. An uninspectable source must fail closed.
+ let typedProvenance=null;
+ if(selected.type&&['normal','touch','flatFooted'].includes(selected.type)&&
+    targetActor?.uuid&&api?.defenseModifiers?.list){
+   const candidates=api.defenseModifiers.list({
+     defenderActor:targetActor,defenderUuid:targetActor.uuid,
+     attackerUuid:actor?.uuid??null,defense:selected.type
+   });
+   const needed=[...new Set((candidates??[]).map(x=>x.bonusType))]
+     .filter(t=>!['dodge','circumstance','untyped'].includes(t)&&
+       !Number.isFinite(typedBaseline[t]));
+   if(needed.length&&context.nativeTypesComplete!==true){
+     typedProvenance=api.nativeCover?.inspectTypes?.({
+       actor:targetActor,defense:selected.type,types:needed
+     })??{status:'uncertain',reason:'native typed provenance service unavailable'};
+     if(typedProvenance.status==='resolved')
+       Object.assign(typedBaseline,typedProvenance.nativeTypes);
+   }
+ }
  const modifiers=(selected.type&&selected.type!=='cmd'&&selected.type!=='manual'&&
   targetActor?.uuid)?api?.defenseModifiers?.evaluate?.({
    defenderActor:targetActor,defenderUuid:targetActor.uuid,
@@ -192,6 +213,7 @@ async function arResolve(context={}){
    ?null:baseValue+coverIncrement+extra,
   baseValue,coverBonus:coverIncrement,coverAssessment:coverProvided?coverAssessment:null,
   nativeCoverProvenance:nativeProvenance,
+  nativeTypedProvenance:typedProvenance,
   conditionalBonus:modifiers?.status==='resolved'?extra:null,
   conditionalModifiers:modifiers,
   uncertain:uncertainCover||uncertainMods};

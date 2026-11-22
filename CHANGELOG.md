@@ -1,3 +1,11 @@
+# 1.41.6 — Provenance typée des défenses, Script Call de repos et expiration définitive
+
+- Vérification des bonus typés déjà présents dans les CA natives normale/contact/prise au dépourvu par `api.nativeCover.inspectTypes()` ; intégration aux défense conditionnelles sans double cumul de parade et sans réécrire l'Actor. Sources indéterminées : diagnostic `uncertain` conservé.
+- Découverte et exécution automatiques des Script Calls natifs `postUse` nommés `PF1AE:rest:daily` sur l'Actor effectuant un repos quotidien, avec les événements et snapshots du pont `pf1ActorRest`, filtrage par acteur, approbations de sécurité et déduplication.
+- Expiration persistante irréversible des modificateurs `expiresOnDeathOf` lors de l'observation d'un statut `dead` confirmé, et réconciliation au retour du MJ.
+- Tests de provenance de parade, comparaison native de CA, découverte du repos et suppression définitive à la mort ; maintenance des contrôles de packaging / publication.
+- Documentation de l'API et exemples complets Bastion du Bien (activation et nettoyage sans macro d'inscription).
+
 # 1.41.5 — Marqueur natif d'arme improvisée sur les fiches PF1
 
 - Utilise **directement** `system.properties.imp` (champ booléen natif `WeaponModel.properties`), et **aucun flag PF1AE**.

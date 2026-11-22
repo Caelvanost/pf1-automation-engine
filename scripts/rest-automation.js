@@ -189,12 +189,15 @@ async function restProcessSerial(payload, socketOrigin) {
   if (!restEnabled() || !restLeader()) return;
   const generic = game.modules.get(REST_NS)?.api?.generic;
   if (!generic?._dispatchRestEvent) return;
-  await generic._dispatchRestEvent({
+  const restEvent={
     type: payload.phase === "pre" ? "pf1PreActorRest" : "pf1ActorRest",
     document: actor, documentUuid: actor.uuid, actorUuid: actor.uuid,
     itemUuid: null, changedPaths: [], buffState: null,
     round: null, combatId: null, combatantId: null, rest
-  });
+  };
+  await generic._dispatchRestEvent(restEvent);
+  if(payload.phase==="post")
+    await game.modules.get(REST_NS)?.api?.restDaily?._dispatch?.(restEvent);
 }
 Hooks.once("init", () => {
   Hooks.on("pf1PreActorRest", restOnPre);

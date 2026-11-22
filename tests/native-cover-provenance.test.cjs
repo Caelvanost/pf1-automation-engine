@@ -64,5 +64,18 @@ assert.equal(api.inspect({actor,defense:'touch'}).nativeCover,2);
 assert.equal(api.inspect({actor,defense:'cmd'}).status,'uncertain');
 assert.equal(api.inspect({actor:{system:actor.system}}).status,'uncertain');
 assert.equal(api.lastDiagnostic().status,'uncertain');
+set([{name:'Deflection ring',modifier:'deflection',value:2},
+ {name:'Armor',modifier:'armor',value:5}]);
+let typed=api.inspectTypes({actor,defense:'normal',types:['deflection','sacred']});
+assert.equal(typed.status,'resolved');
+assert.equal(typed.nativeTypes.deflection,2,'native typed baseline is retained');
+assert.equal(typed.nativeTypes.sacred,0,'verified absent type is zero');
+set([{name:'Deflection 1',modifier:'deflection',value:1},
+ {name:'Deflection 2',modifier:'deflection',value:2}]);
+typed=api.inspectTypes({actor,defense:'normal',types:['deflection']});
+assert.equal(typed.status,'uncertain','ambiguous same-type native sources fail closed');
+set([{name:'Deflection penalty',modifier:'deflection',value:-1}]);
+typed=api.inspectTypes({actor,defense:'normal',types:['deflection']});
+assert.equal(typed.status,'uncertain','negative source cannot be treated as positive baseline');
 assert.equal(actor.system.attributes.ac.normal.total,21,'never modify native sheet AC');
 console.log('PASS native-cover provenance: PF1 normal and untyped AC details, typed cover deduplication, malformed cover and no writes');

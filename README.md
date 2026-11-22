@@ -1,4 +1,16 @@
-# PF1 Automation Engine v1.41.5
+# PF1 Automation Engine v1.41.6
+
+## Défenses conditionnelles typées, fin permanente à la mort et Script Call de repos (v1.41.6)
+
+Le service de provenance PF1 `api.nativeCover.inspectTypes({actor,defense,types})` lit les sources de la CA native via `getSourceDetails` pour les bonus typés, notamment **parade / deflection**. Le résultat permet à `api.attackResolution` de remplacer le bonus natif non cumulable par le meilleur bonus conditionnel applicable (par exemple CA 22 avec parade native +2 et Bastion du Bien +4 → CA effective 24 contre sa seule cible). Les sources ambiguës restent `uncertain` : aucun ajustement supposé et aucune mutation de la fiche.
+
+Les modificateurs `expiresOnDeathOf` sont désormais **supprimés définitivement** des flags de l'objet source quand le statut PF1 `dead` de l'ennemi est confirmé ; zéro PV sans état mort ne suffit pas. Une réapparition de l'ennemi ne restaure pas le bonus.
+
+Le Script Call natif nommé exactement **`PF1AE:rest:daily`**, de catégorie **Après Utilisation / `postUse`**, est découvert automatiquement parmi les objets de l'acteur et exécuté une fois par événement natif `pf1ActorRest` restaurant les utilisations quotidiennes. Il reçoit `event.type`, `event.actorUuid` et `event.rest` (avec `id`, `restoreDailyUses`, `before`, `after`, `nativeUpdates`). Le MJ élu exécute uniquement le code source natif de l'objet, après validation des approbations. En mode Table de confiance, ce nom exact bénéficie du même mécanisme de confiance que les abonnements PF1AE existants. Aucun abonnement manuel ni consommation de charges supplémentaire.
+
+Les **deux Script Calls complets de Bastion du Bien** et leur configuration sont dans [EXAMPLES-BASTION-DU-BIEN.md](EXAMPLES-BASTION-DU-BIEN.md). Les règles spécifiques du paladin restent dans ces scripts ; les dégâts des alliés restent appliqués manuellement.
+
+
 
 ## Armes improvisées : propriété native PF1 dans la fiche d'arme (v1.41.5)
 

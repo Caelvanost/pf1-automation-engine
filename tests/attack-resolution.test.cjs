@@ -85,6 +85,30 @@ const run=(natural,total,options={})=>ar.resolveAttack({
  // Generic conditional defenses and manual cover modify only the
  // effective comparison; native AC data and the d20 roll remain unchanged.
  const baseApi=api.defenseModifiers;
+ const originalNativeCover=api.nativeCover;
+ api.nativeCover={inspectTypes:({defense,types})=>{
+   assert.equal(defense,'normal');
+   assert.equal(types[0],'deflection');
+   return {status:'resolved',nativeTypes:{deflection:2}};
+ }};
+ api.defenseModifiers={
+   list:()=>[{bonusType:'deflection',value:4}],
+   evaluate:({nativeTypes})=>({
+     status:'resolved',total:Math.max(0,4-nativeTypes.deflection),
+     applied:[],suppressed:[]
+   })
+ };
+ r=await run(10,22);
+ assert.equal(r.defense.value,22,
+  'native AC 20 containing +2 deflection plus +4 conditional = 22');
+ assert.equal(r.defense.nativeTypedProvenance.nativeTypes.deflection,2);
+ api.nativeCover={inspectTypes:()=>({status:'uncertain',reason:'unknown-deflection'})};
+ api.defenseModifiers.evaluate=({nativeTypes})=>
+   Number.isFinite(nativeTypes.deflection)?
+     {status:'resolved',total:2}:{status:'uncertain',total:null};
+ r=await run(10,99);
+ assert.equal(r.defense.value,null,'unknown native deflection source fails closed');
+ api.nativeCover=originalNativeCover;
  api.defenseModifiers={evaluate:()=>({status:'resolved',total:4,applied:[],
   suppressed:[]})};
  r=await run(10,23,{nativeBonusTypes:{cover:0},
