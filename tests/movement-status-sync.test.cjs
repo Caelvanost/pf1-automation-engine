@@ -105,6 +105,8 @@ const tick=async()=>{await new Promise(resolve=>setImmediate(resolve));};
  fire('updateActiveEffect',swimming,{disabled:false});
  await tick();
  assert.equal(a.movementAction,'swim');
+ await actor.toggleStatusEffect('pf1_swimming',{active:false});
+ await tick();
  // Levitation is a distinct native PF1 condition but selects Fly on
  // every scene token without adding a synthetic Flying status.
  const levitation={parent:actor,name:'Levitation',
@@ -142,9 +144,9 @@ const tick=async()=>{await new Promise(resolve=>setImmediate(resolve));};
  assert.equal(b.movementAction,'walk');
  // Native flying still takes precedence when Levitation expires.
  await actor.toggleStatusEffect('pf1_flying',{active:true});
- effects.push(levitation);levitation.disabled=false;
+ levitation.disabled=false;
  actor.statuses.add('pf1_levitation');
- fire('createActiveEffect',levitation);
+ fire('updateActiveEffect',levitation,{disabled:false});
  await tick();
  effects.splice(effects.indexOf(levitation),1);
  actor.statuses.delete('pf1_levitation');
