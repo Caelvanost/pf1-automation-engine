@@ -43,6 +43,7 @@
     "scripts/effect-groups.js",
     "scripts/generic-automation.js",
     "scripts/duration-manager.js",
+    "scripts/rest-daily.js",
     "scripts/rest-automation.js",
     "scripts/save-overrides.js",
     "scripts/save-context.js",
