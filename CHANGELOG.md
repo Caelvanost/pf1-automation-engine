@@ -1,3 +1,12 @@
+# 1.41.5 — Marqueur natif d'arme improvisée sur les fiches PF1
+
+- Utilise **directement** `system.properties.imp` (champ booléen natif `WeaponModel.properties`), et **aucun flag PF1AE**.
+- Réutilise l'input natif `name="system.properties.imp"` présent dans « Propriétés de l'arme » de PF1 v11.11, avec libellé détaillé et indication de fonction. Repli sans doublon lorsque le contrôle natif est absent.
+- Injection via `renderApplication` pour les seules fiches natives `pf1.applications.item.WeaponSheetPF`. Sauvegarde par le `submitOnChange` natif de PF1 : aucun listener de modification persistant, pas de socket et aucune modification des règles de combat.
+- Respecte `isEditable` et `isOwner`, les rerenders, la réouverture, les armes autonomes et celles d'un acteur ; aucune injection sur les autres types d'Items.
+- Traductions française et anglaise, avec fallback explicite du fichier `lang/en.json` lorsque le client ne dispose pas de la chaîne localisée.
+- Tests de régression dédiés (affichage, état, permissions, rerenders, localisation, types d'Items, contrôle natif et repli), intégrés au workflow de packaging et à la publication GitHub.
+
 # 1.41.4 — Combat de mêlée sous l'eau et multiplicateur natif de dégâts
 
 - Attaques de mêlée **tranchantes ou contondantes** effectuées par un acteur immergé : **–2 au jet d'attaque** via `pf1CreateActionUse.shared.attackBonus` et **dégâts physiques ×0,5** via le hook natif `pf1PreDamageRoll`, arrondis au plancher après les bonus de dégâts applicables.

@@ -193,6 +193,12 @@
       "SettingsName": "Malus automatiques des tirs à travers l’eau",
       "SettingsHint": "Applique -2 au jet d’attaque par tranche de 1,50 m d’eau réellement traversée. Nécessite les zones d’eau de PF1 — Skull & Shackles.",
       "Penalty": "Tir sous l’eau"
+    },
+    "Weapon": {
+      "Improvised": {
+        "Label": "Arme improvisée",
+        "Hint": "Cette arme est considérée comme une arme improvisée."
+      }
     }
   }
 }

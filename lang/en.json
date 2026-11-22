@@ -193,6 +193,12 @@
       "SettingsName": "Automatic underwater ranged penalties",
       "SettingsHint": "Apply -2 to the attack roll per 5 ft of water actually crossed. Requires water regions from PF1 — Skull & Shackles.",
       "Penalty": "Underwater shot"
+    },
+    "Weapon": {
+      "Improvised": {
+        "Label": "Improvised Weapon",
+        "Hint": "This weapon is considered an improvised weapon."
+      }
     }
   }
 }
