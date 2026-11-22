@@ -83,7 +83,8 @@ const inspect=(foe,opts={})=>api.inspect({
  await register('north',{tokenUuid:big.uuid,key:'large'});
  assert.equal(api.list({defenderActor:actor,defenderUuid:actor.uuid}).length,2);
  const high=token('high',enemy,300,200,1,1,10);
- assert.equal(api.inspect({attacker:high,target:guard,attackType:'ranged'}).status,
+ assert.equal(api.inspect({attacker:high,target:guard,attackType:'ranged',
+  action:{hasAttack:true,actionType:'rwak'}}).status,
   'uncertain','unverified elevation blocks automatic conclusion');
  battle.round=3;battle.turn=0;
  assert.equal(api.list({defenderActor:actor,defenderUuid:actor.uuid}).length,0,
