@@ -310,13 +310,31 @@ async function dmExpireConfirmed(target){
 const dmCalls=item=>item?.scriptCalls?.contents??
  (typeof item?.scriptCalls?.values==='function'?[...item.scriptCalls.values()]:
   Array.isArray(item?.scriptCalls)?item.scriptCalls:item?.system?.scriptCalls??[]);
+function dmValidReceipt(item,receipt){
+ const r=receipt,m=r?.modifier;
+ if(!r||typeof r!=='object'||!dmValidate(m)||
+   !/^dm:[a-z0-9]+:[a-z0-9]+$/i.test(String(r.eventId??''))||
+   r.type!=='defenseModifierExpired'||
+   r.sourceItemUuid!==item.uuid||
+   r.defenderUuid!==(item.actor??item.parent)?.uuid||
+   m.sourceItemUuid!==item.uuid||m.defenderUuid!==r.defenderUuid||
+   r.modifierKey!==m.key||r.attackerUuid!==(m.attackerUuid??null)||
+   r.bonusType!==m.bonusType||r.value!==m.value||
+   !['death','rest','manual','other'].includes(r.reason)||
+   typeof r.reasonProvenance!=='string'||r.reasonProvenance.length>90||
+   (r.reason==='death'&&
+    (r.expiredActorUuid!==m.expiresOnDeathOf||!dmUuid(r.expiredActorUuid)))||
+   (r.reason!=='death'&&r.expiredActorUuid!==null))
+  return false;
+ return true;
+}
 async function dmDeliverReceipts(item){
  if(!dmLeader()||!dmEnabled()||item?.documentName!=='Item')return {skipped:true};
  return dmQueue(item.uuid,async()=>{
   const current=item.getFlag?.(DM_NS,DM_RECEIPTS)??[];
   if(!Array.isArray(current))return {skipped:true};
   const pending=current.filter(e=>e?.delivery==='pending'&&
-   e?.sourceItemUuid===item.uuid);
+   dmValidReceipt(item,e));
   let emitted=0,executed=0,blocked=0;
   for(const receipt of pending){
    if(!dmLeader())break;
