@@ -1,4 +1,18 @@
-# PF1 Automation Engine v1.41.2
+# PF1 Automation Engine v1.41.3
+
+## Synchronisation des modes de déplacement et états natifs PF1 (v1.41.3)
+
+Foundry VTT v13 stocke le mode de déplacement sélectionné dans `TokenDocument.movementAction`. PF1 v11.11 gère ses conditions natives via la liste des états et `Actor.toggleStatusEffect()`. PF1AE synchronise maintenant **dans les deux sens** :
+
+- **Effet natif PF1 « Vol » / « Flying » appliqué ou réactivé** → les tokens de l'acteur sur la scène passent en déplacement `fly`.
+- **Effet « Nager » / « Swimming » appliqué ou réactivé** → déplacement `swim`.
+- **Effet retiré ou désactivé** → retour à `walk` (ou à l'autre état de déplacement s'il est toujours présent).
+- **Sélection du mouvement `fly` ou `swim` sur le token** → activation de l'état natif PF1 correspondant, et désactivation de l'autre. Un retour au mode `walk` désactive les deux états.
+- L'état appartient à l'**Actor** (dans les règles PF1 du moteur). Si plusieurs tokens de cet acteur sont présents dans la même scène, le mode de mouvement est harmonisé entre eux.
+
+Le module résout les identifiants de **vrais états natifs** depuis `CONFIG.statusEffects` (noms anglais/français), et ne crée pas d'effet personnalisé ou de capacité de déplacement. Si un état natif n'est pas disponible, il ne fabrique rien. La synchronisation n'accorde **aucune nouvelle vitesse** de vol ou de nage : elle concerne uniquement le mode de déplacement sélectionné et l'état actif sur le token.
+
+Les événements `createActiveEffect`, `updateActiveEffect`, `deleteActiveEffect` et `updateToken` assurent la synchronisation, avec des garde-fous contre les boucles et l'exécution simultanée sur plusieurs clients. Lorsqu'un MJ est connecté, la mise à jour est effectuée uniquement par le MJ actif. Le module reste compatible avec les autres automatismes, notamment Skull & Shackles et les abris aquatiques.
 
 ## Abri aquatique d'après les régions Skull & Shackles (v1.41.2)
 
