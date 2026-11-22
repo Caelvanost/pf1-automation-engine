@@ -176,13 +176,35 @@ function daRender(sheet,html){
  const item=sheet?.document??sheet?.item??sheet?.object;
  if(item?.documentName!=='Item'||!daIsOwner(item))return;
  const actions=daActions(item);
- if(actions.length<2)return;
- const root=html?.[0]??html??sheet?.element?.[0]??sheet?.element;
- if(!root?.querySelector)return;
- const advanced=root.querySelector('.sheet-body .tab[data-tab="advanced"]')??
-  root.querySelector('.tab[data-tab="advanced"]')??
-  root.querySelector('.tab.advanced');
- if(!advanced||advanced.querySelector('[data-pf1ae-default-action]'))return;
+ // A single native action is also configurable (e.g. skip-dialog), and
+ // not all PF1 Item types expose two or more actions.
+ if(actions.length===0)return;
+ // Foundry v13/PF1 11.11 item sheets are ApplicationV2. Their official
+ // renderApplication hook supplies an HTMLElement, and window.content is
+ // the most reliable currently connected root. Legacy renderItemSheet
+ // continues to supply jQuery HTML.
+ const candidate=sheet?.window?.content??html?.[0]??html??
+  sheet?.element?.[0]??sheet?.element;
+ const root=candidate?.querySelector?candidate:
+  candidate?.[0]?.querySelector?candidate[0]:null;
+ if(!root)return;
+ // Some ItemSheetV2 types have no Advanced tab (or render its contents
+ // lazily). Fall back to a real content pane, never a nav tab anchor.
+ const advanced=[
+  '.sheet-body .tab[data-tab="advanced"]',
+  '.tab[data-tab="advanced"]',
+  '.tab.advanced',
+  '.sheet-body .tab[data-tab="actions"]',
+  '.tab[data-tab="actions"]',
+  '.sheet-body .tab[data-tab="details"]',
+  '.tab[data-tab="details"]',
+  '.sheet-body .tab[data-tab="description"]',
+  '.tab[data-tab="description"]',
+  '.sheet-body',
+  'form'
+ ].map(selector=>root.querySelector(selector))
+  .find(el=>el&&typeof el.append==='function')??root;
+ if(root.querySelector('[data-pf1ae-default-action]'))return;
  const t=key=>game.i18n.localize('PF1AE.DefaultAction.'+key);
  // Use the same native heading and form layout as the other PF1 Advanced
  // sections (e.g. Script and Little Helper), without a bordered card.
@@ -303,4 +325,8 @@ Hooks.once('ready',()=>{
  Hooks.on('pf1CreateActionUse',daConfigureActionUse);
  Hooks.on('renderItemSheet',daRender);
  Hooks.on('renderItemSheetV2',daRender);
+ // PF1 v11.11 WeaponSheetPF, EquipmentSheetPF, FeatSheetPF and other
+ // ItemSheetV2 descendants primarily emit the generic ApplicationV2
+ // render callback; V1-only hooks do not cover all Item types.
+ Hooks.on('renderApplication',daRender);
 });
