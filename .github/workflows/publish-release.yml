@@ -35,7 +35,7 @@ jobs:
           if ($manifest.id -ne 'pf1-automation-engine') { throw 'Unexpected module ID' }
           if ($manifest.manifest -ne $expectedManifest) { throw 'Wrong stable Foundry manifest URL' }
           if ($manifest.download -ne $expectedDownload) { throw 'Wrong GitHub release asset URL' }
-          # Maintained release gate: 46 suites; seven historical suites excluded.
+          # Maintained release gate: 47 suites; seven historical suites excluded.
           # Reject an unlisted suite instead of silently omitting new tests.
           # The separate manual regression audit runs all suites.
           $tests = @(
