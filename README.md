@@ -1,6 +1,6 @@
-# PF1 Automation Engine v1.41.10
+# PF1 Automation Engine v1.41.11
 
-## Lévitation → mode de déplacement Vol (v1.41.10)
+## Lévitation → mode de déplacement Vol (v1.41.11)
 
 Lorsqu'un acteur possède l'état natif **Levitation / Lévitation**, ses tokens utilisent automatiquement `TokenDocument.movementAction = "fly"` (mode **Vol**) dans Foundry. Le synchroniseur accepte les noms natifs anglais/français et identifiants `pf1_levitation` / `pf1_levitating`, prend en compte l'activation/la désactivation/la suppression d'effets, les sources multiples, le rechargement et le changement de scène.
 
