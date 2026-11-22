@@ -14,10 +14,10 @@ item.scriptCalls={contents:[call]};
 otherItem.scriptCalls={contents:[]};
 actor.items={contents:[item]};other.items={contents:[otherItem]};
 const records=new Map([[actor.uuid,actor],[other.uuid,other]]);
-const module={api:{scriptApprovals:{check:()=>({approved:true})}}};
+const pf1Module={api:{scriptApprovals:{check:()=>({approved:true})}}};
 const ready=[];
 const context={
- console,game:{user:gm,users:[gm,player],modules:new Map([['pf1-automation-engine',module]]),
+ console,game:{user:gm,users:[gm,player],modules:new Map([['pf1-automation-engine',pf1Module]]),
  settings:{get(_ns,key){return key==='genericEnabled'}}},
  Hooks:{once(_name,fn){ready.push(fn)}},
  fromUuid:async uuid=>records.get(uuid)??null,
@@ -26,7 +26,7 @@ const context={
 context.globalThis=context;vm.createContext(context);
 vm.runInContext(source,context,{filename:'rest-daily.js'});
 for(const fn of ready)fn();
-const api=module.api.restDaily;
+const api=pf1Module.api.restDaily;
 const event=(id,actorUuid=actor.uuid,daily=true)=>({
  type:'pf1ActorRest',actorUuid,
  rest:{id,phase:'post',completed:true,restoreDailyUses:daily,
@@ -46,11 +46,11 @@ const event=(id,actorUuid=actor.uuid,daily=true)=>({
  assert.equal(calls.length,1);
  assert.equal((await api._dispatch(event('r2',other.uuid))).executed,0);
  assert.equal(calls.length,1,'other Actor does not invoke paladin script');
- module.api.scriptApprovals.check=()=>({approved:false,reason:'not-approved'});
+ pf1Module.api.scriptApprovals.check=()=>({approved:false,reason:'not-approved'});
  result=await api._dispatch(event('r3'));
  assert.equal(result.blocked,1);
  assert.equal(calls.length,1,'secure mode approval respected');
- module.api.scriptApprovals.check=()=>({approved:true});
+ pf1Module.api.scriptApprovals.check=()=>({approved:true});
  call.name='Renamed';
  assert.equal(api.discover(actor).length,0);
  assert.equal((await api._dispatch(event('r4'))).executed,0);
