@@ -901,6 +901,14 @@ function cpAquaticState({attacker,target,scene}={}){
   attackerLand:true};
 }
 function cpInterpret(options={}){
+ // Directional effects are virtual, source-bound cover. They do not alter
+ // wall geometry, Reflex saves, or anyone but the protected token.
+ const directional=game.modules.get(CP_NS)?.api?.directionalCover?.inspect?.(options);
+ if(directional?.status==="confirmed"&&
+    directional.type==="total"&&directional.preventsDirectAttack===true){
+   CP_LAST=cpClone(directional);
+   return cpClone(directional);
+ }
  const water=cpAquaticState(options);
  // A demonstrably fully submerged target cannot be attacked directly
  // from land, irrespective of other cover or unavailable 3D geometry.
