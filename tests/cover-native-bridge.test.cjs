@@ -170,6 +170,25 @@ assert.equal(pf1aeModule.api.coverNativeBridge.preview(actionUse)?.type,'none',
  'target at surface does not gain aquatic cover');
 target.document.flags.world.underwater=false;
 scene.regions.contents.length=0;
+// Directional total cover feeds the SAME pre-roll PF1 ActionUse early gate.
+const previousAmmo=native.ammo,previousMagazine=native.magazine;
+const previousPosts=native.posts,previousDialogs=native.dialog;
+pf1aeModule.api.directionalCover={inspect:()=>({
+ status:'confirmed',type:'total',acBonus:null,reflexBonus:null,
+ preventsDirectAttack:true,source:'directional-cover',
+ reason:'virtual item protection'
+})};
+assert.equal(pf1aeModule.api.coverNativeBridge.preview(actionUse)?.type,'total',
+ 'virtual directional service enters native cover preview');
+assert.equal(await actionUse.process(),undefined,
+ 'native createAttackDialog is cancelled before native attack process');
+assert.equal(native.ammo,previousAmmo,'directional total cover spends no ammo');
+assert.equal(native.magazine,previousMagazine,'directional total cover spends no magazine charge');
+assert.equal(native.posts,previousPosts,'directional total cover posts no attack chat card');
+assert.equal(native.dialog,previousDialogs,'native attack dialog not opened');
+delete pf1aeModule.api.directionalCover;
+assert.equal(pf1aeModule.api.coverNativeBridge.preview(actionUse)?.type,'none',
+ 'virtual cover does not persist after source is removed');
 scene.walls.contents.push({id:'wall',c:[200,-200,200,300],
  uuid:'Scene.s.Wall.w',move:20,door:0,ds:0});
 const diagnosis=pf1aeModule.api.coverNativeBridge.preview(actionUse);
