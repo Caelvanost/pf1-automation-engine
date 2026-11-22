@@ -1,4 +1,13 @@
-# PF1 Automation Engine v1.41.4
+# PF1 Automation Engine v1.41.5
+
+## Armes improvisées : propriété native PF1 dans la fiche d'arme (v1.41.5)
+
+PF1AE présente désormais la propriété **Improvised Weapon / Arme improvisée** dans l'onglet **Statistiques / Details** des fiches d'Items de type `weapon` de PF1 v11.11. Le système PF1 utilise un `TypeDataField(BooleanField)` pour `system.properties`, et `imp` est une clé de `pf1.config.weaponProperties`. La fiche native inclut déjà une case nommée `system.properties.imp` dans « Propriétés de l'arme ». PF1AE **réutilise ce contrôle natif** et remplace uniquement son libellé par une version explicite assortie d'une aide contextuelle ; si une autre présentation de la fiche omet la case, PF1AE l'insère une seule fois.
+
+Le mécanisme **n'enregistre aucun flag PF1AE** et n'a aucun listener d'écriture direct : il s'appuie sur le formulaire `submitOnChange` de la fiche PF1 pour sauvegarder `item.system.properties.imp` comme booléen natif. L'utilisateur peut modifier cette valeur uniquement lorsqu'il dispose des permissions d'édition de l'Item ; les autres utilisateurs voient une case désactivée. Les fiches d'armes indépendantes ou appartenant à un Actor fonctionnent de la même manière. Les autres types d'Items ne sont jamais modifiés. Les libellés français et anglais sont dans les locales PF1AE, avec chargement de `lang/en.json` en fallback pour les autres langues.
+
+**Fonctionnalité purement déclarative :** aucun malus de −4, critique 20/×2, portée de lancer, don ou autre effet mécanique lié aux armes improvisées n'est automatisé ici. Les Script Calls peuvent consulter directement `item.system.properties.imp === true`. L'architecture utilise un service isolé `scripts/weapon-properties-ui.js` et le hook ApplicationV2 `renderApplication`, approprié à la fiche `WeaponSheetPF` de PF1 v11.11.
+
 
 ## Combat au corps à corps sous l'eau et multiplicateur de dégâts natif (v1.41.4)
 
