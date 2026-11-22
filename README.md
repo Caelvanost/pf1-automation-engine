@@ -1,4 +1,12 @@
-# PF1 Automation Engine v1.41.8
+# PF1 Automation Engine v1.41.9
+
+## Correction — sélection de l'action par défaut dans les fiches PF1 (v1.41.9)
+
+L'option **Action par défaut** est désormais injectée dans les fiches **ApplicationV2** de Pathfinder 1e (système 11.11), en plus des anciens hooks d'affichage. Le contrôle est visible pour tout Item possédant **au moins une action native** (armes, équipement, dons, sorts, buffs et autres types compatibles) si le propriétaire peut éditer l'objet. PF1AE privilégie l'onglet **Avancé** ; s'il est absent, utilise **Actions**, **Détails**, **Description** ou le contenu de la fiche. L'insertion reste idempotente au rendu.
+
+L'identifiant d'action préféré et l'option **ignorer le dialogue** continuent d'être enregistrés dans les flags existants `defaultActionId` et `defaultActionSkipDialog`. L'exécution continue de déléguer à `ItemPF.use`, sans lancer de second jet ni consommer de ressource supplémentaire. Les objets sans action native n'affichent logiquement pas de sélecteur d'action.
+
+
 
 ## Événements génériques d'expiration des défenses (v1.41.8)
 
