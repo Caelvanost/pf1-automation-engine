@@ -35,47 +35,100 @@ const wall=(id,x1,y1,x2,y2,{bottom=0,top=10,move=20,door=0,ds=0}={})=>({
  id,uuid:'Scene.s.Wall.'+id,c:[x1,y1,x2,y2],
  flags:{'wall-height':{bottom,top}},move,door,ds
 });
-// Skull & Shackles (v1.23): TokenDocument.flags.world.underwater
-// is the authoritative flag. Underwater TARGETS get intrinsic soft
-// cover (+4 AC / +0 Reflex) without needing an intervening creature.
+// Skull & Shackles water level: the region surface is 0 ft, the
+// target's token-height model is 1 cell = 5 ft, and it is in the
+// region. Test strict inclusive chest/full altitude boundaries.
+const waterRegion={id:'water-a',uuid:'Scene.s.Region.water-a',
+ parent:{id:'s'},elevation:0,
+ flags:{'pf1-skull-and-shackles':{waterRegion:{enabled:true,surface:0}}},
+ testPoint:({x,y})=>x>=200&&x<500&&y>=-100&&y<150};
+scene.regions.contents.push(waterRegion);
 target.document.flags={world:{underwater:true}};
+target.document.elevation=-2.49;
+result=check({mode:'2d'});
+assert.equal(result.type,'none','above chest threshold no water cover');
+target.document.elevation=-2.5;
 for(const attackType of ['ranged','melee']){
- for(const mode of ['2d','3d']){
-  result=check({attackType,mode});
-  assert.equal(result.status,'confirmed');
-  assert.equal(result.type,'soft','underwater '+attackType+'/'+mode);
-  assert.equal(result.acBonus,4);
-  assert.equal(result.reflexBonus,0);
-  assert.equal(result.underwaterCover,true);
-  assert.equal(result.source,'token.flags.world.underwater');
-  assert.equal(api.lastDiagnostic().type,'soft');
- }
+ result=check({attackType,mode:'2d'});
+ assert.equal(result.status,'confirmed');
+ assert.equal(result.type,'improved','chest-deep from land grants improved cover');
+ assert.equal(result.acBonus,8);
+ assert.equal(result.reflexBonus,4);
+ assert.equal(result.aquaticCover?.immersion,'chest');
+ assert.equal(result.aquaticCover?.depth,2.5);
+ assert.equal(result.aquaticCover?.bodyHeight,5);
 }
-// Adjacent melee also gets underwater soft cover, independent of the
-// existing rule excluding soft cover from other intervening creatures.
-target.document.x=100;
-result=check({attackType:'melee',mode:'2d'});
-assert.equal(result.method,'adjacent-melee');
-assert.equal(result.type,'soft');
-target.document.x=300;
-// Only the target's underwater state matters, never the attacker.
-target.document.flags.world.underwater=false;
+assert.equal(api.lastDiagnostic().type,'improved');
+target.document.elevation=-4.99;
+assert.equal(check({mode:'2d'}).type,'improved',
+ 'below chest but not fully submerged remains improved cover');
+target.document.elevation=-5;
+for(const attackType of ['ranged','melee']){
+ result=check({attackType,mode:'2d'});
+ assert.equal(result.type,'total','full submersion blocks land-based direct attack');
+ assert.equal(result.preventsDirectAttack,true);
+ assert.equal(result.aquaticCover?.immersion,'full');
+}
+// Being in water yourself negates aquatic cover to an underwater
+// target, even when the target is fully immersed.
 attacker.document.flags={world:{underwater:true}};
-result=check({attackType:'ranged',mode:'2d'});
-assert.equal(result.type,'none','attacker underwater does not protect target');
+assert.equal(check({mode:'2d'}).type,'none',
+ 'underwater attacker against underwater target: no surface cover');
 attacker.document.flags.world.underwater=false;
-// A string, missing flag, or false value must not grant underwater cover.
-target.document.flags.world.underwater='true';
+// A stale generic underwater flag does not grant surface cover when
+// a token is outside all Skull & Shackles water regions.
+target.document.x=600;
 assert.equal(check({mode:'2d'}).type,'none');
-target.document.flags.world.underwater=true;
+target.document.x=300;
+// A target at exactly the surface is not chest-deep.
+target.document.elevation=0;
+assert.equal(check({mode:'2d'}).type,'none');
+// Restore normal geometry tests, and separate water setup from their
+// existing deliberately comprehensive wall/movement regression suite.
+target.document.elevation=0;
+target.document.flags.world.underwater=false;
+// Metric threshold regression: one square is 1.50m; chest at -0.75m,
+// full immersion at -1.50m, boundaries inclusive.
+scene.grid.distance=1.5;scene.grid.units='m';
+target.document.elevation=-0.75;
+result=check({mode:'2d'});
+assert.equal(result.type,'improved','1.50m token: -0.75m is chest deep');
+assert.equal(result.aquaticCover.bodyHeight,1.5);
+target.document.elevation=-1.5;
+assert.equal(check({mode:'2d'}).type,'total',
+ '1.50m token: -1.50m is fully submerged');
+// A different surface datum translates both boundaries identically.
+waterRegion.flags['pf1-skull-and-shackles'].waterRegion.surface=3;
+target.document.elevation=2.25;
+assert.equal(check({mode:'2d'}).type,'improved');
+target.document.elevation=1.5;
+assert.equal(check({mode:'2d'}).type,'total');
+// Water-region diagnostics must be compatible with 3D mode and
+// Levels when the attacker and target have different elevations.
+const waterLevelModule={active:true};
+modules.set('levels',waterLevelModule);
+ctx.CONFIG={Levels:{API:{testCollision:()=>false}}};
+target.document.elevation=2.25;
+result=check({mode:'3d'});
+assert.equal(result.status,'confirmed');
+assert.equal(result.type,'improved',
+ 'recognized water Regions must not invalidate known 3D geometry');
+assert.equal(result.reflexBonus,4);
+target.document.elevation=1.5;
+assert.equal(check({mode:'3d'}).type,'total');
+modules.delete('levels');delete ctx.CONFIG;
+scene.grid.distance=5;scene.grid.units='ft';
+target.document.elevation=0;
+waterRegion.flags['pf1-skull-and-shackles'].waterRegion.surface=0;
+scene.regions.contents.length=0;
 scene.walls.contents.push(wall('full',200,-200,200,300));
 result=check();
 assert.equal(result.status,'confirmed','complete wall proves no direct line of effect');
 assert.equal(result.type,'total');
 assert.equal(result.preventsDirectAttack,true);
 assert.equal(result.acBonus,null);
-assert.equal(result.underwaterCover,true,
- 'underwater soft cover must never bypass a proven total wall');
+assert.equal(result.preventsDirectAttack,true,
+ 'total wall cover remains authoritative');
 target.document.flags.world.underwater=false;
 // A normal 2D wall without any wall-height flags still blocks all
 // direct rays and proves total cover by default.
@@ -176,12 +229,10 @@ assert.equal(result.status,'confirmed','wall may protect more than half of the t
 assert.equal(result.type,'normal');
 assert.equal(result.acBonus,4);
 assert.equal(result.reflexBonus,2);
+// No water Region means no special aquatic bonus, even with stale flag.
 target.document.flags.world.underwater=true;
 result=check();
-assert.equal(result.type,'normal',
- 'normal +4 wall cover retains +2 Reflex, without double AC bonuses');
-assert.equal(result.acBonus,4);
-assert.equal(result.reflexBonus,2);
+assert.equal(result.type,'normal');
 target.document.flags.world.underwater=false;
 // A wall may be explicitly graded by the GM: do not infer this
 // from its 2D segment or from the token's visual silhouette.
@@ -191,13 +242,10 @@ assert.equal(result.status,'confirmed');
 assert.equal(result.type,'partial');
 assert.equal(result.acBonus,2);
 assert.equal(result.reflexBonus,1);
-// Intrinsic underwater soft cover outranks explicit +2 partial wall
-// cover but does not add +4 to it.
+// A stale underwater flag alone must never replace partial wall cover.
 target.document.flags.world.underwater=true;
 result=check();
-assert.equal(result.type,'soft');
-assert.equal(result.acBonus,4);
-assert.equal(result.reflexBonus,0);
+assert.equal(result.type,'partial');
 target.document.flags.world.underwater=false;
 scene.walls.contents[0].flags['pf1-automation-engine'].coverGrade='improved';
 result=check();
@@ -209,7 +257,7 @@ assert.equal(result.preventsDirectAttack,false,
  'classified improved cover must never be mistaken for total cover');
 target.document.flags.world.underwater=true;
 result=check();
-assert.equal(result.type,'improved','underwater must not replace +8 improved cover');
+assert.equal(result.type,'improved');
 assert.equal(result.acBonus,8);
 target.document.flags.world.underwater=false;
 delete scene.walls.contents[0].flags['pf1-automation-engine'];

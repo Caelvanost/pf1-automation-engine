@@ -1,3 +1,12 @@
+# 1.41.2 — Abri aquatique selon profondeur et niveau d'eau Skull & Shackles
+
+- Remplace l'**abri mou +4 CA automatique** fondé sur `flags.world.underwater` (v1.40.11) par la détermination de la profondeur réelle dans une Region d'eau Skull & Shackles (`flags["pf1-skull-and-shackles"].waterRegion.enabled/surface`).
+- Pour une attaque depuis la terre ferme, la base du token cible à une altitude **≤ surface − hauteur/2** (mais strictement > surface − hauteur) donne **abri supérieur +8 CA / +4 Réflexes** ; **≤ surface − hauteur** donne **abri total** et empêche l'attaque directe.
+- Seuils inclusifs, indépendants du niveau absolu de l'eau. La hauteur de corps est calculée comme la taille occupée en cases × la distance de grille : 1×1 / 1,50 m → −0,75 m (poitrine), −1,50 m (immersion complète) si surface à 0 m.
+- Vérifie l'appartenance à la Region via `RegionDocument.testPoint()` au centre 2D du token (élévation de la Region), conformément à Skull & Shackles ; un flag `underwater` isolé ne confère plus d'abri.
+- N'applique pas d'abri de surface si l'attaquant est lui-même immergé. Les abris des murs restent effectifs et non cumulables. Une région d'eau connue n'est pas un obstacle de région 3D ; les régions non reconnues restent indéterminées.
+- Vérifie les seuils en pieds et en mètres, les niveaux de surface non nuls, le mode 3D avec Levels et la carte d'attaque native ; aucun changement aux pénalités des tirs traversant l'eau de la v1.41.1.
+
 # 1.41.1 — Libellé du tir sous l’eau
 
 - Le libellé du malus de tir sous l’eau est désormais explicitement bilingue :

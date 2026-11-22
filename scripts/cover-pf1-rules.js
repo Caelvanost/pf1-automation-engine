@@ -438,7 +438,12 @@ function cpInterpretGeometry({attacker,target,attackType="ranged",scene,
   return d?.overhead||d?.flags?.levels?.blockSightMovement||
     d?.flags?.betterroofs?.brMode||d?.flags?.levels?.rangeTop!=null;
  }))return cpResult("uncertain","roof-or-floor-line-of-effect-unverified");
- if(selectedMode==="3d"&&regions.length)
+ // Skull & Shackles water Regions represent WATER, not opaque solid
+ // geometry. They may contribute aquatic cover separately, but cannot
+ // invalidate otherwise known 3D wall/Levels line of effect. Unknown
+ // non-water Regions remain conservative and block auto-adjudication.
+ if(selectedMode==="3d"&&regions.some(region=>
+   !cpWaterRegionData(region)))
   return cpResult("uncertain","region-collision-unverified",{mode:selectedMode});
  const blockingWalls=[];
  const ambiguousWalls=[];
@@ -832,33 +837,93 @@ function cpInterpretGeometry({attacker,target,attackType="ranged",scene,
 
 }
 /**
- * Skull & Shackles stores a generic token-world flag, not an Actor tag:
- * TokenDocument.flags.world.underwater === true.
- * No module dependency is needed; an underwater target has intrinsic
- * soft cover (+4 AC, +0 Reflex), including in adjacent melee. It does
- * NOT stack with geometric cover and can never bypass total cover.
+ * Skull & Shackles v1.23+: a water Region carries
+ *   flags["pf1-skull-and-shackles"].waterRegion = {enabled:true,surface:0}
+ * while a token base lies at TokenDocument.elevation.
+ * A generic flags.world.underwater flag means only "base below surface";
+ * it does NOT itself grant cover, nor distinguish chest/full immersion.
  */
-function cpIsTargetUnderwater(target){
- const doc=cpDoc(target);
- return doc?.flags?.world?.underwater===true;
+function cpWaterRegionData(region){
+ const raw=cpDoc(region)?.flags?.["pf1-skull-and-shackles"]?.waterRegion;
+ return raw?.enabled===true&&cpFinite(raw.surface)?
+  {surface:raw.surface}:null;
+}
+function cpWaterAtToken(doc,scene,regions,gridSize){
+ if(!doc||!scene||!cpFinite(doc.x)||!cpFinite(doc.y)||
+    !cpFinite(doc.width)||!cpFinite(doc.height)||
+    !cpFinite(gridSize)||gridSize<=0)return null;
+ const center={x:doc.x+doc.width*gridSize/2,
+  y:doc.y+doc.height*gridSize/2};
+ let found=null;
+ for(const region of regions){
+  const data=cpWaterRegionData(region);
+  if(!data)continue;
+  const r=cpDoc(region);
+  if(r.parent?.id!==scene.id||typeof r.testPoint!=="function")continue;
+  let inside=false;
+  try{inside=r.testPoint({x:center.x,y:center.y,
+   elevation:cpFinite(r.elevation)?r.elevation:0})===true;}
+  catch(_){continue;}
+  if(inside&&(!found||data.surface>found.surface))
+   found={surface:data.surface,regionId:r.uuid??r.id};
+ }
+ return found;
+}
+function cpAquaticState({attacker,target,scene}={}){
+ const s=scene??globalThis.canvas?.scene;
+ const gridSize=globalThis.canvas?.grid?.size;
+ const regions=cpCollection(s?.regions);
+ const a=cpDoc(attacker),t=cpDoc(target);
+ if(!s||!Array.isArray(regions)||!a||!t||
+    a.parent?.id!==s.id||t.parent?.id!==s.id)return null;
+ const targetWater=cpWaterAtToken(t,s,regions,gridSize);
+ if(!targetWater||!cpFinite(t.elevation))return null;
+ const targetSpace=cpSpace(target,s,gridSize);
+ const height=targetSpace?cpTokenBodyHeight(targetSpace,s):null;
+ if(!cpFinite(height)||height<=0)return null;
+ const depth=targetWater.surface-t.elevation;
+ // The user's explicitly chosen model:
+ // chest-deep: base <= water surface - height/2
+ // fully submerged: base <= water surface - height.
+ const immersion=depth+CP_EPS>=height?"full":
+  depth+CP_EPS>=height/2?"chest":null;
+ if(!immersion)return null;
+ const attackerWater=cpWaterAtToken(a,s,regions,gridSize);
+ // Native generic flag is retained as a secondary safeguard against
+ // declaring an actively submerged attacker "on land" when water
+ // geometry is temporarily out of sync.
+ const attackerSubmerged=a.flags?.world?.underwater===true||
+  (attackerWater&&cpFinite(a.elevation)&&
+   a.elevation<attackerWater.surface-CP_EPS);
+ if(attackerSubmerged)return null;
+ return {immersion,depth,bodyHeight:height,
+  surface:targetWater.surface,regionId:targetWater.regionId,
+  attackerLand:true};
 }
 function cpInterpret(options={}){
+ const water=cpAquaticState(options);
+ // A demonstrably fully submerged target cannot be attacked directly
+ // from land, irrespective of other cover or unavailable 3D geometry.
+ if(water?.immersion==="full")
+  return cpResult("confirmed","aquatic-full-submersion-total",{
+   type:"total",preventsDirectAttack:true,mode:options?.mode??
+    game.modules?.get?.(CP_NS)?.api?.coverMode?.get?.()??"2d",
+   source:"skull-and-shackles-water-region",aquaticCover:water});
  const result=cpInterpretGeometry(options);
- if(!cpIsTargetUnderwater(options?.target))return result;
- // Preserve uncertain geometry: a potential total wall obstruction
- // cannot be silently replaced with an ordinary +4 AC bonus.
- if(result.status!=="confirmed")return result;
- result.underwaterCover=true;
- // Equal AC with more Reflex protection: retain a confirmed normal
- // wall; improved and total walls also have priority.
- if(result.type==="none"||result.type==="partial"){
-  result.geometricCoverType=result.type;
-  result.type="soft";
-  result.acBonus=4;
-  result.reflexBonus=0;
-  result.preventsDirectAttack=false;
-  result.reason="underwater-soft-cover";
-  result.source="token.flags.world.underwater";
+ if(!water||result.status!=="confirmed")return result;
+ if(water.immersion==="chest"){
+  result.aquaticCover=water;
+  // Improved water cover is +8 AC / +4 Reflex and does not stack
+  // with walls. Existing total cover remains total.
+  if(result.type!=="total"&&result.type!=="improved"){
+   result.geometricCoverType=result.type;
+   result.type="improved";
+   result.acBonus=8;
+   result.reflexBonus=4;
+   result.preventsDirectAttack=false;
+   result.reason="aquatic-chest-deep-improved";
+   result.source="skull-and-shackles-water-region";
+  }
  }
  CP_LAST=cpClone(result);
  return cpClone(result);
