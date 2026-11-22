@@ -1,3 +1,11 @@
+# 1.41.9 — Restauration de l'option « Action par défaut » pour les fiches Item PF1 v11.11
+
+- Rendu pris en charge via `renderApplication` (Foundry ApplicationV2) en complément des hooks `renderItemSheet` et `renderItemSheetV2`.
+- Sélecteur proposé dès la première action native et non plus seulement à partir de deux actions.
+- Emplacement de repli si la fiche n'expose pas l'onglet « Avancé » ; prise en charge des types d'objets PF1 compatibles avec une action native.
+- Persistance inchangée, protection contre les doublons et aucun changement au moteur de jets ou de consommation.
+- Régressions de rendu par type d'objet, feuille sans Avancé et idempotence.
+
 # 1.41.8 — Expirations défensives génériques avec événements persistants
 
 - Hook public `pf1aeDefenseModifierExpired` après suppression confirmée, avec identité, copie du modificateur et raison vérifiée (`death`, `rest`, `manual`, `other`).
