@@ -56,6 +56,43 @@ function msResolve(){
  }
  return result;
 }
+/**
+ * PF1 Levitation is a separate native effect, NOT the Flying condition.
+ * It implies the token's selected Foundry movement mode is Fly, but does
+ * not grant a fly speed, horizontal movement or standard flight mechanics.
+ * Never synthesize or toggle a Levitation/Flying status to implement this.
+ */
+const MS_LEVITATION_NAMES=new Set([
+ "levitation","levitating","pf1levitation","pf1levitating"
+]);
+const msLevitationText=x=>MS_LEVITATION_NAMES.has(msNorm(x));
+function msLevitationIds(){
+ const result=new Set();
+ for(const status of msRegistryEntries()){
+  if([status.id,status.name,status.label,
+   game.i18n?.localize?.(status.name),
+   game.i18n?.localize?.(status.label)].some(msLevitationText))
+   result.add(status.id);
+ }
+ return result;
+}
+function msEffectIsLevitation(effect,ids=msLevitationIds()){
+ if(!effect)return false;
+ const statuses=effect.statuses instanceof Set?[...effect.statuses]:
+  Array.isArray(effect.statuses)?effect.statuses:[];
+ return [effect.name,effect.label,...statuses].some(msLevitationText)||
+  statuses.some(id=>ids.has(id));
+}
+function msIsLevitating(actor){
+ const ids=msLevitationIds();
+ const statuses=actor?.statuses;
+ if(statuses&&[...statuses].some(id=>ids.has(id)||msLevitationText(id)))
+  return true;
+ const effects=actor?.effects?.contents??
+  (actor?.effects?.values?[...actor.effects.values()]:actor?.effects??[]);
+ return Array.from(effects).some(effect=>
+  !effect.disabled&&msEffectIsLevitation(effect,ids));
+}
 function msTypeFromEffect(effect,ids){
  if(!effect)return null;
  const statuses=effect.statuses instanceof Set?[...effect.statuses]:
@@ -103,18 +140,24 @@ async function msSyncFromEffect(effect,operation){
  const actor=effect?.parent;
  if(!actor||!msCanWrite(actor))return;
  const ids=msResolve();
- const type=msTypeFromEffect(effect,ids);
- if(!type||!ids.has(type))return;
+ const levitation=msEffectIsLevitation(effect);
+ const type=levitation?"fly":msTypeFromEffect(effect,ids);
+ if(!type||(!ids.has(type)&&!levitation))return;
  const key=msKey(actor);
  if(!key||MS_BUSY_ACTORS.has(key))return;
  MS_BUSY_ACTORS.add(key);
  try{
-  const statusActive=operation==="delete"?false:
-   !effect.disabled&&msIsActive(actor,type,ids);
+  // Check the Actor's remaining effects rather than treating deletion
+  // of one condition as deletion of every source of the same movement.
+  const statusActive=type==="fly"?
+   (msIsActive(actor,"fly",ids)||msIsLevitating(actor)):
+   msIsActive(actor,type,ids);
   // When the effect becomes inactive, the other native movement effect,
   // if still active, takes priority. Otherwise return to normal walk.
   let movement=statusActive?type:
-   msIsActive(actor,type==="fly"?"swim":"fly",ids)?
+   (type==="swim"?
+      (msIsActive(actor,"fly",ids)||msIsLevitating(actor)):
+      msIsActive(actor,"swim",ids))?
     (type==="fly"?"swim":"fly"):"walk";
   // Disabling/removing one condition must not override an unrelated,
   // manually selected movement type.
@@ -131,6 +174,12 @@ async function msSyncFromMovement(token,changed){
  if(!actor||!msCanWrite(actor))return;
  const next=token.movementAction;
  if(typeof next!=="string")return;
+ // An active native Levitation condition overrides manual Walk/Swim mode,
+ // but never creates a distinct Flying status.
+ if(msIsLevitating(actor)){
+  if(next!=="fly")await msSetMovement(token,"fly");
+  return;
+ }
  const ids=msResolve();
  const key=msKey(actor);
  if(!key||MS_BUSY_ACTORS.has(key)||MS_BUSY_TOKENS.has(msKey(token)))return;
@@ -168,4 +217,32 @@ Hooks.on("updateActiveEffect",effect=>{
 });
 Hooks.on("deleteActiveEffect",effect=>{
  void msSyncFromEffect(effect,"delete");
+});
+
+/** Restore existing native Levitation on a scene switch or page reload. */
+async function msReconcileLevitationTokens(){
+ const unique=new Set();
+ for(const placeable of globalThis.canvas?.tokens?.placeables??[]){
+  const doc=placeable?.document??placeable;
+  const actor=doc?.actor;
+  if(!actor||!msCanWrite(actor)||!msIsLevitating(actor))continue;
+  const key=msKey(doc);
+  if(!key||unique.has(key))continue;
+  unique.add(key);
+  await msSetMovement(doc,"fly");
+ }
+}
+Hooks.on("canvasReady",()=>{
+ void msReconcileLevitationTokens().catch(error=>
+  console.warn("PF1AE | Levitation scene sync",error));
+});
+Hooks.on("createToken",doc=>{
+ const actor=doc?.actor;
+ if(actor&&msCanWrite(actor)&&msIsLevitating(actor))
+  void msSetMovement(doc,"fly").catch(error=>
+   console.warn("PF1AE | Levitation token sync",error));
+});
+Hooks.once?.("ready",()=>{
+ void msReconcileLevitationTokens().catch(error=>
+  console.warn("PF1AE | Levitation ready sync",error));
 });

@@ -105,6 +105,68 @@ const tick=async()=>{await new Promise(resolve=>setImmediate(resolve));};
  fire('updateActiveEffect',swimming,{disabled:false});
  await tick();
  assert.equal(a.movementAction,'swim');
+ await actor.toggleStatusEffect('pf1_swimming',{active:false});
+ await tick();
+ // Levitation is a distinct native PF1 condition but selects Fly on
+ // every scene token without adding a synthetic Flying status.
+ const levitation={parent:actor,name:'Levitation',
+  statuses:new Set(['pf1_levitation']),disabled:false};
+ effects.push(levitation);
+ actor.statuses.add('pf1_levitation');
+ fire('createActiveEffect',levitation);
+ await tick();
+ assert.equal(a.movementAction,'fly');
+ assert.equal(b.movementAction,'fly');
+ assert.equal(actor.statuses.has('pf1_flying'),false,
+  'Levitation must not synthesize native Flying');
+ // Manually choosing walk or swim while levitating must not silently
+ // create/remove a real PF1 effect or override Levitation.
+ await a.update({movementAction:'walk'});
+ await tick();
+ assert.equal(a.movementAction,'fly','active Levitation retains Fly mode');
+ assert.equal(actor.statuses.has('pf1_swimming'),false);
+ const extraLevitation={parent:actor,name:'Lévitation',
+  statuses:new Set(['pf1_levitating']),disabled:false};
+ effects.push(extraLevitation);actor.statuses.add('pf1_levitating');
+ fire('createActiveEffect',extraLevitation);
+ await tick();
+ levitation.disabled=true;actor.statuses.delete('pf1_levitation');
+ fire('updateActiveEffect',levitation,{disabled:true});
+ await tick();
+ assert.equal(a.movementAction,'fly',
+  'disabling one source cannot cancel another active Levitation');
+ effects.splice(effects.indexOf(extraLevitation),1);
+ actor.statuses.delete('pf1_levitating');
+ fire('deleteActiveEffect',extraLevitation);
+ await tick();
+ assert.equal(a.movementAction,'walk',
+  'last Levitation removal restores ordinary movement');
+ assert.equal(b.movementAction,'walk');
+ // Native flying still takes precedence when Levitation expires.
+ await actor.toggleStatusEffect('pf1_flying',{active:true});
+ levitation.disabled=false;
+ actor.statuses.add('pf1_levitation');
+ fire('updateActiveEffect',levitation,{disabled:false});
+ await tick();
+ effects.splice(effects.indexOf(levitation),1);
+ actor.statuses.delete('pf1_levitation');
+ fire('deleteActiveEffect',levitation);
+ await tick();
+ assert.equal(a.movementAction,'fly','native Flying keeps Fly movement');
+ await actor.toggleStatusEffect('pf1_flying',{active:false});
+ await tick();
+ assert.equal(a.movementAction,'walk');
+ // Reconcile an effect already present before reconnect/scene switch.
+ effects.push(levitation);actor.statuses.add('pf1_levitation');
+ a.movementAction='walk';b.movementAction='walk';
+ fire('canvasReady');
+ await tick();
+ assert.equal(a.movementAction,'fly');
+ assert.equal(b.movementAction,'fly');
+ effects.splice(effects.indexOf(levitation),1);
+ actor.statuses.delete('pf1_levitation');
+ fire('deleteActiveEffect',levitation);
+ await tick();
  // Non-leading player must not run a competing synchronization.
  game.user={id:'player',isGM:false};
  await a.update({movementAction:'fly'});
