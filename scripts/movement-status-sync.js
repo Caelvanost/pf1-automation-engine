@@ -142,7 +142,7 @@ async function msSetMovement(doc,type){
 }
 async function msSyncFromEffect(effect,operation){
  const parent=effect?.parent;
- const actor=parent?.documentName==="Actor"?parent:parent?.actor;
+ const actor=parent?.actor??(parent?.uuid&&parent?.statuses?parent:null);
  if(!actor||!msCanWrite(actor))return;
  const ids=msResolve();
  const levitation=msEffectIsLevitation(effect);
