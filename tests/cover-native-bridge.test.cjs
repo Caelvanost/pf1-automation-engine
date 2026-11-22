@@ -434,7 +434,7 @@ assert.equal(pf1aeModule.api.coverNativeBridge.preview(actionUse)?.type,'none',
   'total-cover interception returns native cancellation shape');
  assert.deepEqual(native,initial,
   'no native processing, modifier dialog, ammo, magazine or message');
- assert.equal(alerts.length,4,'one early cancellation warning');
+ assert.equal(alerts.length,5,'one early cancellation warning after directional total-cover warning');
  // Open door lets native pipeline execute normally and consume one shot.
  scene.walls.contents[0].door=1;
  scene.walls.contents[0].ds=1;
