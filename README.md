@@ -1,4 +1,18 @@
-# PF1 Automation Engine v1.41.3
+# PF1 Automation Engine v1.41.4
+
+## Combat au corps à corps sous l'eau et multiplicateur de dégâts natif (v1.41.4)
+
+PF1AE ajoute un service de **combat sous l'eau** à côté de l'automatisation existante des tirs à distance et des abris aquatiques. L'acteur doit être immergé, d'après l'API `waterAutomation.getState` de Skull & Shackles (ou le flag `flags.world.underwater` si l'API n'est pas disponible), et effectuer une attaque de corps à corps physique dont le type principal est clairement tranchant ou contondant.
+
+- **Attaque tranchante/contondante sous l'eau** : **−2 au jet d'attaque** (étiquette « Combat sous l’eau ») et **dégâts physiques ×0,5**, arrondis à l'inférieur, avant le lancer natif PF1.
+- **Attaque perforante** : aucun malus automatique ; les armes à types mixtes ou sans typage fiable sont laissées à l'arbitrage du MJ plutôt que d'appliquer une mauvaise pénalité.
+- **Liberté de mouvement** : aucun malus aquatique automatique lorsque l'effet est identifiable sur l'acteur. Les circonstances particulières (déséquilibre, certains dons, attaquer avec une arme spécifiquement adaptée) restent sous contrôle MJ.
+- **Dégâts non physiques (énergie)** : les lignes distinctement typées ne sont pas réduites par l'immersion.
+- Les dés de l'arme et leurs bonus natifs sont réunis **avant** multiplication et arrondi afin d'obtenir, par exemple, `floor((1d8 + 4) * 0.5)`, au lieu de `floor(1d8 / 2) + 4`. Cela se fait dans `pf1PreDamageRoll`, pas après l'application des dégâts.
+
+Le dialogue de lancer d'attaque PF1 contient maintenant **Multiplicateur de dégâts** (valeur par défaut **1**, accepte **0,5**, **2**, **3**, etc., jusqu'à **10**). Le résultat est appliqué aux parties de dégâts natives lors du lancer, y compris en cas de critique. Si le module **Roll Bonuses PF1** est encore actif, PF1AE désactive uniquement son ancien champ « Damage Multiplier » et ignore sa valeur de formulaire pour éviter le doublement. Les autres fonctionnalités de Roll Bonuses **ne sont pas encore migrées** : ne désactive pas ce module tant qu'elles te sont nécessaires. Une migration complète des différents types de bonus et des fonctions spéciales devra être réalisée séparément.
+
+Deux paramètres de monde permettent d'activer/désactiver indépendamment les **malus de mêlée sous l'eau** et le **multiplicateur natif**. L'automatisation ne modifie aucun objet, effet persistant, CA ou points de vie. Le module est conçu pour Foundry VTT 13 / PF1 11.11.
 
 ## Synchronisation des modes de déplacement et états natifs PF1 (v1.41.3)
 
