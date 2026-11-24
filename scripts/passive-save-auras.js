@@ -193,7 +193,11 @@ function pasPreRoll(actor,options,saveId){
  // Never infer immunity from name/HTML or from an aura's bonus.
  const source=pasNativeSource(actor,options,saveId);
  if(source.status==="resolved"){
-  const immune=actor?.getConditionImmunities?.();
+  let immune=null;
+  try{immune=actor?.getConditionImmunities?.()??null}
+  catch(error){
+   console.warn("[PF1AE][PassiveAuras] native immunity unavailable",error);
+  }
   if(immune&&typeof immune.has==="function"&&
    source.descriptors.some(descriptor=>immune.has(descriptor))){
    PAS_LAST.set(actor?.uuid+":"+saveId,{
