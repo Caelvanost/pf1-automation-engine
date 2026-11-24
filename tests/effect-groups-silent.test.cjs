@@ -4,6 +4,11 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const path=require('node:path');
 const moduleSource=fs.readFileSync(path.join(__dirname,'..','scripts','effect-groups.js'),'utf8');
+const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'..','module.json'),'utf8'));
+assert.equal(manifest.socket,true,
+ 'Foundry must register module.pf1-automation-engine for GM/player socket routing');
+assert.equal(manifest.id,'pf1-automation-engine');
+
 const NS='pf1-automation-engine',ledger=new Map(),documents=new Map(),listeners=[];
 const users=[{id:'gm',name:'GM',isGM:true,active:true},{id:'p1',name:'Bard player',isGM:false,active:true},{id:'p2',name:'Another player',isGM:false,active:true}];
 users.get=id=>users.find(u=>u.id===id);
@@ -59,6 +64,10 @@ function client(user){
 }
 (async()=>{
  const gm=client(users[0]),player=client(users[1]);await gm.start();await player.start();
+ assert.ok(listeners.some(x=>x.topic==='module.'+manifest.id),
+  'Both clients subscribe to the declared Foundry module socket');
+ assert.equal(listeners.filter(x=>x.topic==='module.'+manifest.id).length,2,
+  'GM and player both register exactly one effectGroups socket listener');
  const e=player.mod.api.effectGroups;
  assert.equal(await e.approveTemplate(safe.uuid),safe.uuid);
  const args={actor:bard,key:'inspire',templateUuid:safe.uuid,targets:[gmAlly,playerAlly],duration:{value:1,unit:'minutes'}};
@@ -83,5 +92,5 @@ function client(user){
  assert.equal(await e.approveTemplate(compendium.uuid),compendium.uuid,'compendium preflight');
  assert.equal((await e.applyGroup({...args,key:'compendium',templateUuid:compendium.uuid})).applied,true);
  await e.stopGroup({actor:bard,key:'compendium'});
- console.log('PASS: silent GM authority, non-owned targets, acknowledgements, source OWNER, compendium, de-duplication, expiry and no interactive dialog');
+ console.log('PASS: declared module socket, player→elected GM approval/apply/extend/stop, silent GM authority, non-owned targets, acknowledgements, source OWNER, compendium, de-duplication, expiry and no interactive dialog');
 })().catch(error=>{console.error(error);process.exitCode=1});
