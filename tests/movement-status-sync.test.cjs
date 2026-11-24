@@ -241,8 +241,11 @@ const tick=async()=>{await new Promise(resolve=>setImmediate(resolve));};
  assert.equal(buffItems.length,1,'shared Actor only receives one buff');
  // Another token remains climbing, so leaving climb on one token cannot
  // remove the shared Actor native Buff.
- await a.update({movementAction:'walk'});
- await tick();await tick();
+ // The existing PF1AE movement mirroring deliberately synchronizes
+ // a normal token mode change to its siblings. Isolate the climbing
+ // reconciliation here to verify the multiple-token safeguard.
+ a.movementAction='walk';
+ await vm.runInContext('msQueueClimb',ctx)(actor);
  assert.equal(buffItems.length,1);
  await b.update({movementAction:'walk'});
  await tick();await tick();
