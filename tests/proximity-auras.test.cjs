@@ -217,6 +217,57 @@ const tick=()=>new Promise(r=>setImmediate(r));
  await api.reconcile();
  assert.equal(rps.length,3);
  assert.equal(rps.at(-1).reason,'manual');
+ // Passive conditional saving throw aura is not a permanent AC Buff.
+ const palClass={type:'class',system:{tag:'paladin',level:2}};
+ pal.items.contents.push(palClass);
+ pal.statuses=new Set();
+ const passive={
+  key:'test-courage',sourceItemUuid:source.uuid,
+  emitterActorUuid:pal.uuid,emitterTokenUuid:emit.uuid,
+  beneficiaries:{kind:'allies',excludeEmitter:true},
+  range:{kind:'radius',distance:10},
+  savingThrowBonus:{value:4,bonusType:'morale',
+   saves:['will','fort','ref'],appliesTo:{descriptors:['fear']}},
+  lifecycle:{mode:'passive',requiresConscious:true,requiresAlive:true,
+   minimumClassLevel:{classTag:'paladin',level:3}},
+  label:'Generic courage aura'
+ };
+ emit.x=0;ally.x=100;
+ const saved=await api.register(passive);
+ assert.equal(saved.created,true);
+ assert.equal(saved.started,undefined,'passive has no timer');
+ await api.reconcile();
+ assert.equal(buffs(friend).length,0,'no CA Buff from saving throw aura');
+ const eligible=()=>api.getSavingThrowAuras(friend,'will',['fear']).length;
+ assert.equal(eligible(),0,'level 2 cannot emit');
+ palClass.system.level=3;
+ assert.equal(eligible(),1,'level 3 emits');
+ assert.equal(api.getSavingThrowAuras(friend,'fort',['fear']).length,1);
+ assert.equal(api.getSavingThrowAuras(friend,'ref',['charm']).length,0);
+ pal.statuses.add('unconscious');
+ assert.equal(eligible(),0,'native unconscious suspends aura');
+ pal.statuses.delete('unconscious');
+ assert.equal(eligible(),1,'recovery restores aura');
+ pal.statuses.add('dead');
+ assert.equal(eligible(),0,'native dead suspends aura');
+ pal.statuses.delete('dead');
+ pal.statuses.add('pf1_sleep');
+ assert.equal(eligible(),0,'native PF1 sleep suspends aura');
+ pal.statuses.clear();
+ assert.equal(eligible(),1,'wake restores aura');
+ ally.x=400;assert.equal(eligible(),0,'beyond 10 feet');
+ ally.x=200;assert.equal(eligible(),1,'exactly two 5-foot squares');
+ ally.x=100;emit.width=2;
+ assert.equal(eligible(),1,'large source grids');
+ emit.width=1;
+ assert.equal(api.getSavingThrowAuras(enemy,'will',['fear']).length,0);
+ game.time.worldTime+=300;
+ await api.reconcile();
+ assert.equal(eligible(),1,'passive survives world time');
+ assert.equal(expiry.length,3,'passive never expires on time');
+ await api.stop({sourceItemUuid:source.uuid,key:'test-courage'});
+ await api.reconcile();
+ assert.equal(eligible(),0);
  // Source token removal fails closed without deleting third-party lights.
  await api.register({...definition,key:'missing-source'});
  scene.tokens.contents=scene.tokens.contents.filter(t=>t!==emit);
