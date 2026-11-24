@@ -9,9 +9,9 @@ const gm={id:'a',isGM:true,active:true},otherGM={id:'b',isGM:true,active:true};
 const player={id:'p',isGM:false,active:true};
 const world={id:'s',tokens:{contents:[]}};
 const notes=[];
-const module={active:true,api:{scriptApprovals:{check:()=>({approved:true})}}};
+const pf1Module={active:true,api:{scriptApprovals:{check:()=>({approved:true})}}};
 const game={user:gm,users:[gm,otherGM,player],
- modules:new Map([['pf1-automation-engine',module]]),
+ modules:new Map([['pf1-automation-engine',pf1Module]]),
  scenes:{active:world,contents:[world]},actors:{contents:[]},
  messages:new Map()};
 const actor={uuid:'Actor.pal',documentName:'Actor',items:{contents:[]}};
@@ -48,14 +48,14 @@ const active=[
 const auras={getSavingThrowAuras(_actor,id,descriptors){
  return descriptors.includes('fear')?active.filter(a=>a.savingThrowBonus.saves.includes(id)):[];
 },async register(){return {created:true}}};
-module.api.proximityAuras=auras;
+pf1Module.api.proximityAuras=auras;
 const ctx={game,console,Hooks:{on,once:(n,fn)=>{if(n==='ready')ready.push(fn)}},
  fromUuidSync:id=>map.get(id)??null,
  Object,Set,Map,WeakMap,Promise,Number,Date};
 ctx.globalThis=ctx;vm.createContext(ctx);
 vm.runInContext(code,ctx,{filename:'passive-save-auras.js'});
 ready.forEach(fn=>fn());
-const api=module.api.conditionalSaveAuras;
+const api=pf1Module.api.conditionalSaveAuras;
 const optionsFor=(item,bonus=0)=>({bonus,pf1aeSave:{sourceItemUuid:item.uuid}});
 const evalSave=(item,saveId='will',bonus=0)=>api.evaluate(beneficiary,
  optionsFor(item,bonus),saveId);
@@ -105,10 +105,10 @@ const evalSave=(item,saveId='will',bonus=0)=>api.evaluate(beneficiary,
   'annotation belongs to same native PF1 ChatMessage');
  assert.equal(msgs.length,1,'never creates a second roll');
  // Fingerprint-based approval protects changed scripts.
- module.api.scriptApprovals.check=()=>({approved:false});
+ pf1Module.api.scriptApprovals.check=()=>({approved:false});
  game.user=gm;token.uuid='Scene.s.Token.other';await api.discover();
  assert.equal(execCount,1,'unapproved modified native script never runs');
- module.api.scriptApprovals.check=()=>({approved:true});
+ pf1Module.api.scriptApprovals.check=()=>({approved:true});
  await api.discover();
  assert.equal(execCount,2,'approved native script is discoverable on changed token');
  console.log('PASS passive-save-auras: native pre-roll, structured fear, morale stacking, fail closed, discovery, multiplayer, chat');
