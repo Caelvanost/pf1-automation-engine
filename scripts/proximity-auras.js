@@ -32,7 +32,7 @@ const paCenter=(token,scene)=>{
 function paValidate(input){
  if(!input||typeof input!=="object"||Array.isArray(input))return false;
  if(!Object.keys(input).every(k=>["key","emitterActorUuid","emitterTokenUuid",
-  "sourceItemUuid","beneficiaries","range","defense","duration","light","label"].includes(k)))return false;
+  "sourceItemUuid","beneficiaries","range","defense","duration","light","label","started"].includes(k)))return false;
  if(!paKey(input.key)||!paUuid(input.emitterActorUuid)||
   !paUuid(input.emitterTokenUuid)||!paUuid(input.sourceItemUuid))return false;
  if(!input.beneficiaries||input.beneficiaries.kind!=="allies"||
@@ -44,6 +44,9 @@ function paValidate(input){
  if(!input.defense||!PA_BONUS_TYPES.has(input.defense.bonusType)||
   !Number.isSafeInteger(input.defense.value)||input.defense.value<0||
   input.defense.value>100)return false;
+ if(input.started!=null&&(!Number.isFinite(input.started.worldTime)||
+   (input.started.combatId!=null&&(!Number.isSafeInteger(input.started.round)||
+   !Number.isSafeInteger(input.started.turn)))))return false;
  if(!input.duration||!Number.isSafeInteger(input.duration.rounds)||
   input.duration.rounds<1||input.duration.rounds>10000)return false;
  if(input.light!=null&&(!Number.isFinite(input.light.bright)||
@@ -118,6 +121,8 @@ function paRecipients(record){
  for(const token of paTokens(scene)){
   const actor=paActorToken(token);
   if(!actor?.uuid)continue;
+  if(record.beneficiaries.excludeEmitter&&actor.uuid===record.emitterActorUuid)
+   continue;
   if(token.uuid!==source.uuid&&
    (source.disposition!==1||token.disposition!==1))continue;
   if(!paInRange(record,scene,source,token))continue;
@@ -346,7 +351,8 @@ function paReconcileSoon(){
  void paReconcile().catch(error=>console.error("[PF1AE][Aura] reconciliation",error));
 }
 async function paRegister(data){
- if(!paActive()||!paValidate(data))throw Error("Invalid proximity aura declaration");
+ if(!paActive()||!paValidate(data)||data.started!=null)
+  throw Error("Invalid proximity aura declaration");
  const item=await fromUuid(data.sourceItemUuid);
  if(item?.documentName!=="Item"||item.actor?.uuid!==data.emitterActorUuid)
   throw Error("Aura source Item does not belong to emitter Actor");
