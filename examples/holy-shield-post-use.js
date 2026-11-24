@@ -68,14 +68,20 @@ const data={
  {bright:length(6),dim:length(12)},
  label:"Bouclier saint — protection divine"
 };
-// Native PF1 document update is the ONLY debit (exactly two charges).
-// If registration fails, compensate only if the charge count is still ours.
-await hands.update({"system.uses.value":charges-2});
+// Register the stable aura first. The API serializes its source Item
+// writes and reports created:false for duplicates. Only the creator pays.
+const registered=await api.register(data);
+if(registered.created!==true)return;
 try{
- await api.register(data);
+ const available=Number(hands.system?.uses?.value);
+ if(!Number.isInteger(available)||available<2)
+  throw Error("Bouclier saint : Imposition des mains insuffisante.");
+ // This native Item update is the ONLY charge deduction, exactly two uses.
+ await hands.update({"system.uses.value":available-2});
 }catch(error){
- if(Number(hands.system?.uses?.value)===charges-2)
-  await hands.update({"system.uses.value":charges});
+ // Do not leave a free aura behind if the actual debit failed.
+ try{await api.stop({sourceItemUuid:sourceItem.uuid,key})}
+ catch(cleanup){console.error("[HolyShield] Aura rollback failed",cleanup)}
  throw error;
 }
 await ChatMessage.create({
