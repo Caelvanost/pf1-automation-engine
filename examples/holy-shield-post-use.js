@@ -4,6 +4,7 @@
  * consommer aucune charge automatiquement. Ce script débite 2 utilisations
  * d'Imposition des mains et enregistre l'aura après l'action native.
  */
+(async()=>{
 const sourceItem=typeof item!=="undefined"?item:
  (typeof action!=="undefined"?action?.item:null);
 const owner=typeof actor!=="undefined"?actor:sourceItem?.actor;
@@ -80,4 +81,9 @@ try{
 await ChatMessage.create({
  speaker:ChatMessage.getSpeaker({actor:owner,token:emit.object??emit}),
  content:`<p><strong>${owner.name}</strong> lève son bouclier dans un éclat de foi. Une lumière ${daylight?"éclatante":"douce"} rayonne autour de lui, et ses alliés proches sont enveloppés d’une protection sacrée. <em>Bouclier saint : +${shieldBonus} de bouclier, ${rounds} rounds.</em></p>`
+});
+
+})().catch(error=>{
+ console.error('[PF1AE][HolyShield] Native Script Call',error);
+ ui.notifications?.error?.(error.message);
 });
