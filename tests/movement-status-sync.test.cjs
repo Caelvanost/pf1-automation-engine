@@ -79,7 +79,8 @@ vm.createContext(ctx);
 vm.runInContext(script,ctx,{filename:'movement-status-sync.js'});
 const tick=async()=>{await new Promise(resolve=>setImmediate(resolve));};
 (async()=>{
- assert.equal(hooks.get('updateToken').length,1);
+ assert.equal(hooks.get('updateToken').length,2,
+  'movement and climb buff react to native token updates');
  assert.equal(hooks.get('createActiveEffect').length,1);
  // Effect => token movement, for both linked tokens.
  await actor.toggleStatusEffect('pf1_flying',{active:true});
