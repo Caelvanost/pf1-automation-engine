@@ -6,7 +6,7 @@ Service **générique** : aucune règle de classe/archétype, aucune dépendance
 
 ```js
 const auras=game.modules.get("pf1-automation-engine")?.api?.proximityAuras;
-await auras.register({
+const result=await auras.register({
   key:"unique-stable-per-source",
   emitterActorUuid:actor.uuid,
   emitterTokenUuid:token.document.uuid,
@@ -18,6 +18,8 @@ await auras.register({
   light:{bright:20,dim:40}, // facultatif, valeurs dans les unités de scène
   label:"Protection divine" // facultatif
 });
+console.log(result.created); // true si première création ; false si doublon
+
 await auras.stop({sourceItemUuid:item.uuid,key:"unique-stable-per-source"});
 auras.list({sourceItemUuid:item.uuid});
 await auras.reconcile(); // diagnostic / remise en cohérence MJ
@@ -31,7 +33,7 @@ Les longueurs `range.distance`, `light.bright` et `light.dim` sont exprimées da
 - `adjacent` = distance d'au plus **une case**, avec distance positive et cases réellement occupées ; `radius` = distance native inférieure ou égale au rayon. Utilisation de `getOccupiedGridSpaceOffsets`, `grid.getCenterPoint` et `grid.measurePath` Foundry v13 ; aucune moyenne des centres pour les grands tokens. En scène sans grille, repli vers une mesure native des centres.
 - Les bonus sont des **buffs PF1 natifs** : `system.changes` avec `target:"ac"`, `modifier` typé et `subTarget:"sac"` pour les boucliers. PF1 gère le non-cumul de type `shield` et les défenses normale / prise au dépourvu. Les totaux dérivés de CA ne sont jamais directement modifiés.
 - `register` est autorisé au **MJ** ou au **propriétaire** de l'objet source appartenant à l'émetteur. La déclaration persistée déclenche le recalcul côté MJ. Les bénéficiaires non propriétaires n'ont pas à recevoir de scripts.
-- Même paire `(sourceItemUuid,key)` = **une seule aura** ; une seconde déclaration identique ne réinitialise ni sa durée ni ses ressources. `stop` retire cette aura sans toucher aux autres.
+- Même paire `(sourceItemUuid,key)` = **une seule aura** ; une seconde déclaration identique ne réinitialise ni sa durée ni ses ressources. Le résultat `created` vaut `false` sur un doublon : le Script Call de la capacité ne doit débiter ses ressources que si `created === true`. `stop` retire cette aura sans toucher aux autres.
 - Pendant un combat, la durée est mesurée au **même compte d'initiative** après N rounds ; hors combat, N × 6 secondes de `game.time.worldTime`. Les déplacements ne prolongent rien. Le MJ vérifie aussi les expirations lors des mises à jour de tour, de temps, de token, de scène et au rechargement.
 - Les lumières sont des **documents AmbientLight séparés** créés avec le flag `proximityAuraSource` ; leur position suit l'émetteur et seules les lumières identifiées comme appartenant au service sont supprimées. Les lumières natives des tokens et des autres modules restent inchangées.
 - Les buffs et lumières portent un identifiant propriétaire et sont réconciliés par le seul MJ élu, sans duplication. Les sources de vérité restent des **flags d'Item natifs**, pas une mémoire du client.
@@ -49,7 +51,7 @@ Ce Script Call reçoit une variable `event` et peut publier son propre message R
 
 Référence : *L'Art de la guerre*, p. 60, archétype **Bouclier béni**.
 
-Créer une capacité native de paladin avec une **action simple**, sans coût de charge automatique (ni sur cette action, ni liée automatiquement à Imposition des mains). Les deux utilisations sont vérifiées avant action et débitées dans le script *Après utilisation*. Équiper un bouclier `equipmentType:"shield"` avec ses valeurs réelles de protection. Les prérequis, la valeur et les portées sont propres aux scripts de l'objet, **pas** au moteur générique.
+Créer une capacité native de paladin avec une **action simple**, sans coût de charge automatique (ni sur cette action, ni liée automatiquement à Imposition des mains). Les deux utilisations sont vérifiées avant action et débitées **une seule fois** dans le script *Après utilisation*, seulement si la déclaration de l'aura a effectivement créé une nouvelle instance ; un doublon ne coûte aucune charge supplémentaire. Équiper un bouclier `equipmentType:"shield"` avec ses valeurs réelles de protection. Les prérequis, la valeur et les portées sont propres aux scripts de l'objet, **pas** au moteur générique.
 
 Trois scripts complets et séparés (prêts à copier-coller) :
 
