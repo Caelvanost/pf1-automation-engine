@@ -154,6 +154,16 @@ const tick=()=>new Promise(r=>setImmediate(r));
  await api.reconcile();
  assert.equal(buffs(far).length,0);
  assert.equal(source.flags.proximityAuras[0].started.worldTime,started);
+ // Occupied squares, not token centers: a Large emitter protects a
+ // one-square target next to its second occupied grid square.
+ emit.width=2;
+ ally.x=200;
+ await api.reconcile();
+ assert.equal(buffs(friend).length,1,
+  'Large token grants adjacency from any occupied square');
+ emit.width=1;
+ ally.x=100;
+ await api.reconcile();
  // Moving the source moves its independent AmbientLight with the aura.
  emit.x=100;ally.x=200;
  await api.reconcile();
