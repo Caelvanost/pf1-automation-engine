@@ -265,3 +265,108 @@ Hooks.once?.("ready",()=>{
  void msReconcileLevitationTokens().catch(error=>
   console.warn("PF1AE | Levitation ready sync",error));
 });
+
+
+/**
+ * PF1 Climb: a creature without a climb speed loses its positive Dexterity
+ * bonus to AC while climbing (PF1 Core, Climb). PF1's native Buff Item
+ * change flag loseDexToAC implements that calculation without a fixed -2
+ * penalty, changing the Dex score, or applying Flat-Footed.
+ *
+ * Item flags prove ownership: we delete ONLY our own generated Buff.
+ */
+const MS_CLIMB_FLAG="automaticClimbDexLoss";
+const MS_CLIMB_NAME="Escalade — bonus de Dextérité à la CA perdu";
+const MS_CLIMB_QUEUE=new Map();
+function msClimbSpeed(actor){
+ const speed=actor?.system?.attributes?.speed?.climb;
+ // Prefer the effective PF1 speed; a merely stored base can be modified by
+ // current active conditions. Absence of speed is zero.
+ for(const value of [speed?.total,speed?.value,speed?.base]){
+  if(value==null||value==="")continue;
+  const n=Number(value);
+  if(Number.isFinite(n))return n;
+ }
+ return 0;
+}
+function msClimbBuffs(actor){
+ const items=actor?.items?.contents??
+  (typeof actor?.items?.values==="function"?[...actor.items.values()]:
+   actor?.items??[]);
+ return [...items].filter(item=>
+  item?.type==="buff"&&
+  item?.getFlag?.(MS_NS,MS_CLIMB_FLAG)===true);
+}
+function msClimbWanted(actor){
+ return msClimbSpeed(actor)<=0&&
+  msActorTokens(actor).some(token=>token.movementAction==="climb");
+}
+function msQueueClimb(actor){
+ if(!actor||!msCanWrite(actor)||typeof actor.createEmbeddedDocuments!=="function"||
+  typeof actor.deleteEmbeddedDocuments!=="function"||!actor.uuid)
+  return Promise.resolve();
+ const key=actor.uuid;
+ const pending=MS_CLIMB_QUEUE.get(key)??Promise.resolve();
+ const task=pending.catch(()=>{}).then(async()=>{
+  const buffs=msClimbBuffs(actor);
+  if(!msClimbWanted(actor)){
+   const ids=buffs.filter(item=>item.id).map(item=>item.id);
+   if(ids.length)await actor.deleteEmbeddedDocuments("Item",ids);
+   return;
+  }
+  if(buffs.length){
+   // Repair a user-disabled generated buff but leave unrelated items alone.
+   const first=buffs[0];
+   if(first.system?.active!==true)
+    await first.update?.({"system.active":true});
+   const extra=buffs.slice(1).filter(item=>item.id).map(item=>item.id);
+   if(extra.length)await actor.deleteEmbeddedDocuments("Item",extra);
+   return;
+  }
+  await actor.createEmbeddedDocuments("Item",[{
+   name:MS_CLIMB_NAME,
+   type:"buff",
+   img:"icons/svg/wingfoot.svg",
+   system:{
+    buffType:"temp",
+    active:true,
+    hideFromToken:false,
+    changes:[],
+    changeFlags:{loseDexToAC:true},
+    description:{value:"PF1 : en escalade sans vitesse d'escalade, la créature perd son bonus positif de Dextérité à la CA. Effet généré automatiquement par PF1AE."}
+   },
+   flags:{[MS_NS]:{[MS_CLIMB_FLAG]:true}}
+  }]);
+ }).catch(error=>console.warn("PF1AE | climb Dex buff sync",error));
+ MS_CLIMB_QUEUE.set(key,task);
+ void task.finally(()=>{
+  if(MS_CLIMB_QUEUE.get(key)===task)MS_CLIMB_QUEUE.delete(key);
+ });
+ return task;
+}
+function msReconcileClimb(){
+ const actors=new Map();
+ for(const placeable of globalThis.canvas?.tokens?.placeables??[]){
+  const actor=(placeable?.document??placeable)?.actor;
+  if(actor?.uuid)actors.set(actor.uuid,actor);
+ }
+ return Promise.all([...actors.values()].map(msQueueClimb));
+}
+Hooks.on("updateToken",(doc,changes)=>{
+ if(Object.hasOwn(changes??{},"movementAction")&&doc?.actor)
+  void msQueueClimb(doc.actor);
+});
+Hooks.on("createToken",doc=>{
+ if(doc?.actor)void msQueueClimb(doc.actor);
+});
+Hooks.on("deleteToken",doc=>{
+ if(doc?.actor)void msQueueClimb(doc.actor);
+});
+Hooks.on("updateActor",actor=>{
+ // Also reacts to gaining/losing a natural or magical Climb speed.
+ if(actor?.uuid&&msActorTokens(actor).some(token=>token.movementAction==="climb"||
+    msClimbBuffs(actor).length))
+  void msQueueClimb(actor);
+});
+Hooks.on("canvasReady",()=>{void msReconcileClimb()});
+Hooks.once?.("ready",()=>{void msReconcileClimb()});

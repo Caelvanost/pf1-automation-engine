@@ -18,7 +18,28 @@ const game={system:{id:'pf1'},user:{id:'GM',isGM:true},users,
 const tokenDocs=[],scene={id:'s'};
 const canvas={scene,tokens:{placeables:[]}};
 const effects=[];
+const buffItems=[];
 const actor={id:'actor',uuid:'Actor.actor',statuses:new Set(),
+ system:{attributes:{speed:{climb:{total:0,base:0}}}},
+ items:{contents:buffItems},
+ async createEmbeddedDocuments(kind,data){
+  assert.equal(kind,'Item');
+  return data.map((record,i)=>{
+   const doc={...record,id:'climb-buff-'+(buffItems.length+i),
+    actor,system:JSON.parse(JSON.stringify(record.system)),
+    getFlag(ns,key){return record.flags?.[ns]?.[key]},
+    async update(changes){if(Object.hasOwn(changes,'system.active'))
+      this.system.active=changes['system.active']}
+   };
+   buffItems.push(doc);
+   return doc;
+  });
+ },
+ async deleteEmbeddedDocuments(kind,ids){
+  assert.equal(kind,'Item');
+  for(const id of ids){const i=buffItems.findIndex(doc=>doc.id===id);
+   if(i>=0)buffItems.splice(i,1)}
+ },
  effects:{contents:effects},isOwner:true,async toggleStatusEffect(id,{active}={}){
   assert.ok(statuses.has(id),'only native PF1 statuses may be toggled');
   changes.push({id,active});
@@ -58,7 +79,8 @@ vm.createContext(ctx);
 vm.runInContext(script,ctx,{filename:'movement-status-sync.js'});
 const tick=async()=>{await new Promise(resolve=>setImmediate(resolve));};
 (async()=>{
- assert.equal(hooks.get('updateToken').length,1);
+ assert.equal(hooks.get('updateToken').length,2,
+  'movement and climb buff react to native token updates');
  assert.equal(hooks.get('createActiveEffect').length,1);
  // Effect => token movement, for both linked tokens.
  await actor.toggleStatusEffect('pf1_flying',{active:true});
@@ -205,6 +227,53 @@ const tick=async()=>{await new Promise(resolve=>setImmediate(resolve));};
  await tick();
  assert.equal(a.movementAction,'walk','removing Levitating restores Walk');
  assert.equal(b.movementAction,'walk');
+ // Native PF1 buff changeFlag must deny Dex without fixed AC modifier.
+ await a.update({movementAction:'climb'});
+ await tick();await tick();
+ assert.equal(buffItems.length,1,'one generated climbing buff');
+ assert.equal(buffItems[0].system.changeFlags.loseDexToAC,true);
+ assert.deepEqual(buffItems[0].system.changes,[]);
+ assert.equal(buffItems[0].system.active,true);
+ assert.equal(buffItems[0].system.hideFromToken,false);
+ assert.equal(buffItems[0].getFlag('pf1-automation-engine','automaticClimbDexLoss'),true);
+ await b.update({movementAction:'climb'});
+ await tick();await tick();
+ assert.equal(buffItems.length,1,'shared Actor only receives one buff');
+ // Another token remains climbing, so leaving climb on one token cannot
+ // remove the shared Actor native Buff.
+ // The existing PF1AE movement mirroring deliberately synchronizes
+ // a normal token mode change to its siblings. Isolate the climbing
+ // reconciliation here to verify the multiple-token safeguard.
+ a.movementAction='walk';
+ await vm.runInContext('msQueueClimb',ctx)(actor);
+ assert.equal(buffItems.length,1);
+ await b.update({movementAction:'walk'});
+ await tick();await tick();
+ assert.equal(buffItems.length,0,'last climbing token removes owned buff');
+ // A real climb speed preserves Dex to AC.
+ actor.system.attributes.speed.climb.total=20;
+ await a.update({movementAction:'climb'});
+ await tick();await tick();
+ assert.equal(buffItems.length,0,'native climb speed exempts creature');
+ // Removing climb speed while climbing starts the penalty.
+ actor.system.attributes.speed.climb.total=0;
+ fire('updateActor',actor,{system:{attributes:{speed:{climb:{total:0}}}}});
+ await tick();await tick();
+ assert.equal(buffItems.length,1,'speed change reconciles penalty');
+ // Generated Buff disabled by the user is restored while still climbing.
+ buffItems[0].system.active=false;
+ fire('updateActor',actor,{});
+ await tick();await tick();
+ assert.equal(buffItems[0].system.active,true);
+ // Unrelated native buffs are never deleted or modified.
+ const other={id:'other-buff',type:'buff',system:{active:true},
+  getFlag:()=>false};
+ buffItems.push(other);
+ await a.update({movementAction:'walk'});
+ await tick();await tick();
+ assert.equal(buffItems.length,1);
+ assert.equal(buffItems[0],other);
+ buffItems.pop();
  // Non-leading player must not run a competing synchronization.
  game.user={id:'player',isGM:false};
  await a.update({movementAction:'fly'});

@@ -1,4 +1,14 @@
-# PF1 Automation Engine v1.41.12
+# PF1 Automation Engine v1.41.13
+
+## Escalade : perte native du bonus de Dextérité à la CA (v1.41.13)
+
+Lorsque le mode de mouvement d'un token passe à **Escalade** (`movementAction: "climb"`), PF1AE crée sur son acteur un buff natif Pathfinder 1e nommé **Escalade — bonus de Dextérité à la CA perdu**, actif, visible sur le token et utilisant uniquement `system.changeFlags.loseDexToAC = true` : aucune pénalité fixe de −2, aucune baisse de caractéristique, et aucun état `Flat-Footed` ajouté.
+
+Si l'acteur possède une **vitesse d'escalade positive** (`system.attributes.speed.climb.total`), conformément à la règle PF1, il conserve son bonus de Dextérité à la CA et le buff n'est pas appliqué. À la sortie du mode Escalade (sur le dernier token associé à l'acteur), le buff créé par PF1AE est retiré automatiquement. Un changement de vitesse d'escalade pendant l'ascension relance la vérification. Les autres buffs restent intacts.
+
+Les tokens liés partageant un même acteur partagent également sa CA native ; PF1AE ne crée qu'un seul buff par acteur et le conserve tant qu'au moins l'un de ses tokens de la scène active est en mode Escalade. Sur des tokens non liés, le buff reste propre à l'acteur synthétique correspondant.
+
+
 
 ## Statut natif « Levitating » sur les tokens (v1.41.12)
 
