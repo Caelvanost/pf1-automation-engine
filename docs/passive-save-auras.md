@@ -41,6 +41,19 @@ Les contrôles `requiresAlive` et `requiresConscious` lisent les **états natifs
 - Lorsque `actor.getConditionImmunities()` contient un descripteur de la source reconnue (`fear` par exemple), le hook pré-jet PF1 annule la sauvegarde native. Le moteur ne crée jamais une immunité à partir d’un simple bonus d’aura.
 - Les types déclaratifs qui exigeraient un empilement particulier (dodge/circumstance/untyped) sont volontairement refusés pour les sauvegardes conditionnelles avant une implémentation explicitement correcte.
 
+### Déclaration explicite d'un descripteur par le MJ
+
+Lorsqu'une capacité non magique de terreur n'a pas de descripteur structuré dans PF1 11.11, le MJ peut utiliser le **flag existant** `saveTraits` sur **l'objet source de l'effet**, pas sur le paladin :
+
+```js
+await sourceItem.setFlag("pf1-automation-engine","saveTraits",{
+  descriptors:["fear"],
+  magical:false
+});
+```
+
+La lecture des flags est limitée à une liste structurée de descripteurs ; le moteur ne déduit pas `fear` du nom ou de la description HTML. Si le jet natif n'expose toujours pas de source fiable, aucun bonus n'est appliqué et `conditionalSaveAuras.lastDiagnostic(...)` l'indique. Cette opération vise uniquement à renseigner les métadonnées d'effets particuliers, **pas** à installer l'aura sur chaque paladin.
+
 ## Découverte des Script Calls
 
 Sur l'objet de capacité, ajouter **un Script Call natif**, catégorie **Après utilisation** (`postUse`), nommé **exactement `PF1AE:aura:passive`**. Copiez le script complet [`examples/aura-of-courage-passive.js`](../examples/aura-of-courage-passive.js).
