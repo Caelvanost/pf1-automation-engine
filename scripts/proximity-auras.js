@@ -27,7 +27,9 @@ const paCenter=(token,scene)=>{
  if(!Number.isFinite(size)||size<=0)return null;
  const w=Number(token?.width),h=Number(token?.height);
  if(!Number.isFinite(w)||!Number.isFinite(h))return null;
- return {x:token.x+w*size/2,y:token.y+h*size/2};
+ return {x:token.x+w*size/2,y:token.y+h*size/2,
+  ...(Number.isFinite(Number(token.elevation))?
+    {elevation:Number(token.elevation)}:{})};
 };
 function paValidate(input){
  if(!input||typeof input!=="object"||Array.isArray(input))return false;
@@ -83,7 +85,8 @@ function paCells(scene,token){
   typeof grid?.getCenterPoint!=="function")return null;
  const points=offsets.map(offset=>{
   const obj=grid.getCenterPoint(offset);
-  return {x:obj?.x,y:obj?.y};
+  return {x:obj?.x,y:obj?.y,
+   ...(Number.isFinite(obj?.elevation)?{elevation:obj.elevation}:{})};
  });
  return points.every(p=>Number.isFinite(p.x)&&Number.isFinite(p.y))?points:null;
 }
@@ -178,9 +181,14 @@ function paExpired(record){
  const combat=game.combat;
  if(start.combatId&&combat?.started&&combat.id===start.combatId){
   const round=Number(combat.round),turn=Number(combat.turn);
-  // X full rounds end just before the source's same initiative count.
+  // Follow the emitter's actual initiative position if combatants are
+  // reordered; do not use a stale turn index captured at activation.
+  const order=paList(combat.turns??[]);
+  const sourceIndex=order.findIndex(c=>c?.id===start.combatantId);
+  const deadlineTurn=sourceIndex>=0?sourceIndex:start.turn;
+  // X full rounds end just before the emitter's same initiative count.
   return Number.isFinite(round)&&round-start.round>=record.duration.rounds&&
-    (round-start.round>record.duration.rounds||turn>=start.turn);
+    (round-start.round>record.duration.rounds||turn>=deadlineTurn);
  }
  return Number(game.time?.worldTime??0)-start.worldTime>=record.duration.rounds*6;
 }
@@ -327,7 +335,8 @@ async function paDeliver(item){
     e.eventId===receipt.eventId?{...e,delivery:"claimed"}:e));
    const {delivery,...payload}=receipt;
    const event=Object.freeze(paClone(payload));
-   Hooks.callAll?.("pf1aeProximityAuraExpired",event);
+   try{Hooks.callAll?.("pf1aeProximityAuraExpired",event)}
+   catch(error){console.error("[PF1AE][Aura] expiry hook failed",error)}
    const calls=paCalls(item).filter(c=>
     c.category==="postUse"&&c.name===PA_END_SUBSCRIPTION&&
     typeof c.execute==="function");
