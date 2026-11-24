@@ -188,6 +188,20 @@ function pasEvaluate(actor,options,saveId){
 function pasPreRoll(actor,options,saveId){
  if(!options||typeof options!=="object")return;
  if(PAS_APPLIED.has(options))return;
+ // PF1 11.11 exposes condition immunities natively. When the save source
+ // has a verified descriptor matching one, the native roll is unnecessary.
+ // Never infer immunity from name/HTML or from an aura's bonus.
+ const source=pasNativeSource(actor,options,saveId);
+ if(source.status==="resolved"){
+  const immune=actor?.getConditionImmunities?.();
+  if(immune&&typeof immune.has==="function"&&
+   source.descriptors.some(descriptor=>immune.has(descriptor))){
+   PAS_LAST.set(actor?.uuid+":"+saveId,{
+    status:"immune",descriptor:source.descriptors.find(d=>immune.has(d)),
+    reason:"PF1 native condition immunity"});
+   return false; // PF1 calls Hooks.call() before its native d20Roll.
+  }
+ }
  const result=pasEvaluate(actor,options,saveId);
  PAS_LAST.set(actor?.uuid+":"+saveId,result);
  if(result.status!=="resolved"||result.extra<=0)return;
@@ -210,6 +224,24 @@ function pasPostRoll(actor,message,saveId){
   value:result.extra,details:result.details,labels:result.labels
  }).catch?.(error=>console.warn("[PF1AE][PassiveAuras] message annotation",error));
 }
+function pasRenderSaveAnnotation(message,html){
+ const data=message?.getFlag?.(PAS_NS,"conditionalAuraSave");
+ if(!data||!Number.isFinite(data.value)||data.value<=0)return;
+ const root=html?.querySelector?html:html?.[0]?.querySelector?html[0]:null;
+ const host=root?.querySelector?.(".message-content")??root;
+ if(!host||typeof host.append!=="function"||
+    host.querySelector?.('[data-pf1ae-aura-save]'))return;
+ if(typeof document?.createElement!=="function")return;
+ const node=document.createElement("p");
+ node.dataset.pf1aeAuraSave="true";
+ node.className="notes pf1ae-aura-save";
+ const key="PF1AE.PassiveAuras.SaveAnnotation";
+ const type=String(data.details?.[0]?.type??"");
+ node.textContent=game.i18n?.format?.(key,{value:data.value,type})??
+  "Aura conditionnelle : +"+data.value+" ("+type+")";
+ host.append(node);
+}
+Hooks.on("renderChatMessageHTML",pasRenderSaveAnnotation);
 Hooks.on("pf1PreActorRollSave",pasPreRoll);
 Hooks.on("pf1ActorRollSave",pasPostRoll);
 for(const name of ["canvasReady","createToken","deleteToken","createActor",
