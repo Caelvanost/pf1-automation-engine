@@ -297,7 +297,7 @@ async function paFinish(item,key,reason){
   return {removed:true,eventId:receipt.eventId};
  });
 }
-function paCalls=item=>paList(item?.scriptCalls??item?.system?.scriptCalls);
+const paCalls=item=>paList(item?.scriptCalls??item?.system?.scriptCalls);
 async function paDeliver(item){
  if(!paLeader())return;
  return paLock("delivery:"+item.uuid,async()=>{
