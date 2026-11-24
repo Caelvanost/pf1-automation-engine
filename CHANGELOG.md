@@ -1,3 +1,13 @@
+# 1.42.0 — API générique d'auras défensives persistantes
+
+- `api.proximityAuras.register/stop/list/reconcile`, source native Item, UUID de token et d'acteur, clés idempotentes.
+- Bénéficiaires alliés recalculés via grille v13, cases réellement occupées et distance native ; mouvement, arrivée et sortie.
+- Buffs natifs PF1 typés : bonus de bouclier via `sac/shield` sans somme de CA calculée, expiration et nettoyages uniquement des effets détenus par PF1AE.
+- Durées au compte d'initiative ou temps du monde, persistance F5 et déconnexions, MJ élu pour les effets.
+- Lumière temporaire indépendante du token via AmbientLight (éclairage initial et éclairages d'autres modules conservés).
+- Outbox d'expiration, hook `pf1aeProximityAuraExpired` et Script Call natif approuvé `PF1AE:aura:expired`, aucun message RP émis par le moteur.
+- Tests `proximity-auras.test.cjs`, documentation de l'API, trois Scripts Calls complets de Bouclier saint (L'Art de la guerre, p. 60).
+
 # 1.41.14 — Action par défaut : uniquement dans Avancé, si plusieurs actions
 
 - UI réservée aux fiches natives Item PF1, pas aux éditeurs d'actions/attaques.
