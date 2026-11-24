@@ -6,7 +6,7 @@
 const PAS_NS="pf1-automation-engine";
 const PAS_SUBSCRIPTION="PF1AE:aura:passive";
 const PAS_SEEN=new Map();
-const PAS_APPLIED=new Map();
+const PAS_APPLIED=new WeakMap();
 const PAS_LAST=new Map();
 let PAS_SCANNING=Promise.resolve();
 const pasList=x=>[...(x?.contents??x?.values?.()??x??[])];
@@ -42,7 +42,17 @@ function pasAllowed(actor,item,call){
  return game.modules.get(PAS_NS)?.api?.scriptApprovals?.check?.(actor,item,call)
   ?.approved===true;
 }
-async function pasDiscover(){
+let PAS_DISCOVERING=null;
+function pasDiscover(){
+ if(PAS_DISCOVERING)return PAS_DISCOVERING;
+ const task=pasDiscoverImpl();
+ PAS_DISCOVERING=task;
+ void task.finally(()=>{
+  if(PAS_DISCOVERING===task)PAS_DISCOVERING=null;
+ }).catch(()=>{});
+ return task;
+}
+async function pasDiscoverImpl(){
  if(!pasEnabled()||!pasLeader()||!pasApi())return {skipped:true};
  const found=new Set();let installed=0,blocked=0;
  for(const actor of pasActors()){
