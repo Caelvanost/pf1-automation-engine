@@ -1,3 +1,12 @@
+# 1.43.0 — Auras passives génériques et bonus conditionnels aux sauvegardes
+
+- `api.proximityAuras` accepte `savingThrowBonus`, `lifecycle.mode:"passive"`, `requiresAlive`, `requiresConscious` et `minimumClassLevel`, sans logique de classe codée.
+- Application avant le jet natif via `pf1PreActorRollSave`, source structurée des descripteurs, groupes de bonus typés et non-cumul.
+- Diagnostics explicites si le descripteur de la sauvegarde ou la contribution native au type de bonus est inconnue.
+- Découverte automatique des Script Calls natifs `PF1AE:aura:passive` autorisés par le MJ ; pas de nouvelle action ni ressource.
+- Exemple copiable d'Aura de courage (niveau 3, rayon PF1 de 3 m/10 ft, moral +4 contre `fear`) et documentation sur l'immunité personnelle.
+- Tests de portée/statuts/conditions, de jets natifs, du cumul de moral, de la sauvegarde des données, et du multijoueur. Non-régression de Bouclier saint.
+
 # 1.42.1 — Groupe d'armes virtuel « Arme improvisée »
 
 - Ajoute « Arme improvisée » aux choix visibles dans la section des groupes d'une fiche d'arme PF1 11.11.

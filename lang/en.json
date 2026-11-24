@@ -209,6 +209,9 @@
       "west": "West",
       "cancel": "Cancel",
       "Blocked": "Attack blocked — directional total cover."
+    },
+    "PassiveAuras": {
+      "SaveAnnotation": "Conditional aura: +{value} ({type})"
     }
   }
 }
