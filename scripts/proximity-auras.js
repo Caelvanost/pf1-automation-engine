@@ -46,7 +46,13 @@ function paValidate(input){
  const passive=input.lifecycle?.mode==="passive";
  if(input.lifecycle!=null&&(!passive||
   typeof input.lifecycle.requiresConscious!=="boolean"||
-  typeof input.lifecycle.requiresAlive!=="boolean"))return false;
+  typeof input.lifecycle.requiresAlive!=="boolean"||
+  (input.lifecycle.minimumClassLevel!=null&&(
+   typeof input.lifecycle.minimumClassLevel.classTag!=="string"||
+   !/^[a-zA-Z0-9_-]{1,50}$/.test(input.lifecycle.minimumClassLevel.classTag)||
+   !Number.isSafeInteger(input.lifecycle.minimumClassLevel.level)||
+   input.lifecycle.minimumClassLevel.level<1||
+   input.lifecycle.minimumClassLevel.level>30))))return false;
  if(!input.defense&&!input.savingThrowBonus)return false;
  if(input.defense!=null&&(!PA_BONUS_TYPES.has(input.defense.bonusType)||
   !Number.isSafeInteger(input.defense.value)||input.defense.value<0||
@@ -141,6 +147,16 @@ function paEmitterActive(record){
  if(!actor||actor.uuid!==record.emitterActorUuid)return false;
  const statuses=actor.statuses;
  if(record.lifecycle.requiresAlive&&statuses?.has?.("dead"))return false;
+ const source=paList(actor.items).find(item=>item.uuid===record.sourceItemUuid);
+ if(!source||source.system?.disabled===true)return false;
+ const requirement=record.lifecycle.minimumClassLevel;
+ if(requirement){
+  const norm=x=>String(x??"").toLowerCase().replace(/[^a-z0-9]/g,"");
+  const found=paList(actor.items).filter(item=>item.type==="class"&&
+   (norm(item.system?.tag)===norm(requirement.classTag)||
+    norm(item.name)===norm(requirement.classTag)));
+  if(!found.some(item=>Number(item.system?.level)>=requirement.level))return false;
+ }
  if(record.lifecycle.requiresConscious&&
   ["unconscious","sleep","asleep"].some(x=>statuses?.has?.(x)))return false;
  return true;
