@@ -171,40 +171,55 @@ function daConfigureActionUse(actionUse){
  Object.defineProperty(actionUse,'pf1aeDefaultActionDialogWrapped',{value:true});
  actionUse.createAttackDialog=wrapped;
 }
+/**
+ * Only the top-level native PF1 Item sheet owns this control. In particular,
+ * action/attack editors can expose their parent Item and are also
+ * ApplicationV2 instances; the generic render hook must never inject there.
+ */
+function daIsItemSheet(sheet){
+ if(sheet?.action||sheet?.actionId||sheet?.itemAction)return false;
+ const itemSheets=globalThis.pf1?.applications?.item;
+ const base=itemSheets?.abstract?.ItemSheetPF??itemSheets?.ItemSheetPF;
+ if(typeof base==='function')return sheet instanceof base;
+ // Defensive fallback when the PF1 public base has not been exported.
+ // Never treat an arbitrary ApplicationV2 that references an Item as a sheet.
+ const name=sheet?.constructor?.name??'';
+ return /SheetPF(?:_|$)/.test(name)&&
+  !/(?:Action|Attack|Dialog|Selector)/i.test(name);
+}
 function daRender(sheet,html){
- if(!daEnabled())return;
+ if(!daEnabled()||!daIsItemSheet(sheet))return;
  const item=sheet?.document??sheet?.item??sheet?.object;
  if(item?.documentName!=='Item'||!daIsOwner(item))return;
- const actions=daActions(item);
- // A single native action is also configurable (e.g. skip-dialog), and
- // not all PF1 Item types expose two or more actions.
- if(actions.length===0)return;
- // Foundry v13/PF1 11.11 item sheets are ApplicationV2. Their official
- // renderApplication hook supplies an HTMLElement, and window.content is
- // the most reliable currently connected root. Legacy renderItemSheet
- // continues to supply jQuery HTML.
  const candidate=sheet?.window?.content??html?.[0]??html??
   sheet?.element?.[0]??sheet?.element;
  const root=candidate?.querySelector?candidate:
   candidate?.[0]?.querySelector?candidate[0]:null;
  if(!root)return;
- // Some ItemSheetV2 types have no Advanced tab (or render its contents
- // lazily). Fall back to a real content pane, never a nav tab anchor.
+ const existing=root.querySelector('[data-pf1ae-default-action]');
+ const actions=daActions(item);
+ // A native action selector is only useful if there is a choice.
+ if(actions.length<=1){
+  existing?.remove?.();
+  return;
+ }
+ // Absolutely no fallback to Actions, Details, Description or the root:
+ // the control is exclusively part of the native Advanced tab content.
  const advanced=[
   '.sheet-body .tab[data-tab="advanced"]',
   '.tab[data-tab="advanced"]',
-  '.tab.advanced',
-  '.sheet-body .tab[data-tab="actions"]',
-  '.tab[data-tab="actions"]',
-  '.sheet-body .tab[data-tab="details"]',
-  '.tab[data-tab="details"]',
-  '.sheet-body .tab[data-tab="description"]',
-  '.tab[data-tab="description"]',
-  '.sheet-body',
-  'form'
+  '.tab.advanced'
  ].map(selector=>root.querySelector(selector))
-  .find(el=>el&&typeof el.append==='function')??root;
- if(root.querySelector('[data-pf1ae-default-action]'))return;
+  .find(el=>el&&typeof el.append==='function'&&
+   !el.closest?.('nav, .tabs, .sheet-navigation'));
+ if(!advanced){
+  existing?.remove?.();
+  return;
+ }
+ if(existing){
+  if(advanced.contains?.(existing))return;
+  existing.remove?.();
+ }
  const t=key=>game.i18n.localize('PF1AE.DefaultAction.'+key);
  // Use the same native heading and form layout as the other PF1 Advanced
  // sections (e.g. Script and Little Helper), without a bordered card.
@@ -325,8 +340,7 @@ Hooks.once('ready',()=>{
  Hooks.on('pf1CreateActionUse',daConfigureActionUse);
  Hooks.on('renderItemSheet',daRender);
  Hooks.on('renderItemSheetV2',daRender);
- // PF1 v11.11 WeaponSheetPF, EquipmentSheetPF, FeatSheetPF and other
- // ItemSheetV2 descendants primarily emit the generic ApplicationV2
- // render callback; V1-only hooks do not cover all Item types.
+ // PF1 native ItemSheetV2 subclasses emit renderApplication; only those
+ // sheets with an Advanced tab and multiple actions are eligible.
  Hooks.on('renderApplication',daRender);
 });
