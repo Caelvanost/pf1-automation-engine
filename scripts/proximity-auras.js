@@ -393,13 +393,15 @@ async function paRegister(data){
    throw Error("Too many active auras on source Item");
   // Idempotent repeated calls must NEVER restart an existing duration.
   const old=current.find(x=>x.key===record.key);
-  if(old&&paValidate(old))return old;
+  if(old&&paValidate(old))return {record:old,created:false};
   await item.setFlag(PA_NS,PA_RECORDS,[
    ...current.filter(x=>x.key!==record.key),record]);
-  return record;
+  return {record,created:true};
  });
  paReconcileSoon();
- return paClone(stored);
+ // created distinguishes a genuinely new registration from an idempotent
+ // duplicate so source scripts can charge a resource exactly once.
+ return {...paClone(stored.record),created:stored.created};
 }
 async function paStop({sourceItemUuid,key}={}){
  if(!paUuid(sourceItemUuid)||!paKey(key))throw Error("Invalid aura identity");
