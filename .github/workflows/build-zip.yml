@@ -50,7 +50,12 @@ jobs:
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $archive = [System.IO.Compression.ZipFile]::OpenRead($zips[0].FullName)
           try {
-            if ($null -eq $archive.GetEntry('module.json')) { throw 'module.json is not at ZIP root.' }
+            $manifestEntry = $archive.GetEntry('module.json')
+            if ($null -eq $manifestEntry) { throw 'module.json is not at ZIP root.' }
+            $reader = [System.IO.StreamReader]::new($manifestEntry.Open())
+            try { $packagedManifest = $reader.ReadToEnd() | ConvertFrom-Json }
+            finally { $reader.Dispose() }
+            if ($packagedManifest.socket -ne $true) { throw 'Foundry module socket declaration missing or false in ZIP.' }
             if ($null -eq $archive.GetEntry('scripts/weapon-properties-ui.js')) { throw 'Missing improvised weapon UI service.' }
             if ($null -eq $archive.GetEntry('scripts/effect-groups.js')) { throw 'Missing multi-target effect service.' }
             if ($null -eq $archive.GetEntry('scripts/duration-manager.js')) { throw 'Missing world-time duration manager.' }

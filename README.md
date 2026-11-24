@@ -1,4 +1,10 @@
-# PF1 Automation Engine v1.43.0
+# PF1 Automation Engine v1.43.1
+
+## Correctif socket multijoueur Foundry (v1.43.1)
+
+Le manifeste du module déclare désormais `"socket": true` pour activer le canal natif `module.pf1-automation-engine`. Cette correction permet aux requêtes des joueurs d'atteindre le MJ élu, notamment dans `api.effectGroups.approveTemplate()`, `applyGroup()`, `extendGroup()` et `stopGroup()`. Les autres sous-services partageant ce canal bénéficient de la même déclaration. **Redémarrer entièrement le serveur Foundry après installation** : F5 seul ne suffit pas. Les autorisations OWNER, la sélection du MJ élu et les scripts de barde restent inchangés. La suite de tests simule déjà deux clients et le chemin de réponse socket ; vérifier ensuite le fonctionnement sur votre serveur réel.
+
+
 
 ## Auras passives et bonus conditionnels de sauvegarde (v1.43.0)
 

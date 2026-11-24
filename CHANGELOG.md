@@ -1,3 +1,11 @@
+# 1.43.1 — Correction du canal socket Foundry joueur → MJ
+
+- Ajoute `"socket": true` au manifeste natif `module.json` : Foundry enregistre et relaie désormais le canal `module.pf1-automation-engine` entre clients.
+- Corrige la cause des expirations `EffectGroup request timed out waiting for elected GM.` sur les requêtes `effectGroups.approveTemplate`, `applyGroup`, `extendGroup` et `stopGroup`, sous réserve que le MJ élu soit connecté et que les permissions de la requête soient valides.
+- Le même canal profite aux services `saveOverrides`, `saveOutcomes`, `attackOutcomes`, `dynamicEffects`, `damageEvents` et `bootstrap`.
+- Aucune modification des sockets, des vérifications OWNER, des automatisations de barde ou des règles de traitement de buffs. La mise à jour doit être suivie d’un **redémarrage complet du serveur Foundry**, puis d’une reconnexion des clients MJ/joueur.
+- Ajoute un contrôle de déclaration socket aux tests multiclients existants et une vérification du manifeste embarqué dans les ZIP des pipelines GitHub.
+
 # 1.43.0 — Auras passives génériques et bonus conditionnels aux sauvegardes
 
 - `api.proximityAuras` accepte `savingThrowBonus`, `lifecycle.mode:"passive"`, `requiresAlive`, `requiresConscious` et `minimumClassLevel`, sans logique de classe codée.
