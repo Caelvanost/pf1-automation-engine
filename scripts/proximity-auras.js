@@ -440,9 +440,18 @@ async function paRegister(data){
   const current=paList(item.getFlag(PA_NS,PA_RECORDS));
   if(current.length>=30&&!current.some(x=>x.key===record.key))
    throw Error("Too many active auras on source Item");
-  // Idempotent repeated calls must NEVER restart an existing duration.
+  // Keep timed auras idempotent, but allow passive declarations to rebind
+  // automatically when the actor changes scene, token or level.
   const old=current.find(x=>x.key===record.key);
-  if(old&&paValidate(old))return {record:old,created:false};
+  if(old&&paValidate(old)){
+   if(old.lifecycle?.mode==="passive"&&record.lifecycle?.mode==="passive"&&
+      JSON.stringify(old)!==JSON.stringify(record)){
+    await item.setFlag(PA_NS,PA_RECORDS,[
+     ...current.filter(x=>x.key!==record.key),record]);
+    return {record,created:false};
+   }
+   return {record:old,created:false};
+  }
   await item.setFlag(PA_NS,PA_RECORDS,[
    ...current.filter(x=>x.key!==record.key),record]);
   return {record,created:true};
