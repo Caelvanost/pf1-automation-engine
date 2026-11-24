@@ -137,9 +137,8 @@ const item=new ItemPF();
  assert.equal(render.has('renderItemSheetV2'),true);
  assert.equal(render.has('renderApplication'),true,
   'PF1 ItemSheetV2 ApplicationV2 generic render hook must be registered');
- // Exercise the real daRender path with synthetic DOM primitives: unlike
- // the old static checks, this catches missing tabs, duplicate injection
- // and the single-action filter on different PF1 sheet types.
+ // Exercise the real render hook against simulated PF1 ApplicationV2
+ // ItemSheets and reject action/attack dialog windows.
  class FakeNode {
   constructor(tag){this.tag=tag;this.children=[];this.dataset={};this.style={};
    this.className='';this.value='';this.type='';this.disabled=false;
@@ -147,6 +146,11 @@ const item=new ItemPF();
   append(...nodes){for(const n of nodes){n.parentElement=this;this.children.push(n)}}
   setAttribute(){}
   addEventListener(name,fn){this.listeners[name]=fn}
+  remove(){if(this.parentElement)this.parentElement.children.splice(
+   this.parentElement.children.indexOf(this),1)}
+  contains(node){return node===this||this.children.some(n=>n===node||
+   n.contains?.(node)===true)}
+  closest(){return null}
   querySelector(selector){
    if(selector==='[data-pf1ae-default-action]')
     return this.find(n=>n.dataset?.pf1aeDefaultAction==='true');
@@ -164,33 +168,70 @@ const item=new ItemPF();
   createElement:tag=>new FakeNode(tag),
   createTextNode:text=>({textContent:text})
  };
- const actionChoice=render.get('renderApplication');
- // Item type-independent: armor, feat, buff and spells with native actions.
- for(const type of ['weapon','equipment','feat','buff','spell']){
-  const trial=new ItemPF();
-  trial.type=type;trial.actions=new Map([['one',{id:'one',name:'Only action'}]]);
-  const page=new FakeNode('div'),details=new FakeNode('div');
-  page.querySelector=sel=>sel==='.tab[data-tab="details"]'?details:
-   sel==='[data-pf1ae-default-action]'?
-    details.querySelector('[data-pf1ae-default-action]'):null;
-  const app={document:trial,window:{content:page}};
-  actionChoice(app,page);
-  assert.ok(details.querySelector('[data-pf1ae-default-action]'),
-   type+' PF1 V2 sheet supports one action');
-  const count=details.children.length;
-  actionChoice(app,page);
-  assert.equal(details.children.length,count,type+' render is idempotent');
+ class FakeItemSheetPF {
+  constructor(item,advanced=true){
+   this.item=item;
+   const page=new FakeNode('div'),panel=new FakeNode('div');
+   page.querySelector=sel=>
+    (sel==='.sheet-body .tab[data-tab="advanced"]'&&advanced)?panel:
+    sel==='[data-pf1ae-default-action]'?
+     panel.querySelector('[data-pf1ae-default-action]'):null;
+   this.window={content:page};
+   this.panel=panel;
+  }
  }
- const fallback=new FakeNode('form');
- fallback.querySelector=sel=>sel==='form'?fallback:
-  sel==='[data-pf1ae-default-action]'?
-   fallback.find(n=>n.dataset?.pf1aeDefaultAction==='true'):null;
- const fallbackItem=new ItemPF();
- fallbackItem.type='feat';
- fallbackItem.actions=new Map([['one',{id:'one',name:'Only action'}]]);
- actionChoice({item:fallbackItem,window:{content:fallback}},fallback);
- assert.ok(fallback.querySelector('[data-pf1ae-default-action]'),
-  'missing Advanced and Details tabs falls back to visible sheet content');
+ context.pf1.applications.item={ItemSheetPF:FakeItemSheetPF};
+ const actionChoice=render.get('renderApplication');
+ for(const type of ['weapon','equipment','feat','buff','spell']){
+  const trial=new ItemPF();trial.type=type;
+  trial.actions=new Map([['one',{id:'one',name:'Only action'}]]);
+  const sheet=new FakeItemSheetPF(trial);
+  actionChoice(sheet,sheet.window.content);
+  assert.equal(sheet.panel.children.length,0,
+   type+' with a single action must have no default-action control');
+  trial.actions.set('two',{id:'two',name:'Second action'});
+  actionChoice(sheet,sheet.window.content);
+  assert.ok(sheet.panel.querySelector('[data-pf1ae-default-action]'),
+   type+' with multiple actions shows control in Advanced tab');
+  const count=sheet.panel.children.length;
+  actionChoice(sheet,sheet.window.content);
+  assert.equal(sheet.panel.children.length,count,
+   type+' render must be idempotent');
+  trial.actions.delete('two');
+  actionChoice(sheet,sheet.window.content);
+  assert.equal(sheet.panel.children.length,0,
+   type+' hiding a single remaining action also clears a stale control');
+ }
+ // Action-edit and attack-edit windows can expose the parent Item but
+ // must never receive the top-level Item's default-action interface.
+ const parentItem=new ItemPF();
+ parentItem.actions=new Map([
+  ['one',{id:'one',name:'Attack'}],
+  ['two',{id:'two',name:'Special attack'}]
+ ]);
+ const actionEditor={document:parentItem,action:parentItem.actions.get('one'),
+  window:{content:new FakeNode('div')}};
+ actionEditor.window.content.querySelector=sel=>
+  sel==='.sheet-body .tab[data-tab="advanced"]'?new FakeNode('div'):null;
+ actionChoice(actionEditor,actionEditor.window.content);
+ assert.equal(actionEditor.window.content.children.length,0,
+  'an Action edit window referencing an Item is not its ItemSheet');
+ class FakeAttackSheet extends FakeItemSheetPF {}
+ const attackSheet=new FakeAttackSheet(parentItem);
+ attackSheet.action=parentItem.actions.get('one');
+ actionChoice(attackSheet,attackSheet.window.content);
+ assert.equal(attackSheet.panel.children.length,0,
+  'a native attack/action editor is excluded even if subclassed');
+ // An item with several actions but no Advanced tab must not receive
+ // an injected section in Details, Actions or the outer form.
+ const noAdvanced=new FakeItemSheetPF(parentItem,false);
+ actionChoice(noAdvanced,noAdvanced.window.content);
+ assert.equal(noAdvanced.panel.children.length,0,
+  'no Advanced tab means no default-action UI or fallback');
+ const noActions=new ItemPF();noActions.actions=new Map();
+ const emptySheet=new FakeItemSheetPF(noActions);
+ actionChoice(emptySheet,emptySheet.window.content);
+ assert.equal(emptySheet.panel.children.length,0);
  context.document=initialDocument;
 
  assert.equal(item.flags.defaultActionId,'reload','only the custom Item flag was used');
