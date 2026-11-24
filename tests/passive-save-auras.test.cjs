@@ -94,6 +94,16 @@ const evalSave=(item,saveId='will',bonus=0)=>api.evaluate(beneficiary,
  assert.equal(evalSave(fearMagic).status,'uncertain',
   'missing native provenance must fail closed');
  beneficiary.sources=[{modifier:'base',value:5},{modifier:'morale',value:2}];
+ // A verified native PF1 immunity to the condition type fear cancels
+ // the existing native save; there is no second roll or invented success.
+ beneficiary.getConditionImmunities=()=>new Set(['fear']);
+ const immunityOptions=optionsFor(fearMagic,'0');
+ const preResult=hooks.get('pf1PreActorRollSave')[0](
+  beneficiary,immunityOptions,'will');
+ assert.equal(preResult,false,'native fear immunity cancels PF1 save');
+ assert.equal(immunityOptions.bonus,'0','immune creature has no aura roll bonus');
+ beneficiary.getConditionImmunities=()=>new Set();
+ // Existing native ChatMessage carries only an annotation, no new roll.
  const msg={documentName:'ChatMessage',flags:{},
   async setFlag(_ns,k,v){this.flags[k]=v;msgs.push(v)}};
  const o=optionsFor(fearMagic,'0');
