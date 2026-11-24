@@ -288,21 +288,37 @@ async function paFinish(item,key,reason){
   const record=records.find(x=>x.key===key);
   if(!record)return {removed:false};
   const receipts=paList(item.getFlag(PA_NS,PA_RECEIPTS));
-  if(receipts.length>250)throw Error("Aura receipt backlog requires cleanup");
+  // Pending work cannot be discarded; bound only the already claimed log.
+  const pending=receipts.filter(e=>e.delivery==="pending");
+  const claimed=receipts.filter(e=>e.delivery!=="pending").slice(-150);
+  if(pending.length>=100)throw Error("Pending aura expiration backlog too large");
   const receipt=paEvent(record,reason);
   await item.update({
    ["flags."+PA_NS+"."+PA_RECORDS]:records.filter(x=>x.key!==key),
-   ["flags."+PA_NS+"."+PA_RECEIPTS]:[...receipts,receipt]
+   ["flags."+PA_NS+"."+PA_RECEIPTS]:[...claimed,...pending,receipt]
   });
   return {removed:true,eventId:receipt.eventId};
  });
 }
 const paCalls=item=>paList(item?.scriptCalls??item?.system?.scriptCalls);
+function paValidReceipt(item,receipt){
+ return receipt?.type==="proximityAuraExpired"&&
+  /^pa:[a-z0-9]+:[a-z0-9]+$/i.test(String(receipt.eventId??""))&&
+  ["duration","manual","emitterMissing"].includes(receipt.reason)&&
+  receipt.sourceItemUuid===item.uuid&&
+  receipt.record?.sourceItemUuid===item.uuid&&
+  receipt.record?.key===receipt.key&&
+  receipt.record?.emitterActorUuid===receipt.emitterActorUuid&&
+  receipt.record?.emitterTokenUuid===receipt.emitterTokenUuid&&
+  item.actor?.uuid===receipt.emitterActorUuid&&
+  paValidate(receipt.record);
+}
 async function paDeliver(item){
  if(!paLeader())return;
  return paLock("delivery:"+item.uuid,async()=>{
   const entries=paList(item.getFlag(PA_NS,PA_RECEIPTS));
-  for(const receipt of entries.filter(e=>e.delivery==="pending")){
+  for(const receipt of entries.filter(e=>e.delivery==="pending"&&
+   paValidReceipt(item,e))){
    const live=paList(item.getFlag(PA_NS,PA_RECORDS));
    if(live.some(x=>x.key===receipt.key))continue;
    const latest=paList(item.getFlag(PA_NS,PA_RECEIPTS));
