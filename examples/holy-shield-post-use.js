@@ -53,7 +53,9 @@ if(!Number.isFinite(cha))throw Error("Bouclier saint : bonus de Charisme absent.
 const rounds=3+Math.max(0,Math.trunc(cha));
 const unit=String(scene.grid?.units??"ft").toLowerCase();
 const inFeet=["ft","feet","foot","pieds","pied"].includes(unit);
-const length=m=>inFeet?m*3.280839895:m;
+// PF1 official game-grid equivalence: 3 m = 10 ft, not 9.8425 ft.
+// The canonical distance must include a token exactly two 5-ft squares away.
+const length=m=>inFeet?m*(10/3):m;
 const radius=level>=20?6:level>=11?3:null;
 const daylight=level>=11;
 const data={
