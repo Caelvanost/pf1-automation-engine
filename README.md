@@ -1,4 +1,12 @@
-# PF1 Automation Engine v1.42.1
+# PF1 Automation Engine v1.43.0
+
+## Auras passives et bonus conditionnels de sauvegarde (v1.43.0)
+
+Le moteur `api.proximityAuras` peut désormais enregistrer des auras **passives permanentes**, sans durée, et des bonus typés qui ne s'appliquent que lorsqu'un jet natif PF1 concerne un descripteur structuré précis. L'intégration se fait dans `pf1PreActorRollSave`, sans second jet ni changement permanent de sauvegarde. La contribution est calculée par différence avec les bonus typés natifs quand leur provenance est vérifiable ; en l'absence d'information suffisante, le moteur refuse une application incertaine. L'aura se suspend sur les états natifs `unconscious`, `dead` et `pf1_sleep`, puis redevient active au rétablissement.
+
+Découverte automatique des Script Calls `PF1AE:aura:passive` validés, pour les acteurs et leurs tokens, sans macro d'installation. Aucune règle propre au paladin n'est codée dans le moteur ; l'exemple **Aura de courage** se trouve dans [`examples/aura-of-courage-passive.js`](examples/aura-of-courage-passive.js). Documentation : [`docs/passive-save-auras.md`](docs/passive-save-auras.md). Les auras temporaires, la lumière et Bouclier saint restent disponibles.
+
+
 
 ## Arme improvisée dans les groupes d'armes (v1.42.1)
 
