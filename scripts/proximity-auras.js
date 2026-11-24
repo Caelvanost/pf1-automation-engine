@@ -158,7 +158,7 @@ function paEmitterActive(record){
   if(!found.some(item=>Number(item.system?.level)>=requirement.level))return false;
  }
  if(record.lifecycle.requiresConscious&&
-  ["unconscious","sleep","asleep"].some(x=>statuses?.has?.(x)))return false;
+  ["unconscious","sleep","pf1_sleep","asleep"].some(x=>statuses?.has?.(x)))return false;
  return true;
 }
 function paRecipients(record){
