@@ -33,6 +33,7 @@ jobs:
           $expectedManifest = "https://raw.githubusercontent.com/$($env:GITHUB_REPOSITORY)/main/module.json"
           $expectedDownload = "$base/releases/download/$tag/$name"
           if ($manifest.id -ne 'pf1-automation-engine') { throw 'Unexpected module ID' }
+          if ($manifest.socket -ne $true) { throw 'Foundry module socket must be explicitly enabled.' }
           if ($manifest.manifest -ne $expectedManifest) { throw 'Wrong stable Foundry manifest URL' }
           if ($manifest.download -ne $expectedDownload) { throw 'Wrong GitHub release asset URL' }
           # Maintained release gate: 54 suites; seven historical suites excluded.
@@ -88,6 +89,7 @@ jobs:
             $reader = [System.IO.StreamReader]::new($entry.Open())
             try { $packaged = $reader.ReadToEnd() | ConvertFrom-Json }
             finally { $reader.Dispose() }
+            if ($packaged.socket -ne $true) { throw 'Packaged socket flag must be enabled.' }
             foreach ($field in @('id','version','manifest','download')) {
               if ($packaged.$field -ne $manifest.$field) { throw "Packaged manifest mismatch: $field" }
             }
