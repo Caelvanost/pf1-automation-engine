@@ -209,6 +209,9 @@
       "west": "Ouest",
       "cancel": "Annuler",
       "Blocked": "Attaque impossible — abri total directionnel."
+    },
+    "PassiveAuras": {
+      "SaveAnnotation": "Aura conditionnelle : +{value} ({type})"
     }
   }
 }
