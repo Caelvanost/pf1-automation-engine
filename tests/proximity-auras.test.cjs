@@ -123,8 +123,11 @@ const tick=()=>new Promise(r=>setImmediate(r));
 (async()=>{
  // Registered by a player owner; only elected GM mutates recipients.
  game.user=player;
- await api.register(definition);
- await api.register(definition);
+ const firstRegistration=await api.register(definition);
+ const repeatedRegistration=await api.register(definition);
+ assert.equal(firstRegistration.created,true,'first use creates one aura');
+ assert.equal(repeatedRegistration.created,false,
+  'duplicate native use cannot trigger another resource debit');
  assert.equal(source.flags.proximityAuras.length,1,'stable key idempotent');
  const started=source.flags.proximityAuras[0].started.worldTime;
  assert.equal(started,100,'duration starts exactly once');
