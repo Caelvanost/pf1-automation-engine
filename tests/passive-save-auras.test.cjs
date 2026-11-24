@@ -114,6 +114,17 @@ const evalSave=(item,saveId='will',bonus=0)=>api.evaluate(beneficiary,
  assert.equal(msg.flags.conditionalAuraSave.value,2,
   'annotation belongs to same native PF1 ChatMessage');
  assert.equal(msgs.length,1,'never creates a second roll');
+ const contentPane={children:[],append(el){this.children.push(el)},
+  querySelector(){return this.children[0]??null}};
+ const nativeCard={querySelector(sel){return sel==='.message-content'?contentPane:null}};
+ msg.getFlag=(_ns,k)=>msg.flags[k];
+ ctx.document={createElement:()=>({dataset:{},className:'',textContent:''})};
+ game.i18n={format:(k,params)=>'Aura conditionnelle : +'+params.value+' ('+params.type+')'};
+ fire('renderChatMessageHTML',msg,nativeCard);
+ assert.equal(contentPane.children.length,1,'same native save card is annotated');
+ assert.equal(contentPane.children[0].textContent,'Aura conditionnelle : +2 (morale)');
+ fire('renderChatMessageHTML',msg,nativeCard);
+ assert.equal(contentPane.children.length,1,'re-render does not duplicate annotation');
  // Fingerprint-based approval protects changed scripts.
  pf1Module.api.scriptApprovals.check=()=>({approved:false});
  game.user=gm;token.uuid='Scene.s.Token.other';await api.discover();
