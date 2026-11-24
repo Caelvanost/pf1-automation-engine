@@ -1,3 +1,10 @@
+# 1.41.14 — Action par défaut : uniquement dans Avancé, si plusieurs actions
+
+- UI réservée aux fiches natives Item PF1, pas aux éditeurs d'actions/attaques.
+- Insertion exclusivement dans l'onglet Avancé, sans repli vers Détails/Actions/Description.
+- Affichage uniquement si l'objet possède au moins deux actions natives ; retrait du contrôle lors d'un rerender si le nombre descend à une.
+- Persistance des préférences et délégation à ItemPF.use inchangées ; tests de non-régression par type de fiche.
+
 # 1.41.13 — Escalade et perte native du bonus de Dextérité à la CA
 
 - Mouvement token `climb` : buff PF1 natif (`system.changeFlags.loseDexToAC = true`), visible sur token, aucune pénalité Off-balance −2 ni condition Flat-Footed.
