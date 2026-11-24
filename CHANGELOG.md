@@ -1,3 +1,10 @@
+# 1.42.1 — Groupe d'armes virtuel « Arme improvisée »
+
+- Ajoute « Arme improvisée » aux choix visibles dans la section des groupes d'une fiche d'arme PF1 11.11.
+- Active/désactive la propriété native `system.properties.imp` en enregistrant l'Item ; ne force pas une valeur inconnue dans le champ `weaponGroups` à énumération restreinte.
+- Synchronisation avec la case de propriété d'arme existante, respect des permissions et rendu sans doublons.
+- Tests de régression de la présence du choix, de la persistance et du basculement de `imp`.
+
 # 1.42.0 — API générique d'auras défensives persistantes
 
 - `api.proximityAuras.register/stop/list/reconcile`, source native Item, UUID de token et d'acteur, clés idempotentes.
