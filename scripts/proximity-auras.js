@@ -34,7 +34,7 @@ const paCenter=(token,scene)=>{
 function paValidate(input){
  if(!input||typeof input!=="object"||Array.isArray(input))return false;
  if(!Object.keys(input).every(k=>["key","emitterActorUuid","emitterTokenUuid",
-  "sourceItemUuid","beneficiaries","range","defense","duration","light","label","started"].includes(k)))return false;
+  "sourceItemUuid","beneficiaries","range","defense","savingThrowBonus","lifecycle","duration","light","label","started"].includes(k)))return false;
  if(!paKey(input.key)||!paUuid(input.emitterActorUuid)||
   !paUuid(input.emitterTokenUuid)||!paUuid(input.sourceItemUuid))return false;
  if(!input.beneficiaries||input.beneficiaries.kind!=="allies"||
@@ -43,13 +43,31 @@ function paValidate(input){
   (input.range.kind==="radius"&&
    (!Number.isFinite(input.range.distance)||input.range.distance<=0||
     input.range.distance>500)))return false;
- if(!input.defense||!PA_BONUS_TYPES.has(input.defense.bonusType)||
+ const passive=input.lifecycle?.mode==="passive";
+ if(input.lifecycle!=null&&(!passive||
+  typeof input.lifecycle.requiresConscious!=="boolean"||
+  typeof input.lifecycle.requiresAlive!=="boolean"))return false;
+ if(!input.defense&&!input.savingThrowBonus)return false;
+ if(input.defense!=null&&(!PA_BONUS_TYPES.has(input.defense.bonusType)||
   !Number.isSafeInteger(input.defense.value)||input.defense.value<0||
-  input.defense.value>100)return false;
+  input.defense.value>100))return false;
+ if(input.savingThrowBonus!=null){
+  const bonus=input.savingThrowBonus;
+  if(!PA_BONUS_TYPES.has(bonus.bonusType)||
+   !Number.isSafeInteger(bonus.value)||bonus.value<0||bonus.value>100||
+   !Array.isArray(bonus.saves)||bonus.saves.length<1||
+   bonus.saves.some(x=>!["fort","ref","will"].includes(x))||
+   !Array.isArray(bonus.appliesTo?.descriptors)||
+   bonus.appliesTo.descriptors.length<1||
+   bonus.appliesTo.descriptors.length>12||
+   bonus.appliesTo.descriptors.some(x=>typeof x!=="string"||
+    !/^[a-z][a-z-]{0,35}$/.test(x)))return false;
+ }
  if(input.started!=null&&(!Number.isFinite(input.started.worldTime)||
    (input.started.combatId!=null&&(!Number.isSafeInteger(input.started.round)||
    !Number.isSafeInteger(input.started.turn)))))return false;
- if(!input.duration||!Number.isSafeInteger(input.duration.rounds)||
+ if(passive){if(input.duration!=null||input.started!=null)return false;}
+ else if(!input.duration||!Number.isSafeInteger(input.duration.rounds)||
   input.duration.rounds<1||input.duration.rounds>10000)return false;
  if(input.light!=null&&(!Number.isFinite(input.light.bright)||
   !Number.isFinite(input.light.dim)||input.light.bright<0||
@@ -117,7 +135,18 @@ function paInRange(record,scene,source,target){
  }
  return d<=record.range.distance+1e-6;
 }
+function paEmitterActive(record){
+ if(record.lifecycle?.mode!=="passive")return true;
+ const actor=paCurrentSource(record).token?.actor;
+ if(!actor||actor.uuid!==record.emitterActorUuid)return false;
+ const statuses=actor.statuses;
+ if(record.lifecycle.requiresAlive&&statuses?.has?.("dead"))return false;
+ if(record.lifecycle.requiresConscious&&
+  ["unconscious","sleep","asleep"].some(x=>statuses?.has?.(x)))return false;
+ return true;
+}
 function paRecipients(record){
+ if(!paEmitterActive(record))return [];
  const {scene,token:source}=paCurrentSource(record);
  if(!scene||!source)return [];
  const seen=new Map();
@@ -176,6 +205,7 @@ function paTiming(record){
   combatantId:sourceCombatant?.id??null};
 }
 function paExpired(record){
+ if(record.lifecycle?.mode==="passive")return false;
  const start=record.started;
  if(!start||!Number.isFinite(start.worldTime))return true;
  const combat=game.combat;
@@ -216,6 +246,7 @@ function paSameBuff(item,record){
 async function paSyncBuffs(records){
  const desired=new Map();
  for(const {aura} of records.values()){
+  if(!aura.defense)continue;
   for(const actor of paRecipients(aura)){
    const identity=aura.sourceItemUuid+"|"+aura.key;
    const map=desired.get(actor.uuid)??new Map();
@@ -247,7 +278,7 @@ function paLightPosition(scene,token){
 async function paSyncLights(records){
  const wanted=new Map();
  for(const {aura} of records.values()){
-  if(!aura.light)continue;
+  if(!aura.light||!paEmitterActive(aura))continue;
   const {scene,token}=paCurrentSource(aura);
   if(!scene||!token)continue;
   const pos=paLightPosition(scene,token);
@@ -361,7 +392,8 @@ async function paReconcile(){
   for(const {item,aura} of snapshots.values()){
    let reason=null;
    if(paExpired(aura))reason="duration";
-   else if(!paCurrentSource(aura).token)reason="emitterMissing";
+   else if(aura.lifecycle?.mode!=="passive"&&!paCurrentSource(aura).token)
+    reason="emitterMissing";
    if(reason)await paFinish(item,aura.key,reason);
   }
   const active=paSnapshot();
@@ -386,7 +418,8 @@ async function paRegister(data){
  const {token}=paCurrentSource(data);
  if(!token||token.actor?.uuid!==data.emitterActorUuid)
   throw Error("Emitter token and Actor identity mismatch");
- const record=paClone({...data,started:paTiming(data)});
+ const record=paClone(data.lifecycle?.mode==="passive"?data:
+  {...data,started:paTiming(data)});
  const stored=await paLock(item.uuid,async()=>{
   const current=paList(item.getFlag(PA_NS,PA_RECORDS));
   if(current.length>=30&&!current.some(x=>x.key===record.key))
@@ -413,6 +446,15 @@ async function paStop({sourceItemUuid,key}={}){
  paReconcileSoon();
  return result;
 }
+function paActiveSavingThrowAuras(actor,saveId,descriptors){
+ if(!actor?.uuid||!["fort","ref","will"].includes(saveId)||!Array.isArray(descriptors))return [];
+ return [...paSnapshot().values()].map(e=>e.aura).filter(aura=>{
+  const bonus=aura.savingThrowBonus;
+  if(!bonus?.saves?.includes(saveId)||!paEmitterActive(aura))return false;
+  if(!bonus.appliesTo.descriptors.some(d=>descriptors.includes(d)))return false;
+  return paRecipients(aura).some(who=>who.uuid===actor.uuid);
+ });
+}
 function paListPublic({sourceItemUuid}={}){
  const list=[...paSnapshot().values()].map(e=>paClone(e.aura));
  return sourceItemUuid?list.filter(e=>e.sourceItemUuid===sourceItemUuid):list;
@@ -426,7 +468,8 @@ Hooks.once("ready",()=>{
  if(!mod)return;
  mod.api??={};
  mod.api.proximityAuras=Object.freeze({
-  register:paRegister,stop:paStop,list:paListPublic,reconcile:paReconcile
+  register:paRegister,stop:paStop,list:paListPublic,reconcile:paReconcile,
+  getSavingThrowAuras:paActiveSavingThrowAuras
  });
  paReconcileSoon();
 });
