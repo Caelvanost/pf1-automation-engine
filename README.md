@@ -1,4 +1,12 @@
-# PF1 Automation Engine v1.41.14
+# PF1 Automation Engine v1.42.0
+
+## Auras défensives de proximité persistantes (v1.42.0)
+
+Nouvelle API générique `game.modules.get("pf1-automation-engine").api.proximityAuras` : déclaration d'auras à partir de l'acteur, de son token et de l'objet source, alliés dynamiques, adjacence ou rayon mesuré par Foundry v13, bonus défensifs PF1 typés avec non-cumul natif (notamment les bonus de bouclier), durées persistantes et expiration au compte d'initiative, éclairage indépendant et événements de fin. Aucune logique de classe intégrée au moteur, aucune dépendance obligatoire à un module d'auras.
+
+**Documentation complète** : [`docs/proximity-auras.md`](docs/proximity-auras.md). **Application Bouclier saint** : trois Scripts Calls natifs complets dans [`examples/holy-shield-use.js`](examples/holy-shield-use.js), [`examples/holy-shield-post-use.js`](examples/holy-shield-post-use.js) et [`examples/holy-shield-expired.js`](examples/holy-shield-expired.js).
+
+
 
 ## Action par défaut : uniquement dans Avancé et à partir de deux actions (v1.41.14)
 
