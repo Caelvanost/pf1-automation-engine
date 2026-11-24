@@ -1,4 +1,10 @@
-# PF1 Automation Engine v1.42.0
+# PF1 Automation Engine v1.42.1
+
+## Arme improvisée dans les groupes d'armes (v1.42.1)
+
+L'éditeur natif des armes PF1 11.11 affiche une entrée supplémentaire **Arme improvisée** aux côtés des groupes d'armes. Elle est un **choix virtuel de l'interface**, car `system.weaponGroups` est un ensemble strict de valeurs du système qui ne contient pas `improvised`. Sa sélection enregistre directement et exclusivement la **propriété native** `system.properties.imp = true` ; la désélection la remet à `false`. Le contrôle demeure synchronisé avec la case native de la liste des propriétés d'arme, respecte les permissions et ne modifie jamais les groupes historiques ou le calcul des attaques.
+
+
 
 ## Auras défensives de proximité persistantes (v1.42.0)
 

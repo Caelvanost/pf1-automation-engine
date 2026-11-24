@@ -13,6 +13,7 @@ const WPU_NS="pf1-automation-engine";
 const WPU_NAME="system.properties.imp";
 const WPU_SELECTOR='input[type="checkbox"][name="system.properties.imp"]';
 const WPU_MARKER="pf1ae-weapon-improvised";
+const WPU_GROUP_MARKER="pf1ae-improvised-weapon-group";
 const WPU_LABEL_KEY="PF1AE.Weapon.Improvised.Label";
 const WPU_HINT_KEY="PF1AE.Weapon.Improvised.Hint";
 let wpuEnglishPromise;
@@ -109,6 +110,66 @@ function wpuFallbackInput(section,strings,checked,editable){
  label.appendChild(wpuCreate("small","pf1ae-improvised-hint",strings.hint));
  slot.appendChild(label);
 }
+
+/**
+ * PF1 11.11 WeaponModel.weaponGroups is a restricted native Set that does
+ * not include improvised weapons. Present a virtual choice IN the weapon
+ * group UI, but persist only the actual, supported native property
+ * system.properties.imp. Never write an unsupported weaponGroups enum.
+ */
+function wpuGroupHost(section){
+ const native=section.querySelector(
+  'input[name="system.weaponGroups"], input[name^="system.weaponGroups."]');
+ const group=native?.closest?.('.form-group, .form-group-stacked, fieldset');
+ return group??
+  section.querySelector('.weapon-groups, [data-field="system.weaponGroups"], [data-name="system.weaponGroups"]');
+}
+function wpuSyncGroupControl(app,section,strings,editable){
+ const host=wpuGroupHost(section);
+ const existing=section.querySelector("."+WPU_GROUP_MARKER);
+ if(!host){
+  existing?.remove?.();
+  return;
+ }
+ const checked=app.item.system?.properties?.imp===true;
+ let control=existing?.querySelector?.('input[type="checkbox"]');
+ if(!control){
+  const label=wpuCreate("label","checkbox "+WPU_GROUP_MARKER,"");
+  const input=document.createElement("input");
+  input.type="checkbox";
+  // Intentionally unnamed: this option is not in native weaponGroups.
+  // Changes are saved to the real, supported PF1 boolean imp property.
+  input.dataset.pf1aeImprovisedGroup="true";
+  label.appendChild(input);
+  label.appendChild(wpuCreate("span","pf1ae-improvised-group-label",strings.label));
+  label.appendChild(wpuCreate("small","pf1ae-improvised-group-hint",strings.hint));
+  host.appendChild(label);
+  control=input;
+  control.addEventListener("change",async event=>{
+   event.stopPropagation?.();
+   const next=control.checked;
+   if(!app.item?.isOwner||app.isEditable!==true){
+    control.checked=app.item?.system?.properties?.imp===true;
+    return;
+   }
+   control.disabled=true;
+   try{
+    await app.item.update({"system.properties.imp":next});
+    const native=section.querySelector(WPU_SELECTOR);
+    if(native)native.checked=next;
+   }catch(error){
+    control.checked=app.item?.system?.properties?.imp===true;
+    wpuDebug("Improvised group property update failed",error);
+    globalThis.ui?.notifications?.warn?.(error.message);
+   }finally{control.disabled=!(app.item?.isOwner===true&&app.isEditable===true)}
+  });
+ }else{
+  existing.querySelector(".pf1ae-improvised-group-label").textContent=strings.label;
+ }
+ control.checked=checked;
+ control.disabled=!editable;
+}
+
 /**
  * Enhance existing PF1 v11.11 weapon checkbox, or gracefully provide it
  * when an alternate weapon template omits the native property list.
@@ -129,13 +190,16 @@ async function wpuEnhance(app,rendered){
  const check=section.querySelector(WPU_SELECTOR);
  if(check){
   check.checked=app.item.system?.properties?.imp===true;
-  if(wpuDecorateNative(check,strings,editable))return;
-  // Never create a duplicate input even if template changed its label.
-  check.disabled=!editable;
+  if(!wpuDecorateNative(check,strings,editable)){
+   // Never create a duplicate native input if its label is customized.
+   check.disabled=!editable;
+  }
+  wpuSyncGroupControl(app,section,strings,editable);
   return;
  }
  wpuFallbackInput(section,strings,
   app.item.system?.properties?.imp===true,editable);
+ wpuSyncGroupControl(app,section,strings,editable);
 }
 Hooks.on("renderApplication",(app,rendered)=>{
  void wpuEnhance(app,rendered).catch(error=>

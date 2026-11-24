@@ -7,10 +7,18 @@ const en=JSON.parse(fs.readFileSync(path.join(__dirname,'../lang/en.json'),'utf8
 class Node{
  constructor(tag='div'){this.tagName=tag;this.nodeType=1;this.childNodes=[];this.className='';
   this.textContent='';this.disabled=false;this.checked=false;this.name='';this.ownerDocument=null;
-  this.isConnected=true;this.parent=null;}
+  this.isConnected=true;this.parent=null;this.listeners={};this.dataset={};}
  appendChild(node){node.parent=this;this.childNodes.push(node);return node;}
  remove(){this.parent?.childNodes.splice(this.parent.childNodes.indexOf(this),1);}
- closest(selector){if(selector==='label')return this.parent?.tagName==='label'?this.parent:null;return null;}
+ closest(selector){
+  if(selector==='label')return this.parent?.tagName==='label'?this.parent:null;
+  if(selector.includes('.form-group')){
+   let p=this.parent;
+   while(p){if(p.className?.includes('form-group'))return p;p=p.parent}
+  }
+  return null;
+ }
+ addEventListener(name,fn){this.listeners[name]=fn}
  querySelector(selector){
   const match=x=>selector==='input[type="checkbox"][name="system.properties.imp"]'?
    x.tagName==='input'&&x.type==='checkbox'&&x.name==='system.properties.imp':
@@ -18,7 +26,12 @@ class Node{
    selector==='.pf1ae-improvised-hint'?x.className==='pf1ae-improvised-hint':
    selector==='.pf1ae-weapon-improvised'?x.className.includes('pf1ae-weapon-improvised'):
    selector==='.weapon-properties.form-group.stacked'?x.className.includes('weapon-properties'):
-   selector==='.weapon-properties'?x.className.includes('weapon-properties'):false;
+   selector==='.weapon-properties'?x.className.includes('weapon-properties'):
+   selector==='.pf1ae-improvised-weapon-group'?x.className.includes('pf1ae-improvised-weapon-group'):
+   selector==='.pf1ae-improvised-group-label'?x.className==='pf1ae-improvised-group-label':
+   selector==='input[type="checkbox"]'?x.tagName==='input'&&x.type==='checkbox':
+   selector.startsWith('input[name="system.weaponGroups"')?
+    x.tagName==='input'&&x.name==='system.weaponGroups':false;
   const walk=n=>{for(const x of n.childNodes){if(x.nodeType!==1)continue;if(match(x))return x;const z=walk(x);if(z)return z;}return null;};
   return walk(this);
  }
@@ -36,6 +49,10 @@ function createHarness(language='fr',native=true){
  const section=new Node('div');section.className='tab details';section.dataset={tab:'details'};
  const propertySlot=new Node('div');propertySlot.className='weapon-properties form-group stacked';
  section.appendChild(propertySlot);
+ const groupSlot=new Node('div');groupSlot.className='form-group weapon-groups';
+ const nativeGroup=new Node('input');nativeGroup.name='system.weaponGroups';
+ groupSlot.appendChild(nativeGroup);
+ section.appendChild(groupSlot);
  const root=new Node('form');
  root.querySelector=selector=>
   selector==='.tab.details[data-tab="details"]'?section:
@@ -68,7 +85,7 @@ function createHarness(language='fr',native=true){
  ctx.globalThis=ctx;
  vm.createContext(ctx);vm.runInContext(script,ctx,{filename:'weapon-properties-ui.js'});
  const enhance=(sheet=app)=>vm.runInContext('wpuEnhance',ctx)(sheet,[root]);
- return {hooks,ctx,app,item,section,propertySlot,existingLabel,input,calls,enhance,
+ return {hooks,ctx,app,item,section,propertySlot,groupSlot,existingLabel,input,calls,enhance,
   async simulateNativeSubmit(control){
    // PF1 v11.11 ItemSheetV2 form.submitOnChange uses named inputs.
    assert.equal(control.name,'system.properties.imp');
@@ -110,6 +127,37 @@ function createHarness(language='fr',native=true){
  const before=h.existingLabel.childNodes.length;await h.enhance(other);
  assert.equal(h.existingLabel.childNodes.length,before);
  assert.equal(h.calls.updates,2,'enhancement itself never persists anything');
+ // Improvised category appears alongside native weapon groups, but is
+ // saved as the real PF1 boolean, never as invalid weaponGroups data.
+ const groups=createHarness('fr');
+ await groups.enhance();
+ const groupLabel=groups.groupSlot.querySelector('.pf1ae-improvised-weapon-group');
+ assert.ok(groupLabel,'weapon groups contain the improvised category');
+ const groupControl=groupLabel.querySelector('input[type="checkbox"]');
+ assert.ok(groupControl);
+ assert.equal(groupControl.name,'','virtual group does not create invalid native Set value');
+ assert.equal(groupLabel.querySelector('.pf1ae-improvised-group-label').textContent,
+  'Arme improvisée');
+ assert.equal(groupControl.checked,false);
+ groupControl.checked=true;
+ await groupControl.listeners.change({stopPropagation(){}});
+ assert.equal(groups.item.system.properties.imp,true,
+  'toggling weapon group persists native imp=true');
+ assert.equal(groups.input.checked,true,'native property checkbox follows group');
+ await groups.enhance();
+ assert.equal(groupControl.checked,true);
+ assert.equal(groups.groupSlot.childNodes.length,2,'rerender does not duplicate group');
+ groupControl.checked=false;
+ await groupControl.listeners.change({stopPropagation(){}});
+ assert.equal(groups.item.system.properties.imp,false);
+ assert.equal(groups.input.checked,false);
+ groups.item.isOwner=false;
+ await groups.enhance();
+ assert.equal(groupControl.disabled,true,'read only group is disabled');
+ groups.item.isOwner=true;
+ await groups.enhance();
+ assert.equal(groupControl.disabled,false);
+ assert.equal(groups.calls.updates,2,'only group selection changes trigger Item.update');
  const english=createHarness('en');await english.enhance();
  assert.equal(english.existingLabel.querySelector('.pf1ae-improvised-label').textContent,
   'Improvised Weapon');
