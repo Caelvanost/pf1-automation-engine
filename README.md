@@ -1,4 +1,10 @@
-# PF1 Automation Engine v1.41.13
+# PF1 Automation Engine v1.41.14
+
+## Action par défaut : uniquement dans Avancé et à partir de deux actions (v1.41.14)
+
+L'option **Action par défaut** et sa case **Éviter le dialogue** apparaissent désormais **uniquement dans l'onglet Avancé** de la fiche native principale d'un Item PF1 contenant **au moins deux actions**. Elles sont volontairement absentes des objets avec zéro ou une action, de toutes les fenêtres d'édition d'attaque ou d'action individuelle et des fiches sans onglet Avancé. Aucun repli dans Détails/Actions/Description n'est autorisé. Les actions sélectionnées, leurs flags, le moteur de jets PF1 et l'usage des ressources ne changent pas.
+
+
 
 ## Escalade : perte native du bonus de Dextérité à la CA (v1.41.13)
 
