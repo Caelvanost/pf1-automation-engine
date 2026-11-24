@@ -1,3 +1,10 @@
+# 1.41.13 — Escalade et perte native du bonus de Dextérité à la CA
+
+- Mouvement token `climb` : buff PF1 natif (`system.changeFlags.loseDexToAC = true`), visible sur token, aucune pénalité Off-balance −2 ni condition Flat-Footed.
+- Une vitesse d'escalade positive conserve la Dextérité à la CA selon la règle de base PF1 ; changement de vitesse recalculé.
+- Activation/retrait automatiques, buff unique par acteur, isolation par flag PF1AE, conservation des buffs non gérés.
+- Tests sur entrée/sortie du mode Escalade, plusieurs tokens liés, vitesse d'escalade, buff désactivé, autres effets.
+
 # 1.41.12 — Détection exacte du statut natif Levitating sur les tokens
 
 - Prise en compte explicite du statut `Levitating` attribué depuis le HUD natif PF1 et synchronisation de `TokenDocument.movementAction` vers `fly`.
