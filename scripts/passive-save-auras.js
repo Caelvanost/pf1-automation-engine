@@ -247,6 +247,10 @@ Hooks.on("pf1ActorRollSave",pasPostRoll);
 for(const name of ["canvasReady","createToken","deleteToken","createActor",
  "deleteActor","createItem","deleteItem","updateUser"])
  Hooks.on(name,pasScanSoon);
+Hooks.on("updateToken",(_token,changes)=>{
+ if(changes&&("actorId" in changes||"actorLink" in changes||
+  "hidden" in changes))pasScanSoon();
+});
 Hooks.on("updateItem",(item,changes)=>{
  if(changes?.system?.scriptCalls||changes?.system?.disabled||changes?.name)
   pasScanSoon();
