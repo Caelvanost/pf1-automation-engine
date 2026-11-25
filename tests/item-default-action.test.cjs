@@ -38,6 +38,7 @@ vm.createContext(context);vm.runInContext(src,context,{filename:'item-default-ac
 for(const cb of ready)cb();
 const api=modules.get('pf1-automation-engine').api.defaultAction;
 const item=new ItemPF();
+const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
 (async()=>{
  assert.equal(api.installed(),true);
  assert.equal(api.status().mode,'direct','without libWrapper PF1AE uses the direct fallback');
@@ -134,7 +135,6 @@ const item=new ItemPF();
  assert.equal(await item.use(),'native-select');
  modules.get('pf1-automation-engine').active=true;
  // New per-action API does not depend on the preferred default action.
- const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
  assert.equal(actionApi.isAvailable(),true);
  assert.equal(actionApi.getSkipDialog(item,'reload'),false);
  assert.equal(await actionApi.setSkipDialog(item,'reload',true),true);
