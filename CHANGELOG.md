@@ -1,3 +1,11 @@
+# 1.44.0 — Ignorer le dialogue individuellement par action
+
+- Case « Ignorer le dialogue » dans l'onglet Utilisation de chaque fenêtre `ItemActionSheet`, avec aide et traduction FR/EN.
+- Préférence par identifiant natif d'action dans `flags.pf1-automation-engine.actionSkipDialog` ; nettoyage des actions supprimées, permissions OWNER, et comportement indépendant du nom.
+- Généralisation dans `item-default-action.js` de l'interception `pf1CreateActionUse` et `createAttackDialog` ; les sélecteurs natifs ne sont pas supprimés, les dialogues personnalisés restent intacts.
+- Conserve Action par défaut dans Avancé et retire l'ancienne option concurrente « Ignorer le dialogue » ; migration de `defaultActionSkipDialog` et compatibilité API historique.
+- Ajout de `api.actionOptions`, documentation, et scénarios de tests par action et non-régression des autres automatisations.
+
 # 1.43.1 — Correction du canal socket Foundry joueur → MJ
 
 - Ajoute `"socket": true` au manifeste natif `module.json` : Foundry enregistre et relaie désormais le canal `module.pf1-automation-engine` entre clients.
