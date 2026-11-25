@@ -371,13 +371,17 @@ function daRender(sheet,html){
  * tab navigation by data-tab, not through a global CSS or parent Item sheet.
  */
 function daIsActionSheet(sheet){
- const cls=globalThis.pf1?.applications?.component?.ItemActionSheet;
- if(typeof cls==='function')return sheet instanceof cls;
- return sheet?.constructor?.name==='ItemActionSheet'&&
-  sheet?.action?.id!=null&&sheet?.item?.documentName==='Item';
+ const registry=globalThis.pf1?.applications?.component;
+ const classes=[registry?.ItemActionSheet,registry?.ActionSheet]
+  .filter(cls=>typeof cls==='function');
+ if(classes.some(cls=>sheet instanceof cls))return true;
+ const name=sheet?.constructor?.name;
+ return (name==='ItemActionSheet'||name==='ActionSheet')&&
+  sheet?.action?.id!=null&&
+  (sheet?.item??sheet?.action?.item)?.documentName==='Item';
 }
 function daActionUsageTab(root){
- const candidates=['use','usage','utilisation'];
+ const candidates=['use','usage','utilisation','activation'];
  for(const key of candidates){
   const tab=root.querySelector('.tab[data-tab="'+key+'"]');
   if(tab&&typeof tab.append==='function'&&!tab.closest?.('nav, .tabs, .sheet-navigation'))
@@ -396,7 +400,7 @@ function daActionUsageTab(root){
 }
 function daRenderActionSheet(sheet,html){
  if(!daEnabled()||!daIsActionSheet(sheet))return;
- const item=sheet.item,action=sheet.action;
+ const action=sheet.action,item=sheet.item??action?.item;
  const id=action?.id??action?._id;
  if(!id||!daAction(item,id))return;
  const candidate=html?.[0]??html??sheet?.element?.[0]??sheet?.element;
