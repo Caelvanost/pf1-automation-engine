@@ -110,11 +110,15 @@ const item=new ItemPF();
  assert.equal(uses.at(-1).options.skipDialog,undefined,'no default action never skips native selector');
  await api.setSkipDialog(item,false);
  await assert.rejects(()=>api.set(item,'unknown'),/no longer exists/);
+ // Per-action permission and unknown action checks.
+ await assert.rejects(()=>actionApi.setSkipDialog(item,'unknown',true),
+  /no longer exists/);
  // No permissions => reject set, existing use still delegated.
  context.game.user.isGM=false;
  item.testUserPermission=()=>false;
  await assert.rejects(()=>api.set(item,'a'),/OWNER/);
  await assert.rejects(()=>api.setSkipDialog(item,true),/OWNER/);
+ await assert.rejects(()=>actionApi.setSkipDialog(item,'reload',true),/OWNER/);
  context.game.user.isGM=true;
  await api.set(item,'reload');
  assert.equal(await ActionSelector.open({document:item}),'reload','native selector direct call honors preferred action');
@@ -129,12 +133,41 @@ const item=new ItemPF();
  modules.get('pf1-automation-engine').active=false;
  assert.equal(await item.use(),'native-select');
  modules.get('pf1-automation-engine').active=true;
+ // New per-action API does not depend on the preferred default action.
+ const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
+ assert.equal(actionApi.isAvailable(),true);
+ assert.equal(actionApi.getSkipDialog(item,'reload'),false);
+ assert.equal(await actionApi.setSkipDialog(item,'reload',true),true);
+ assert.equal(actionApi.getSkipDialog(item,'reload'),true);
+ assert.equal(item.flags.actionSkipDialog.reload,true);
+ assert.equal(await item.use({actionId:'reload'}),'used:reload');
+ assert.equal(uses.at(-1).options.skipDialog,true,
+  'explicitly selected action goes directly through native ItemPF.use');
+ const selectedReload=makeActionUse(actions.get('reload'));
+ preRoll(selectedReload);
+ assert.equal(Object.keys(await selectedReload.createAttackDialog()).length,0);
+ assert.equal(await actionApi.setSkipDialog(item,'reload',false),false);
+ assert.equal(actionApi.getSkipDialog(item,'reload'),false);
+ assert.equal(await item.use({actionId:'reload'}),'used:reload');
+ assert.equal(uses.at(-1).options.skipDialog,undefined);
+ const defaultOnly=new ItemPF();
+ defaultOnly.actions=new Map([['heal',{id:'heal',name:'Se soigner'}]]);
+ await actionApi.setSkipDialog(defaultOnly,'heal',true);
+ assert.equal(await defaultOnly.use(),'used:heal');
+ assert.equal(uses.at(-1).options.skipDialog,true,
+  'single-action item uses native skipDialog without a selector');
+ const defaultRoll=makeActionUse(actions.get('reload'));
+ preRoll(defaultRoll);
+ assert.deepEqual(await defaultRoll.createAttackDialog(),{from:'native'},
+  'non opted-in actions remain fully native');
  // A one-action Item works with the native code; wrapper never creates actions.
  actions.delete('a');actions.delete('reload');actions.set('only',{id:'only',name:'Only'});
  assert.equal(await item.use(),'used:only');
  assert.equal(nativeSelector.length,4);
  assert.equal(render.has('renderItemSheet'),true);
  assert.equal(render.has('renderItemSheetV2'),true);
+ assert.equal(render.has('renderItemActionSheet'),true,
+  'action editor hook is registered');
  assert.equal(render.has('renderApplication'),true,
   'PF1 ItemSheetV2 ApplicationV2 generic render hook must be registered');
  // Exercise the real render hook against simulated PF1 ApplicationV2
@@ -202,6 +235,81 @@ const item=new ItemPF();
   assert.equal(sheet.panel.children.length,0,
    type+' hiding a single remaining action also clears a stale control');
  }
+ // Native PF1 FormApplication ItemActionSheet exposes item, action and
+ // isEditable. Inject only in Use tab, never on the Item sheet or another tab.
+ class ItemActionSheet {
+  constructor(item,action,withUsage=true){
+   this.item=item;this.action=action;this.isEditable=true;
+   const root=new FakeNode('div');
+   const usage=new FakeNode('section');
+   root.querySelector=sel=>
+    sel==='.tab[data-tab="use"]'&&withUsage?usage:
+    sel==='[data-pf1ae-action-skip-dialog]'?
+     usage.querySelector('[data-pf1ae-action-skip-dialog]'):null;
+   usage.querySelector=sel=>
+    sel==='[data-pf1ae-action-skip-dialog]'?
+     usage.find(node=>node.dataset?.pf1aeActionSkipDialog==='true'):
+    sel==='input[type="checkbox"]'?
+     usage.find(node=>node.type==='checkbox'):null;
+   this.window={content:root};this.usage=usage;
+  }
+ }
+ context.pf1.applications.component={ItemActionSheet};
+ const actionRender=render.get('renderItemActionSheet');
+ const parent=new ItemPF();
+ parent.actions=new Map([
+  ['prepare',{id:'prepare',name:'Préparer'}],
+  ['consume',{id:'consume',name:'Consommer'}]
+ ]);
+ assert.equal(await actionApi.setSkipDialog(parent,'prepare',true),true);
+ assert.equal(actionApi.getSkipDialog(parent,'consume'),false);
+ const prepareSheet=new ItemActionSheet(parent,parent.actions.get('prepare'));
+ actionRender(prepareSheet,prepareSheet.window.content);
+ assert.equal(prepareSheet.usage.children.length,1,'only one PF1-like form-group appended');
+ let skipControl=prepareSheet.usage.querySelector('input[type="checkbox"]');
+ assert.equal(skipControl.checked,true,'per-action checked state');
+ actionRender(prepareSheet,prepareSheet.window.content);
+ assert.equal(prepareSheet.usage.children.length,1,'no duplicate after rerender');
+ const consumeSheet=new ItemActionSheet(parent,parent.actions.get('consume'));
+ actionRender(consumeSheet,consumeSheet.window.content);
+ assert.equal(consumeSheet.usage.querySelector('input[type="checkbox"]').checked,false);
+ // Action-specific UI edits save by internal action ID, not by translated name.
+ skipControl=consumeSheet.usage.querySelector('input[type="checkbox"]');
+ skipControl.checked=true;
+ skipControl.listeners.change({stopPropagation(){}});
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(actionApi.getSkipDialog(parent,'consume'),true);
+ parent.actions.get('consume').name='Boire';
+ assert.equal(actionApi.getSkipDialog(parent,'consume'),true,'renaming retains flag');
+ const noUsage=new ItemActionSheet(parent,parent.actions.get('consume'),false);
+ actionRender(noUsage,noUsage.window.content);
+ assert.equal(noUsage.usage.children.length,0,'no injection outside Use tab');
+ consumeSheet.isEditable=false;
+ actionRender(consumeSheet,consumeSheet.window.content);
+ assert.equal(consumeSheet.usage.querySelector('input[type="checkbox"]').disabled,true);
+ parent.actions.set('copy',{id:'copy',name:'Préparer (copie)'});
+ assert.equal(actionApi.getSkipDialog(parent,'copy'),false,
+  'new ID never inherits existing action preference');
+ parent.actions.delete('prepare');
+ await actionApi.prune(parent);
+ assert.equal(parent.flags.actionSkipDialog?.prepare,undefined);
+ assert.equal(actionApi.getSkipDialog(parent,'consume'),true);
+ const copiedItem=new ItemPF();
+ copiedItem.actions=new Map(parent.actions);
+ copiedItem.flags=structuredClone(parent.flags);
+ assert.equal(actionApi.getSkipDialog(copiedItem,'consume'),true,
+  'flags and stable action IDs survive item duplication');
+ // Legacy data migrates to a per-action boolean without changing default ID.
+ const migrated=new ItemPF();
+ migrated.actions=new Map([['one',{id:'one'}],['two',{id:'two'}]]);
+ migrated.flags.defaultActionId='two';
+ migrated.flags.defaultActionSkipDialog=true;
+ assert.equal(actionApi.getSkipDialog(migrated,'two'),true);
+ assert.equal(await actionApi.migrate(migrated),true);
+ assert.equal(migrated.flags.defaultActionSkipDialog,undefined);
+ assert.equal(migrated.flags.actionSkipDialog.two,true);
+ assert.equal(migrated.flags.defaultActionId,'two');
+ assert.equal(actionApi.getSkipDialog(migrated,'one'),false);
  // Action-edit and attack-edit windows can expose the parent Item but
  // must never receive the top-level Item's default-action interface.
  const parentItem=new ItemPF();
@@ -240,8 +348,12 @@ const item=new ItemPF();
  assert.equal(src.includes("heading.className='section-header'"),true,'native style heading');
  assert.equal(src.includes("group.className='form-group'"),true,'native form layout');
  assert.equal(src.includes("t('Hint')"),true,'localized help text');
- assert.equal(src.includes("skipGroup.className='form-group'"),true,'native checkbox layout');
- assert.equal(src.includes("t('SkipDialogHint')"),true,'localized checkbox hint');
+ assert.equal(src.includes("skipGroup.className='form-group'"),false,
+  'legacy Advanced skip option was removed');
+ assert.equal(src.includes("t('SkipDialogHint')"),false,
+  'legacy checkbox hint was removed');
+ assert.equal(src.includes("section.append(heading,group,hint)"),true,
+  'Advanced keeps only the default action selector');
  assert.equal(src.includes("scrollHost.style.overflowY='auto'"),false,'never override PF1 scrolling');
  assert.equal(src.includes('pf1aeDefaultActionSpacer'),false,'do not add spacer outside PF1 scroll area');
  assert.equal(src.includes('eval('),false);
