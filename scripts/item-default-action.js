@@ -105,6 +105,8 @@ async function daSet(item,actionId){
 // CONFIG.Item.documentClass is ItemBasePF, which does not implement use().
 const DA_USE_PATH='pf1.documents.item.ItemPF.prototype.use';
 const DA_SELECTOR_PATH='pf1.applications.ActionSelector.open';
+const DA_PROCESS_PATH='pf1.actionUse.ActionUse.prototype.process';
+let DA_PROCESS_PATCHED=null;
 let DA_SELECTOR_PATCHED=null;
 const daItemClass=()=>globalThis.pf1?.documents?.item?.ItemPF??
  globalThis.pf1?.documents?.ItemPF??null;
@@ -214,13 +216,76 @@ function daInstallSelector(){
  DA_SELECTOR_PATCHED={mode:'direct',selector,native,wrapper};
  return selector.open===wrapper;
 }
+/**
+ * Native PF1 v11.11 resolves the ItemAction BEFORE ActionUse.process().
+ * process({skipDialog}) owns the actual decision to show AttackDialog.
+ *
+ * The older pf1CreateActionUse/createAttackDialog hook remains as a harmless
+ * compatibility fallback. Suppressing just createAttackDialog is unreliable
+ * when the native process path or another module replaces its dialog method.
+ * Passing the option at the process boundary is authoritative and does not
+ * change scripts, expenditure, roll preparation or chat publication.
+ */
+function daProcess(use,options,next){
+ if(!daEnabled())return next(options);
+ const action=use?.action??use?.shared?.action;
+ const item=use?.item??use?.shared?.item??action?.item;
+ const id=action?.id??action?._id;
+ if(!id||!daGetActionSkip(item,id))return next(options);
+ // Explicit caller options are preserved, including existing skipDialog.
+ const original=options&&typeof options==='object'?options:{};
+ return next({...original,skipDialog:true});
+}
+function daInstallProcess(){
+ if(!daEnabled())return false;
+ if(DA_PROCESS_PATCHED?.mode==='libWrapper')return true;
+ if((DA_PROCESS_PATCHED?.mode==='direct'||DA_PROCESS_PATCHED?.mode==='external')&&
+    DA_PROCESS_PATCHED.proto?.process===DA_PROCESS_PATCHED.wrapper)return true;
+ const cls=globalThis.pf1?.actionUse?.ActionUse;
+ if(!cls||typeof cls.prototype?.process!=='function')return false;
+ if(daWrapperAvailable()){
+  try{
+   const registerId=globalThis.libWrapper.register(
+    DA_NS,DA_PROCESS_PATH,function(wrapped,options={},...args){
+     return daProcess(this,options,nextOptions=>wrapped(nextOptions,...args));
+    },'WRAPPER');
+   DA_PROCESS_PATCHED={mode:'libWrapper',target:DA_PROCESS_PATH,registerId};
+   return true;
+  }catch(error){
+   console.warn('[PF1AE][ActionOptions] process libWrapper failed; using direct fallback.',error);
+  }
+ }
+ const proto=cls.prototype;
+ if(proto.process?.pf1aeActionOptionsProcessWrapped){
+  DA_PROCESS_PATCHED={mode:'external',proto,wrapper:proto.process};
+  return true;
+ }
+ const native=proto.process;
+ const wrapper=function(options={},...args){
+  return daProcess(this,options,nextOptions=>native.call(this,nextOptions,...args));
+ };
+ Object.defineProperty(wrapper,'pf1aeActionOptionsProcessWrapped',{value:true});
+ try{
+  proto.process=wrapper;
+  if(proto.process!==wrapper)return false;
+  DA_PROCESS_PATCHED={mode:'direct',proto,native,wrapper};
+  return true;
+ }catch(error){
+  console.warn('[PF1AE][ActionOptions] direct process fallback failed.',error);
+  return false;
+ }
+}
 const daInstallStatus=()=>({
  itemUse:DA_PATCHED?.mode==='libWrapper'||
   (!!DA_PATCHED?.proto&&DA_PATCHED.proto.use===DA_PATCHED.wrapper),
  selector:DA_SELECTOR_PATCHED?.mode==='libWrapper'||
   (!!DA_SELECTOR_PATCHED?.selector&&DA_SELECTOR_PATCHED.selector.open===DA_SELECTOR_PATCHED.wrapper),
  mode:DA_PATCHED?.mode??'unavailable',
- selectorMode:DA_SELECTOR_PATCHED?.mode??'unavailable'
+ selectorMode:DA_SELECTOR_PATCHED?.mode??'unavailable',
+ process:DA_PROCESS_PATCHED?.mode==='libWrapper'||
+  (!!DA_PROCESS_PATCHED?.proto&&
+   DA_PROCESS_PATCHED.proto.process===DA_PROCESS_PATCHED.wrapper),
+ processMode:DA_PROCESS_PATCHED?.mode??'unavailable'
 });
 /**
  * PF1's ItemPF.use resolves skipDialog BEFORE awaiting ActionSelector.open.
@@ -460,7 +525,7 @@ Hooks.once('ready',()=>{
  mod.api.actionOptions=Object.freeze({
   getSkipDialog:daGetActionSkip,setSkipDialog:daSetActionSkip,
   migrate:daMigrateLegacy,prune:daPruneOptions,
-  isAvailable:()=>daEnabled()&&daInstallStatus().itemUse===true
+  isAvailable:()=>daEnabled()&&daInstallStatus().process===true
  });
  mod.api.defaultAction=Object.freeze({
   get:daPreference,set:daSet,resolve:daAction,
@@ -473,6 +538,9 @@ Hooks.once('ready',()=>{
  }
  if(!daInstallSelector()){
   console.warn('[PF1AE][DefaultAction] PF1 ActionSelector.open not available during ready.');
+ }
+ if(!daInstallProcess()){
+  console.warn('[PF1AE][ActionOptions] native ActionUse.process is unavailable; using pre-dialog fallback.');
  }
  Hooks.on('pf1CreateActionUse',daConfigureActionUse);
  Hooks.on('renderItemSheet',daRender);

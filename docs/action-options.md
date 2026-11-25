@@ -1,6 +1,6 @@
 # API PF1AE — option « Ignorer le dialogue » par action (v1.44.0)
 
-**Environnement :** Foundry v13.351, Pathfinder 1e v11.11. Cette fonctionnalité étend `scripts/item-default-action.js`, sans ajouter de second intercepteur concurrent.
+**Environnement :** Foundry v13.351, Pathfinder 1e v11.11. **Correctif v1.44.1** : décision native au niveau de `ActionUse.process`. Cette fonctionnalité étend `scripts/item-default-action.js`, sans ajouter de second intercepteur concurrent.
 
 ## Interface
 
@@ -58,7 +58,7 @@ Pour les objets configurés avec `defaultActionId` et `defaultActionSkipDialog`,
 
 - **Une seule action** : si cochée, `ItemPF.use` reçoit `skipDialog:true`.
 - **Action explicitement appelée** : si cochée, `ItemPF.use({actionId})` reçoit `skipDialog:true`.
-- **Plusieurs actions sans défaut** : le sélecteur PF1 est conservé. Une fois l'action choisie, le hook natif `pf1CreateActionUse` remplace uniquement l'appel à `ActionUse.createAttackDialog()` pour cette instance sélectionnée, en retournant `{}` (résultat vide valide). Le processus `ActionUse.process()`, les scripts, jets, ressources et cartes de chat restent natifs.
+- **Plusieurs actions sans défaut** : le sélecteur PF1 est conservé. Une fois l'action choisie, l'enveloppe générique de `pf1.actionUse.ActionUse.prototype.process()` transmet `skipDialog:true` **avant** que la méthode native décide d'afficher le dialogue. Le hook `pf1CreateActionUse` / `createAttackDialog()` demeure un secours. Le traitement des jets, scripts, ressources et cartes reste strictement natif.
 - **Action par défaut** : le sélecteur est contourné comme dans PF1AE 1.43.1 ; l'option par action détermine ensuite l'affichage du dialogue.
 - Les **dialogues personnalisés** ouverts par les scripts d'objets ne sont pas interceptés.
 

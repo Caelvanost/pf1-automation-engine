@@ -1,3 +1,11 @@
+# 1.44.1 — Correction de l'exécution directe des actions
+
+- Corrige l'option « Ignorer le dialogue » de v1.44.0, qui pouvait laisser apparaître la fenêtre native malgré la case cochée.
+- Étend le mécanisme existant avec une enveloppe de `pf1.actionUse.ActionUse.prototype.process()`. L'action étant déjà sélectionnée, transmet directement le paramètre natif `{skipDialog:true}` à PF1 11.11 **avant** la décision d'afficher la fenêtre.
+- Conserve le sélecteur d'actions, `ItemPF.use`, les Script Calls, consommations, jets et cartes de chat natifs ; ne masque pas les dialogues personnalisés des scripts.
+- Fonctionne avec et sans libWrapper. Conserve le hook `pf1CreateActionUse` comme compatibilité de secours.
+- Tests de régression supplémentaires des paramètres de `process()` pour actions sélectionnées, scripts et publication, y compris via libWrapper.
+
 # 1.44.0 — Ignorer le dialogue individuellement par action
 
 - Case « Ignorer le dialogue » dans l'onglet Utilisation de chaque fenêtre `ItemActionSheet`, avec aide et traduction FR/EN.
