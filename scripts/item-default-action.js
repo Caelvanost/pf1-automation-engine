@@ -6,6 +6,8 @@
 const DA_NS='pf1-automation-engine';
 const DA_FLAG='defaultActionId';
 const DA_SKIP_FLAG='defaultActionSkipDialog';
+const DA_OPTIONS_FLAG='actionSkipDialog';
+const DA_OPTIONS_MARK='pf1ae-action-skip-dialog';
 let DA_PATCHED=null;
 const daActions=item=>[...(item?.actions?.contents??item?.actions?.values?.()??item?.actions??[])];
 const daEnabled=()=>game.modules.get(DA_NS)?.active===true;
@@ -13,12 +15,74 @@ const daPreference=item=>{
  const saved=item?.getFlag?.(DA_NS,DA_FLAG);
  return typeof saved==='string'&&saved.length>0?saved:null;
 };
-const daSkipDialog=item=>item?.getFlag?.(DA_NS,DA_SKIP_FLAG)===true;
+const daValidId=id=>typeof id==='string'&&id.length>0&&id.length<=150&&
+ !['__proto__','constructor','prototype'].includes(id);
+const daStoredOptions=item=>{
+ const value=item?.getFlag?.(DA_NS,DA_OPTIONS_FLAG);
+ return value&&typeof value==='object'&&!Array.isArray(value)?value:{};
+};
+function daGetActionSkip(item,actionId){
+ if(!daValidId(actionId)||!daAction(item,actionId))return false;
+ const saved=daStoredOptions(item);
+ if(Object.prototype.hasOwnProperty.call(saved,actionId))
+  return saved[actionId]===true;
+ // Legacy preference applies ONLY to its original default action.
+ return daPreference(item)===actionId&&item?.getFlag?.(DA_NS,DA_SKIP_FLAG)===true;
+}
+const daSkipDialog=item=>daGetActionSkip(item,daPreference(item));
+async function daPersistOptions(item,next){
+ if(Object.keys(next).length)await item.setFlag(DA_NS,DA_OPTIONS_FLAG,next);
+ else await item.unsetFlag(DA_NS,DA_OPTIONS_FLAG);
+}
+async function daMigrateLegacy(item){
+ if(!item||!daIsOwner(item))return false;
+ const legacy=item.getFlag?.(DA_NS,DA_SKIP_FLAG);
+ if(legacy!==true&&legacy!==false)return false;
+ const id=daPreference(item),options={...daStoredOptions(item)};
+ if(id&&daAction(item,id)&&!Object.prototype.hasOwnProperty.call(options,id))
+  options[id]=legacy===true;
+ if(id&&daAction(item,id))await daPersistOptions(item,options);
+ await item.unsetFlag(DA_NS,DA_SKIP_FLAG);
+ return true;
+}
+async function daSetActionSkip(item,actionId,enabled){
+ if(!item||!daIsOwner(item))throw Error('Item OWNER permission required.');
+ if(!daValidId(actionId)||!daAction(item,actionId))
+  throw Error('Selected action no longer exists on this Item.');
+ if(typeof enabled!=='boolean')throw TypeError('Skip dialog must be a boolean.');
+ // Preserve the former default-action preference before retiring its flag.
+ const options={...daStoredOptions(item)};
+ const legacyId=daPreference(item),legacy=item.getFlag?.(DA_NS,DA_SKIP_FLAG);
+ if(legacyId&&daAction(item,legacyId)&&
+    !Object.prototype.hasOwnProperty.call(options,legacyId)&&legacy===true)
+  options[legacyId]=true;
+ if(enabled)options[actionId]=true;
+ else delete options[actionId];
+ await daPersistOptions(item,options);
+ if(legacy!=null)await item.unsetFlag(DA_NS,DA_SKIP_FLAG);
+ return enabled;
+}
 async function daSetSkipDialog(item,enabled){
  if(!item||!daIsOwner(item))throw Error('Item OWNER permission required.');
  if(typeof enabled!=='boolean')throw TypeError('Skip dialog must be a boolean.');
- if(!enabled){await item.unsetFlag(DA_NS,DA_SKIP_FLAG);return false;}
- await item.setFlag(DA_NS,DA_SKIP_FLAG,true);
+ const id=daPreference(item);
+ // Compatibility with old callers that set the legacy flag before selecting
+ // a default action. The next actionable read/migration will resolve it.
+ if(!id||!daAction(item,id)){
+  if(enabled)await item.setFlag(DA_NS,DA_SKIP_FLAG,true);
+  else await item.unsetFlag(DA_NS,DA_SKIP_FLAG);
+  return enabled;
+ }
+ return daSetActionSkip(item,id,enabled);
+}
+async function daPruneOptions(item){
+ if(!daIsOwner(item))return false;
+ const previous=daStoredOptions(item);
+ const valid=new Set(daActions(item).map(a=>a.id??a._id));
+ const next=Object.fromEntries(Object.entries(previous)
+  .filter(([id,v])=>valid.has(id)&&v===true));
+ if(Object.keys(previous).length===Object.keys(next).length)return false;
+ await daPersistOptions(item,next);
  return true;
 }
 const daAction=(item,id)=>id ? item?.actions?.get?.(id) ??
@@ -28,6 +92,9 @@ const daIsOwner=item=>game.user?.isGM===true||
  item?.actor?.testUserPermission?.(game.user,'OWNER')===true;
 async function daSet(item,actionId){
  if(!item||!daIsOwner(item))throw Error('Item OWNER permission required.');
+ // Changing a legacy default must never transfer its skip preference to the
+ // newly selected default; migrate under the ORIGINAL action ID first.
+ if(item.getFlag?.(DA_NS,DA_SKIP_FLAG)!=null)await daMigrateLegacy(item);
  const id=actionId==null||actionId===''?null:String(actionId);
  if(id&&!daAction(item,id))throw Error('Selected action no longer exists on this Item.');
  if(!id){await item.unsetFlag(DA_NS,DA_FLAG);return null;}
@@ -44,17 +111,28 @@ const daItemClass=()=>globalThis.pf1?.documents?.item?.ItemPF??
 const daWrapperAvailable=()=>game.modules.get('lib-wrapper')?.active===true&&
  typeof globalThis.libWrapper?.register==='function';
 function daUse(item,options,next){
- if(!daEnabled()||!options||typeof options!=='object'||
-    options.actionId!=null||options.skipDialog===true)return next(options);
+ if(!daEnabled()||!options||typeof options!=='object')return next(options);
+ const explicit=options.actionId;
+ if(explicit!=null){
+  if(options.skipDialog===true||!daGetActionSkip(item,explicit))return next(options);
+  return next({...options,skipDialog:true});
+ }
+ if(options.skipDialog===true)return next(options);
  const id=daPreference(item);
- if(!id)return next(options);
+ if(!id){
+  // Single-action items can skip immediately without a selector.
+  const actions=daActions(item);
+  if(actions.length===1&&daGetActionSkip(item,actions[0].id??actions[0]._id))
+   return next({...options,skipDialog:true});
+  return next(options);
+ }
  if(!daAction(item,id)){
   console.warn('[PF1AE][DefaultAction] Saved action missing: native selector restored',
    {itemUuid:item.uuid,actionId:id});
   return next(options);
  }
  return next({...options,actionId:id,
-  ...(daSkipDialog(item)?{skipDialog:true}:{})});
+  ...(daGetActionSkip(item,id)?{skipDialog:true}:{})});
 }
 function daInstall(){
  if(!daEnabled())return false;
@@ -155,14 +233,13 @@ function daConfigureActionUse(actionUse){
  if(!daEnabled()||!actionUse||typeof actionUse.createAttackDialog!=='function')return;
  const item=actionUse.item??actionUse.shared?.item;
  const action=actionUse.action??actionUse.shared?.action;
- const id=daPreference(item);
- if(!id||!daSkipDialog(item)||!daAction(item,id)||
-    (action?.id??action?._id)!==id)return;
+ const id=action?.id??action?._id;
+ if(!id||!daGetActionSkip(item,id))return;
  if(actionUse.pf1aeDefaultActionDialogWrapped)return;
  const native=actionUse.createAttackDialog;
  const wrapped=async function(...args){
   // The preference may change between hook dispatch and dialog creation.
-  if(daEnabled()&&daSkipDialog(item)&&daPreference(item)===id){
+  if(daEnabled()&&daGetActionSkip(item,id)){
    if(this.shared)this.shared.skipDialog=true;
    return {}; // Valid empty native PF1 dialog result; defaults remain in effect.
   }
@@ -264,51 +341,18 @@ function daRender(sheet,html){
   select.disabled=true;
   void daSet(item,selected).then(()=>{
    select.disabled=false;
-   skip.disabled=!selected;
+
   }).catch(error=>{
    select.value=previous;select.disabled=false;
    ui.notifications?.warn?.(error.message);
   });
  });
  fields.append(select);group.append(label,fields);
- const skipGroup=document.createElement('div');
- skipGroup.className='form-group';
- skipGroup.style.cssText='display:flex;gap:8px;align-items:center;flex-wrap:wrap;min-width:0;';
- const skipLabel=document.createElement('label');
- skipLabel.style.cssText='display:flex;align-items:center;gap:6px;min-width:0;cursor:pointer;';
- const skip=document.createElement('input');
- skip.type='checkbox';
- skip.dataset.pf1aeDefaultActionSkipDialog='true';
- skip.checked=daSkipDialog(item);
- skip.disabled=!current||!daAction(item,current);
- skip.setAttribute('aria-label',t('SkipDialog'));
- const skipText=document.createElement('span');
- skipText.textContent=t('SkipDialog');
- skipLabel.append(skip,skipText);
- skipGroup.append(skipLabel);
- const skipHint=document.createElement('p');
- skipHint.className='notes';
- skipHint.style.cssText='margin:2px 0 0;font-size:12px;';
- skipHint.textContent=t('SkipDialogHint');
- for(const type of ['click','pointerdown','mousedown'])
-  skip.addEventListener(type,event=>event.stopPropagation());
- skip.addEventListener('change',event=>{
-  event.stopPropagation();
-  const checked=skip.checked,previous=daSkipDialog(item);
-  skip.disabled=true;
-  void daSetSkipDialog(item,checked).then(()=>{
-   skip.disabled=!daPreference(item);
-  }).catch(error=>{
-   skip.checked=previous;
-   skip.disabled=!daPreference(item);
-   ui.notifications?.warn?.(error.message);
-  });
- });
  const hint=document.createElement('p');
  hint.className='notes';
  hint.textContent=t('Hint');
  hint.style.cssText='margin:3px 0 0;font-size:12px;';
- section.append(heading,group,hint,skipGroup,skipHint);
+ section.append(heading,group,hint);
  // Insert in the native content flow rather than after an outer scroll wrapper.
  const nativeFields=[...advanced.querySelectorAll('input, select, textarea')]
   .filter(el=>!el.closest('[data-pf1ae-default-action]'));
@@ -321,10 +365,103 @@ function daRender(sheet,html){
   advanced.append(section);
  }
 }
+/**
+ * Native PF1 11.11 ItemActionSheet is a FormApplication with getters
+ * action, item and isEditable. The Use tab is resolved through its native
+ * tab navigation by data-tab, not through a global CSS or parent Item sheet.
+ */
+function daIsActionSheet(sheet){
+ const registry=globalThis.pf1?.applications?.component;
+ const classes=[registry?.ItemActionSheet,registry?.ActionSheet]
+  .filter(cls=>typeof cls==='function');
+ if(classes.some(cls=>sheet instanceof cls))return true;
+ const name=sheet?.constructor?.name;
+ return (name==='ItemActionSheet'||name==='ActionSheet')&&
+  sheet?.action?.id!=null&&
+  (sheet?.item??sheet?.action?.item)?.documentName==='Item';
+}
+function daActionUsageTab(root){
+ const candidates=['use','usage','utilisation','activation'];
+ for(const key of candidates){
+  const tab=root.querySelector('.tab[data-tab="'+key+'"]');
+  if(tab&&typeof tab.append==='function'&&!tab.closest?.('nav, .tabs, .sheet-navigation'))
+   return tab;
+ }
+ // Native tab-key mapping, for forks that rename the ID while keeping
+ // the Use/Usage/Utilisation label. Never inject into another tab.
+ const nav=[...root.querySelectorAll?.('[data-tab]')??[]]
+  .filter(node=>node.closest?.('nav, .tabs, .sheet-navigation'));
+ const match=nav.find(node=>/^(use|usage|utilisation)$/i.test(
+  String(node.textContent??'').trim()));
+ const key=match?.dataset?.tab;
+ return key?[...root.querySelectorAll('.tab[data-tab]')]
+  .find(tab=>tab.dataset?.tab===key&&
+   !tab.closest?.('nav, .tabs, .sheet-navigation'))??null:null;
+}
+function daRenderActionSheet(sheet,html){
+ if(!daEnabled()||!daIsActionSheet(sheet))return;
+ const action=sheet.action,item=sheet.item??action?.item;
+ const id=action?.id??action?._id;
+ if(!id||!daAction(item,id))return;
+ const candidate=html?.[0]??html??sheet?.element?.[0]??sheet?.element;
+ const root=candidate?.querySelector?candidate:
+  candidate?.[0]?.querySelector?candidate[0]:null;
+ if(!root)return;
+ const tab=daActionUsageTab(root);
+ const previous=root.querySelector('[data-pf1ae-action-skip-dialog]');
+ if(!tab){previous?.remove?.();return}
+ if(previous&&!tab.contains(previous))previous.remove();
+ const editable=daIsOwner(item)&&sheet.isEditable!==false;
+ const existing=tab.querySelector('[data-pf1ae-action-skip-dialog]');
+ if(existing){
+  const box=existing.querySelector('input[type="checkbox"]');
+  if(box){box.checked=daGetActionSkip(item,id);box.disabled=!editable}
+  return;
+ }
+ const t=key=>game.i18n.localize('PF1AE.ActionOptions.'+key);
+ const section=document.createElement('div');
+ section.dataset.pf1aeActionSkipDialog='true';
+ section.className='form-group pf1ae-action-skip-dialog';
+ const label=document.createElement('label');
+ label.style.cssText='display:flex;align-items:center;gap:6px';
+ const box=document.createElement('input');
+ box.type='checkbox';
+ box.checked=daGetActionSkip(item,id);
+ box.disabled=!editable;
+ box.setAttribute('aria-label',t('SkipDialog'));
+ const text=document.createElement('span');
+ text.textContent=t('SkipDialog');
+ label.append(box,text);
+ const hint=document.createElement('p');
+ hint.className='notes';
+ hint.textContent=t('Hint');
+ box.setAttribute('title',t('Hint'));
+ for(const type of ['click','pointerdown','mousedown'])
+  box.addEventListener(type,event=>event.stopPropagation());
+ box.addEventListener('change',event=>{
+  event.stopPropagation();
+  const desired=box.checked,previous=daGetActionSkip(item,id);
+  box.disabled=true;
+  void daSetActionSkip(item,id,desired).then(()=>{
+   box.disabled=!daIsOwner(item)||sheet.isEditable===false;
+  }).catch(error=>{
+   box.checked=previous;
+   box.disabled=!daIsOwner(item)||sheet.isEditable===false;
+   globalThis.ui?.notifications?.warn?.(error.message);
+  });
+ });
+ section.append(label,hint);
+ tab.append(section); // bottom of the native Use tab
+}
 Hooks.once('ready',()=>{
  const mod=game.modules.get(DA_NS);
  if(!mod)return;
  mod.api??={};
+ mod.api.actionOptions=Object.freeze({
+  getSkipDialog:daGetActionSkip,setSkipDialog:daSetActionSkip,
+  migrate:daMigrateLegacy,prune:daPruneOptions,
+  isAvailable:()=>daEnabled()&&daInstallStatus().itemUse===true
+ });
  mod.api.defaultAction=Object.freeze({
   get:daPreference,set:daSet,resolve:daAction,
   getSkipDialog:daSkipDialog,setSkipDialog:daSetSkipDialog,
@@ -342,5 +479,26 @@ Hooks.once('ready',()=>{
  Hooks.on('renderItemSheetV2',daRender);
  // PF1 native ItemSheetV2 subclasses emit renderApplication; only those
  // sheets with an Advanced tab and multiple actions are eligible.
- Hooks.on('renderApplication',daRender);
+ Hooks.on('renderApplication',(sheet,html)=>{
+  daRender(sheet,html);
+  daRenderActionSheet(sheet,html);
+ });
+ Hooks.on('renderItemActionSheet',daRenderActionSheet);
+ Hooks.on('updateItem',(item,change)=>{
+  if(change?.system?.actions!=null||change?.['system.actions']!=null)
+   void daPruneOptions(item).catch(error=>
+    console.warn('[PF1AE][ActionOptions] prune failed',error));
+ });
+ // Only the elected GM migrates pre-existing world-owned Items, preserving
+ // the historical setting for imported/compendium Items until first edit.
+ const leader=[...(game.users??[])].filter(user=>user.active&&user.isGM)
+  .sort((a,b)=>String(a.id).localeCompare(String(b.id)))[0];
+ if(leader?.id===game.user?.id){
+  for(const actor of game.actors??[])
+   for(const item of actor.items??[])
+    if(item.getFlag?.(DA_NS,DA_SKIP_FLAG)!=null)
+     void daMigrateLegacy(item).catch(error=>
+      console.warn('[PF1AE][ActionOptions] migration failed',item.uuid,error));
+ }
+
 });
