@@ -92,6 +92,9 @@ const daIsOwner=item=>game.user?.isGM===true||
  item?.actor?.testUserPermission?.(game.user,'OWNER')===true;
 async function daSet(item,actionId){
  if(!item||!daIsOwner(item))throw Error('Item OWNER permission required.');
+ // Changing a legacy default must never transfer its skip preference to the
+ // newly selected default; migrate under the ORIGINAL action ID first.
+ if(item.getFlag?.(DA_NS,DA_SKIP_FLAG)!=null)await daMigrateLegacy(item);
  const id=actionId==null||actionId===''?null:String(actionId);
  if(id&&!daAction(item,id))throw Error('Selected action no longer exists on this Item.');
  if(!id){await item.unsetFlag(DA_NS,DA_FLAG);return null;}
@@ -387,7 +390,9 @@ function daActionUsageTab(root){
  const match=nav.find(node=>/^(use|usage|utilisation)$/i.test(
   String(node.textContent??'').trim()));
  const key=match?.dataset?.tab;
- return key?root.querySelector('.tab[data-tab="'+CSS.escape(key)+'"]'):null;
+ return key?[...root.querySelectorAll('.tab[data-tab]')]
+  .find(tab=>tab.dataset?.tab===key&&
+   !tab.closest?.('nav, .tabs, .sheet-navigation'))??null:null;
 }
 function daRenderActionSheet(sheet,html){
  if(!daEnabled()||!daIsActionSheet(sheet))return;
@@ -474,7 +479,7 @@ Hooks.once('ready',()=>{
  Hooks.on('renderItemActionSheet',daRenderActionSheet);
  Hooks.on('renderApplication',daRenderActionSheet);
  Hooks.on('updateItem',(item,change)=>{
-  if(change?.system?.actions!=null)
+  if(change?.system?.actions!=null||change?.['system.actions']!=null)
    void daPruneOptions(item).catch(error=>
     console.warn('[PF1AE][ActionOptions] prune failed',error));
  });
