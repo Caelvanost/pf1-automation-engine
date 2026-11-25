@@ -1,4 +1,10 @@
-# PF1 Automation Engine v1.44.0
+# PF1 Automation Engine v1.44.1
+
+## Correction du dialogue d'utilisation par action (v1.44.1)
+
+L'option `actionOptions.getSkipDialog(item, actionId)` est maintenant appliquée au début de `pf1.actionUse.ActionUse.prototype.process()`, après la sélection effective de l'action. C'est le point où PF1 11.11 consomme le paramètre natif `skipDialog`. La version 1.44.0 pouvait encore afficher le dialogue lorsque le hook `pf1CreateActionUse` n'arrivait pas à neutraliser le dialogue à temps. Les appels natifs, la consommation des ressources, les scripts et les cartes de chat ne sont pas réimplémentés. `libWrapper` est utilisé lorsqu'il est présent, sinon une enveloppe directe est installée.
+
+
 
 ## Ignorer le dialogue d'utilisation pour chaque action (v1.44.0)
 
