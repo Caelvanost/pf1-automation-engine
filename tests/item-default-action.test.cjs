@@ -26,10 +26,23 @@ class ItemPF{
   uses.push({actionId:first,options,kind:'native-default'});return 'used:'+first;
  }
 }
+const nativeProcessLog=[];
+class ActionUse{
+ constructor(item,action){this.item=item;this.action=action;this.shared={item,action};}
+ async createAttackDialog(){nativeProcessLog.push('native-dialog');return {confirmed:true};}
+ async process({skipDialog=false}={}){
+  nativeProcessLog.push('process');
+  render.get('pf1CreateActionUse')?.(this);
+  if(!skipDialog)await this.createAttackDialog();
+  nativeProcessLog.push('use-script','resource-consumption','native-chat-card',
+   'post-use-script','custom-dialog');
+  return {skipDialog};
+ }
+}
 let selectorOpenCalls=0;
 const ActionSelector={async open(){selectorOpenCalls++;return 'a';}};
 const modules=new Map([['pf1-automation-engine',{active:true,api:{}}]]);
-const context={console,Map,Set,Promise,CONFIG:{Item:{documentClass:ItemPF}},pf1:{documents:{ItemPF},applications:{ActionSelector}},
+const context={console,Map,Set,Promise,CONFIG:{Item:{documentClass:ItemPF}},pf1:{documents:{ItemPF},applications:{ActionSelector},actionUse:{ActionUse}},
  game:{modules,user:{isGM:true},i18n:{localize:k=>k}},
  Hooks:{once(n,cb){if(n==='ready')ready.push(cb)},on(n,cb){render.set(n,cb)}},
  ui:{notifications:{warn(msg){throw Error('unexpected warning: '+msg)}}}};
@@ -44,7 +57,28 @@ const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
  assert.equal(api.status().mode,'direct','without libWrapper PF1AE uses the direct fallback');
  assert.equal(api.status().itemUse,true);
  assert.equal(api.status().selector,true);
+ assert.equal(api.status().process,true);
+ assert.equal(api.status().processMode,'direct');
 
+ // Native process argument is set after selecting an Action, and BEFORE
+ // the native code's local dialog decision. Scripts and chat remain native.
+ const opts=modules.get('pf1-automation-engine').api.actionOptions;
+ const target=new ItemPF();
+ target.actions=new Map([['prepare',{id:'prepare'}],['consume',{id:'consume'}]]);
+ await opts.setSkipDialog(target,'prepare',true);
+ const processUse=new ActionUse(target,target.actions.get('prepare'));
+ nativeProcessLog.length=0;
+ assert.equal((await processUse.process()).skipDialog,true);
+ assert.equal(nativeProcessLog.includes('native-dialog'),false);
+ assert.deepEqual(nativeProcessLog,['process','use-script','resource-consumption',
+  'native-chat-card','post-use-script','custom-dialog']);
+ nativeProcessLog.length=0;
+ assert.equal((await new ActionUse(target,target.actions.get('consume')).process()).skipDialog,false);
+ assert.equal(nativeProcessLog.includes('native-dialog'),true);
+ await opts.setSkipDialog(target,'prepare',false);
+ nativeProcessLog.length=0;
+ assert.equal((await new ActionUse(target,target.actions.get('prepare')).process()).skipDialog,false);
+ assert.equal(nativeProcessLog.includes('native-dialog'),true);
  // Default is "ask every time": no behavior changes whatsoever.
  assert.equal(await item.use({foo:42}),'native-select');
  assert.equal(nativeSelector.length,1);
@@ -382,6 +416,11 @@ const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
   async use(options={}){wrappedCalls.push(options);return options.actionId??'native-selector';}
  }
  const liveSelector={async open(){return 'native-choice';}};
+ const liveProcessCalls=[];
+ class LiveActionUse{
+  constructor(item,action){this.item=item;this.action=action;}
+  async process(options={}){liveProcessCalls.push(options);return options.skipDialog===true}
+ }
  const fakeLibWrapper={
   register(packageId,target,fn,type){
    registered.push({packageId,target,type});
@@ -390,6 +429,8 @@ const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
     owner=LiveItemPF.prototype;key='use';
    }else if(target==='pf1.applications.ActionSelector.open'){
     owner=liveSelector;key='open';
+   }else if(target==='pf1.actionUse.ActionUse.prototype.process'){
+    owner=LiveActionUse.prototype;key='process';
    }else throw Error('Unexpected wrapper target: '+target);
    const original=owner[key];
    owner[key]=function(...args){
@@ -406,7 +447,7 @@ const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
  const liveContext={
   console,Map,Set,Promise,
   CONFIG:{Item:{documentClass:class ItemBasePF{}}},
-  pf1:{documents:{item:{ItemPF:LiveItemPF}},applications:{ActionSelector:liveSelector}},
+  pf1:{documents:{item:{ItemPF:LiveItemPF}},applications:{ActionSelector:liveSelector},actionUse:{ActionUse:LiveActionUse}},
   libWrapper:fakeLibWrapper,
   game:{modules:liveModules,user:{isGM:true},i18n:{localize:key=>key}},
   Hooks:{once(name,fn){if(name==='ready')liveReady.push(fn)},on(){}},
@@ -420,9 +461,11 @@ const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
  assert.equal(liveApi.installed(),true,'libWrapper installation reports success');
  assert.equal(liveApi.status().mode,'libWrapper');
  assert.equal(liveApi.status().selectorMode,'libWrapper');
+ assert.equal(liveApi.status().processMode,'libWrapper');
  assert.deepEqual(registered.map(x=>[x.target,x.type]),[
   ['pf1.documents.item.ItemPF.prototype.use','WRAPPER'],
-  ['pf1.applications.ActionSelector.open','MIXED']
+  ['pf1.applications.ActionSelector.open','MIXED'],
+  ['pf1.actionUse.ActionUse.prototype.process','WRAPPER']
  ]);
  const liveItem=new LiveItemPF();
  assert.equal(await liveItem.use({caller:'sheet'}),'y');
@@ -443,7 +486,12 @@ const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
  assert.equal(wrappedCalls.at(-1).skipDialog,undefined,
   'unchecking restores native path under libWrapper');
  assert.equal(await liveSelector.open({document:liveItem}),'y');
- assert.equal(registered.length,2,'no duplicate registration');
+ assert.equal(registered.length,3,'no duplicate registration');
+ const liveProcess=new LiveActionUse(liveItem,liveItem.actions.get('y'));
+ assert.equal(await liveProcess.process(),true);
+ assert.equal(liveProcessCalls.at(-1).skipDialog,true);
+ const normalProcess=new LiveActionUse(liveItem,liveItem.actions.get('x'));
+ assert.equal(await normalProcess.process(),false);
  assert.equal(liveApi.status().itemUse,true);
  assert.equal(liveApi.status().selector,true);
  console.log('PASS optional libWrapper: native PF1 public class path, WRAPPER and MIXED, default action and explicit action');
