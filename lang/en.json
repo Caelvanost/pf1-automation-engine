@@ -144,9 +144,7 @@
       "AskEachTime": "Ask each time",
       "MissingAction": "Missing action — choose another",
       "Section": "PF1 Automation Engine",
-      "Hint": "Automatically uses this action without showing the action list. Pathfinder still manages the roll configuration dialog.",
-      "SkipDialog": "Skip dialog",
-      "SkipDialogHint": "Use the default action without opening its configuration dialog. PF1 still handles rolls and resource consumption."
+      "Hint": "Automatically uses this action without showing the action list. Pathfinder still manages the roll configuration dialog."
     },
     "ScriptApprovals": {
       "Title": "Script Approvals",
@@ -212,6 +210,10 @@
     },
     "PassiveAuras": {
       "SaveAnnotation": "Conditional aura: +{value} ({type})"
+    },
+    "ActionOptions": {
+      "SkipDialog": "Skip use dialog",
+      "Hint": "Use this action directly with its default parameters, without opening the native use configuration dialog."
     }
   }
 }
