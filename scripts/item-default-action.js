@@ -475,9 +475,11 @@ Hooks.once('ready',()=>{
  Hooks.on('renderItemSheetV2',daRender);
  // PF1 native ItemSheetV2 subclasses emit renderApplication; only those
  // sheets with an Advanced tab and multiple actions are eligible.
- Hooks.on('renderApplication',daRender);
+ Hooks.on('renderApplication',(sheet,html)=>{
+  daRender(sheet,html);
+  daRenderActionSheet(sheet,html);
+ });
  Hooks.on('renderItemActionSheet',daRenderActionSheet);
- Hooks.on('renderApplication',daRenderActionSheet);
  Hooks.on('updateItem',(item,change)=>{
   if(change?.system?.actions!=null||change?.['system.actions']!=null)
    void daPruneOptions(item).catch(error=>
