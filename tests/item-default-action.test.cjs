@@ -295,7 +295,8 @@ const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
  assert.equal(actionApi.getSkipDialog(parent,'copy'),false,
   'new ID never inherits existing action preference');
  parent.actions.delete('prepare');
- await actionApi.prune(parent);
+ render.get('updateItem')(parent,{system:{actions:[]}});
+ await new Promise(resolve=>setImmediate(resolve));
  assert.equal(parent.flags.actionSkipDialog?.prepare,undefined);
  assert.equal(actionApi.getSkipDialog(parent,'consume'),true);
  const copiedItem=new ItemPF();
@@ -430,6 +431,17 @@ const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
  assert.equal(wrappedCalls.at(-1).caller,'sheet');
  assert.equal(await liveItem.use({actionId:'x'}),'x');
  assert.equal(wrappedCalls.at(-1).skipDialog,undefined,'explicit action preserved');
+ const liveOptions=liveModules.get('pf1-automation-engine').api.actionOptions;
+ await liveOptions.setSkipDialog(liveItem,'x',true);
+ assert.equal(await liveItem.use({actionId:'x',source:'action-hud'}),'x');
+ assert.equal(wrappedCalls.at(-1).skipDialog,true,
+  'libWrapper permits per-action explicit quick use');
+ assert.equal(wrappedCalls.at(-1).source,'action-hud',
+  'other native use options survive wrapper');
+ await liveOptions.setSkipDialog(liveItem,'x',false);
+ assert.equal(await liveItem.use({actionId:'x'}),'x');
+ assert.equal(wrappedCalls.at(-1).skipDialog,undefined,
+  'unchecking restores native path under libWrapper');
  assert.equal(await liveSelector.open({document:liveItem}),'y');
  assert.equal(registered.length,2,'no duplicate registration');
  assert.equal(liveApi.status().itemUse,true);
