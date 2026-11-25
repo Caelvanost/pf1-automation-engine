@@ -1,4 +1,12 @@
-# PF1 Automation Engine v1.43.1
+# PF1 Automation Engine v1.44.0
+
+## Ignorer le dialogue d'utilisation pour chaque action (v1.44.0)
+
+Chaque action d'un objet PF1 dispose d'une case **Ignorer le dialogue** à la fin de son onglet **Utilisation**. Le sélecteur d'action native reste visible lorsque plusieurs actions existent. L'option ne masque que la fenêtre de configuration native de l'action sélectionnée, sans modifier les dialogues personnalisés, les jets, les charges, les Script Calls ni les cartes de chat. La préférence est enregistrée sous `flags.pf1-automation-engine.actionSkipDialog`, par identifiant d'action, et migrée rétrocompatiblement depuis `defaultActionSkipDialog`. Le sélecteur d'**Action par défaut** reste dans l'onglet Avancé, sans autre option de dialogue concurrente.
+
+API publique : `api.actionOptions.getSkipDialog(item, actionId)`, `setSkipDialog(item, actionId, enabled)` et `isAvailable()`. Les anciennes méthodes `api.defaultAction.getSkipDialog()` et `setSkipDialog()` restent disponibles. [Documentation détaillée](docs/action-options.md).
+
+
 
 ## Correctif socket multijoueur Foundry (v1.43.1)
 
