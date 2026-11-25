@@ -187,6 +187,10 @@ const actionApi=modules.get('pf1-automation-engine').api.actionOptions;
   querySelector(selector){
    if(selector==='[data-pf1ae-default-action]')
     return this.find(n=>n.dataset?.pf1aeDefaultAction==='true');
+   if(selector==='input[type="checkbox"]')
+    return this.find(n=>n.type==='checkbox');
+   if(selector==='[data-pf1ae-action-skip-dialog]')
+    return this.find(n=>n.dataset?.pf1aeActionSkipDialog==='true');
    return null;
   }
   querySelectorAll(){return []}
