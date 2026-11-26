@@ -97,6 +97,23 @@ const tick=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setTimeout(r
  await tick();
  assert.equal(c.isDefeated,true);
  assert.equal(sibling.isDefeated,true);
+ // One combatant manually changed while the shared Actor is already dead:
+ // reconciles every linked combatant even if no status toggle is needed.
+ sibling.defeated=false;sibling.isDefeated=false;
+ await c.update({defeated:true});
+ await tick();
+ assert.equal(sibling.isDefeated,true);
+ // Updating an existing effect may remove its Dead status rather than delete
+ // the entire effect; detect the changed statuses field.
+ actor.statuses.delete('dead');
+ fire('updateActiveEffect',{parent:actor,statuses:new Set(),disabled:false},
+  {statuses:[]});
+ await tick();
+ assert.equal(c.isDefeated,false);
+ assert.equal(sibling.isDefeated,false);
+ actor.statuses.add('dead');
+ fire('createActiveEffect',{parent:actor,statuses:new Set(['dead'])});
+ await tick();
  // Remove status from one linked combatant propagates via native Actor.
  await sibling.update({defeated:false});await tick();
  assert.equal(actor.statuses.has('dead'),false);
