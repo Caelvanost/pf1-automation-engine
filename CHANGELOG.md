@@ -1,3 +1,9 @@
+# 1.45.1 — Règle maison optionnelle : PNJ morts à 0 PV
+
+- Paramètre monde `npcDeathAtZero`, désactivé par défaut ; applique Mort aux acteurs PF1 `npc` lorsque les PV létaux mis à jour sont à 0 ou moins. Les PJ et les modifications de dégâts non létaux ou de PV temporaires seuls restent neutres.
+- Réutilise la synchronisation Mort ⇄ Vaincu, le MJ élu, les états natifs et les acteurs synthétiques. Fonctionne hors combat ; pas de résurrection automatique ni de balayage rétroactif.
+- Exception individuelle `ignoreAutoNpcDeath` pour les PNJ à conserver en vie. Documentation FR/EN du paramètre et tests de non-régression étendus dans la suite existante.
+
 # 1.45.0 — Synchronisation générique Mort ⇄ Vaincu
 
 - Ajoute la synchronisation bidirectionnelle **état natif PF1 « Mort »** ↔ **combattant « Vaincu »** dans les rencontres Foundry 13.

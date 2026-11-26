@@ -4,10 +4,13 @@
  *
  * Operates only on an elected GM and on combatants with a real token Actor.
  * Uses PF1 Actor.toggleStatusEffect and Combatant.update; never creates a
- * replacement ActiveEffect or changes HP.
+ * replacement ActiveEffect or changes HP. The optional NPC-at-zero house rule
+ * marks NPCs Dead on lethal HP updates, without automatic resurrection.
  */
 const DDS_NS='pf1-automation-engine';
 const DDS_HANDLING=new Set();
+const DDS_PENDING_HP=new Set();
+const DDS_NPC_ZERO='npcDeathAtZero';
 const DDS_CHANGE_OPTION='pf1aeDeathDefeatedSync';
 
 function ddsLeader(){
@@ -75,17 +78,50 @@ async function ddsGuard(actor,operation){
  DDS_HANDLING.add(key);
  try{await operation();}
  catch(error){ddsLog(error);}
- finally{DDS_HANDLING.delete(key);}
+ finally{
+  DDS_HANDLING.delete(key);
+  if(DDS_PENDING_HP.delete(key))void ddsFromHp(actor);
+ }
+}
+async function ddsSyncCombatants(actor){
+ const wanted=ddsIsDead(actor);
+ if(typeof wanted!=='boolean')return;
+ for(const combatant of ddsCombatants(actor)){
+  if(Boolean(combatant.isDefeated??combatant.defeated)===wanted)continue;
+  await combatant.update({defeated:wanted},{[DDS_CHANGE_OPTION]:true});
+ }
 }
 async function ddsFromDead(actor){
  if(!ddsEnabled()||!ddsDeadId())return;
+ await ddsGuard(actor,()=>ddsSyncCombatants(actor));
+}
+function ddsNpcZeroEnabled(){
+ try{return game.settings.get(DDS_NS,DDS_NPC_ZERO)===true;}
+ catch(_){return false;}
+}
+function ddsShouldAutoDie(actor){
+ const hp=actor?.system?.attributes?.hp?.value;
+ return ddsNpcZeroEnabled()&&actor?.type==='npc'&&
+  actor.getFlag?.(DDS_NS,'ignoreAutoNpcDeath')!==true&&
+  Number.isFinite(hp)&&hp<=0;
+}
+function ddsHpChanged(changed){
+ const owns=(obj,key)=>Object.prototype.hasOwnProperty.call(obj??{},key);
+ return owns(changed,'system.attributes.hp.value')||
+  owns(changed?.['system.attributes.hp'],'value')||
+  owns(changed?.system?.attributes?.hp,'value');
+}
+async function ddsFromHp(actor){
+ const id=ddsDeadId(),key=actor?.uuid;
+ if(!key||!id||!ddsEnabled()||!ddsShouldAutoDie(actor)||
+    typeof actor.toggleStatusEffect!=='function')return;
+ // HP changes must not be lost while a native status/tracker update is in flight.
+ if(DDS_HANDLING.has(key)){DDS_PENDING_HP.add(key);return;}
  await ddsGuard(actor,async()=>{
-  const wanted=ddsIsDead(actor);
-  if(typeof wanted!=='boolean')return;
-  for(const combatant of ddsCombatants(actor)){
-   if(Boolean(combatant.isDefeated??combatant.defeated)===wanted)continue;
-   await combatant.update({defeated:wanted},{[DDS_CHANGE_OPTION]:true});
-  }
+  if(!ddsShouldAutoDie(actor))return;
+  if(ddsIsDead(actor,id)===false)await actor.toggleStatusEffect(id,{active:true});
+  // The nested native effect hook is deliberately guarded; reconcile explicitly.
+  await ddsSyncCombatants(actor);
  });
 }
 async function ddsFromDefeated(combatant,change,options){
@@ -123,6 +159,9 @@ function ddsOnEffect(effect,change){
 }
 function ddsOnActor(actor,changed){
  if(!actor||!ddsDeadId())return;
+ if(ddsHpChanged(changed)&&ddsShouldAutoDie(actor)){
+  void ddsFromHp(actor);return;
+ }
  const attrs=changed?.system?.attributes;
  if(changed?.statuses!==undefined||changed?.effects!==undefined||
     attrs?.conditions?.dead!==undefined||
@@ -130,6 +169,13 @@ function ddsOnActor(actor,changed){
   void ddsFromDead(actor);
  }
 }
+Hooks.once('init',()=>{
+ game.settings.register(DDS_NS,DDS_NPC_ZERO,{
+  name:'PF1AE.Settings.NpcDeathAtZero.Name',
+  hint:'PF1AE.Settings.NpcDeathAtZero.Hint',
+  scope:'world',config:true,type:Boolean,default:false
+ });
+});
 Hooks.once('ready',()=>{
  if(!game.modules.get(DDS_NS))return;
  const module=game.modules.get(DDS_NS);

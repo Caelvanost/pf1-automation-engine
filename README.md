@@ -1,4 +1,12 @@
-# PF1 Automation Engine v1.45.0
+# PF1 Automation Engine v1.45.1
+
+## Mort automatique des PNJ à 0 PV (v1.45.1 — règle maison optionnelle)
+
+Dans les paramètres du monde PF1AE, activer **Mort automatique des PNJ à 0 PV (règle maison)** (désactivé par défaut). Lors d'une mise à jour de `system.attributes.hp.value`, le MJ élu applique l'état natif Mort aux acteurs PF1 de type `npc` à 0 PV ou moins, même hors combat. La synchronisation existante marque ensuite Vaincu dans les rencontres. Les PJ (`character`), les seuls dégâts non létaux, les PV temporaires et les valeurs invalides ne déclenchent pas la règle. Les soins ne retirent pas Mort : le MJ doit gérer explicitement une résurrection ou une correction. Pas de balayage rétroactif des acteurs à 0 PV.
+
+**Exception individuelle** pour un PNJ important, un compagnon, une créature régénérante, etc. : sur un token sélectionné, exécuter comme MJ `await canvas.tokens.controlled[0].actor.setFlag('pf1-automation-engine','ignoreAutoNpcDeath',true)` ; utiliser `unsetFlag('pf1-automation-engine','ignoreAutoNpcDeath')` sur cet acteur pour rétablir la règle. Le drapeau suit l'acteur, y compris synthétique. Le retrait manuel de Mort reste possible ; une nouvelle mise à jour des PV à 0 ou moins peut réappliquer la règle si le PNJ n'est pas exempté.
+
+Cette option est une simplification de table et non la règle générale PF1 (mort à −Constitution pour les créatures vivantes). Elle ne détecte pas automatiquement les aptitudes de survie et ne change jamais les PV.
 
 ## État natif Mort ⇄ combattant Vaincu (v1.45.0)
 
@@ -8,7 +16,7 @@ Dans les rencontres Foundry, l'ajout de l'état natif PF1 **Mort** à un token m
 - Les modifications utilisent les méthodes natives `Actor.toggleStatusEffect()` et `Combatant.update()`, sans modifier les PV ni créer d'effet personnalisé.
 - Le statut natif `dead` / `pf1_dead` doit exister dans `CONFIG.statusEffects`; aucun effet de substitution n'est inventé.
 - La synchronisation s'applique aux combattants partageant le même acteur, puisque les états natifs sont attachés à cet acteur.
-- Le service n'automatise **pas** la mort par les PV à 0 (PF1 distingue notamment mourant, inconscient et mort).
+- Sans la règle maison optionnelle de v1.45.1, le service n'automatise pas la mort par les PV à 0 (PF1 distingue notamment mourant, inconscient et mort).
 - API de diagnostic : `game.modules.get("pf1-automation-engine").api.deathDefeated` (`isAvailable()`, `statusId()`, `isDead(actor)`, `reconcileActor(actor)`).
 
 Tests automatisés (55 suites maintenues) et scénarios natifs simulés. Tester aussi dans Foundry avec un MJ connecté et un joueur propriétaire du token.

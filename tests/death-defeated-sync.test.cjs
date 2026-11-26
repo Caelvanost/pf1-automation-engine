@@ -12,13 +12,17 @@ const hooks=new Map(),writes=[],users=[
 const on=(name,fn)=>hooks.set(name,[...(hooks.get(name)??[]),fn]);
 const fire=(name,...args)=>{for(const fn of hooks.get(name)??[])fn(...args)};
 const addon={active:true,api:{}};
-const game={user:users[0],users,modules:new Map([['pf1-automation-engine',addon]]),
+const settings=new Map(),registered=new Map();
+const game={settings:{register(ns,key,config){registered.set(key,config);settings.set(key,config.default)},get(ns,key){return settings.get(key)}},user:users[0],users,modules:new Map([['pf1-automation-engine',addon]]),
  combats:new Map()};
 const context={game,CONFIG:{statusEffects:[{id:'dead',name:'Mort'},{id:'unconscious'}]},
  Hooks:{on,once:on},console};
 context.globalThis=context;
 vm.runInNewContext(src,context,{filename:'death-defeated-sync.js'});
+fire('init');
 fire('ready');
+assert.equal(registered.get('npcDeathAtZero').default,false);
+assert.equal(registered.get('npcDeathAtZero').scope,'world');
 const api=addon.api.deathDefeated;
 assert.equal(api.statusId(),'dead');
 assert.equal(api.isAvailable(),true);
@@ -27,6 +31,8 @@ assert.equal(hooks.get('createActiveEffect').length,1);
 const actors=[];
 function makeActor(name){
  const actor={documentName:'Actor',id:name,uuid:'Actor.'+name,
+  type:'npc',system:{attributes:{hp:{value:10}}},flags:{},
+  getFlag(ns,key){return actor.flags[key]},
   statuses:new Set(),effects:[],calls:[],
   async toggleStatusEffect(id,{active}={}){
    actor.calls.push({id,active});writes.push('toggle:'+name+':'+active);
@@ -140,9 +146,56 @@ const tick=async()=>{for(let i=0;i<8;i++)await new Promise(resolve=>setTimeout(r
  fire('createActiveEffect',{parent:actor,statuses:new Set(['dead'])});
  await tick();
  assert.equal(c.updateCalls.length,beforeNoCombat);
+ // Optional house rule: lethal HP changes only, NPCs only, native status.
+ const npc=makeActor('zero-hp'),pc=makeActor('pc'),exempt=makeActor('exempt');
+ pc.type='character';exempt.flags.ignoreAutoNpcDeath=true;
+ const nc=makeCombatant('npc-zero',npc);
+ const nc2=makeCombatant('npc-linked',npc);
+ game.combats.set('hp-combat',{combatants:new Map([[nc.id,nc],[nc2.id,nc2]])});
+ npc.system.attributes.hp.value=0;
+ fire('updateActor',npc,{system:{attributes:{hp:{value:0}}}});
+ await tick();
+ assert.equal(npc.statuses.has('dead'),false,'off by default');
+ settings.set('npcDeathAtZero',true);
+ fire('updateActor',npc,{system:{attributes:{hp:{nonlethal:50}}}});
+ await tick();
+ assert.equal(npc.statuses.has('dead'),false,'nonlethal-only change is not a trigger');
+ npc.system.attributes.hp.value=1;
+ fire('updateActor',npc,{'system.attributes.hp.value':1});
+ await tick();assert.equal(npc.calls.length,0);
+ npc.system.attributes.hp.value=0;
+ fire('updateActor',npc,{'system.attributes.hp.value':0});
+ await tick();
+ assert.equal(npc.statuses.has('dead'),true);
+ assert.equal(nc.isDefeated,true);assert.equal(nc2.isDefeated,true);
+ assert.deepEqual(npc.calls.map(x=>x.active),[true]);
+ fire('updateActor',npc,{'system.attributes.hp.value':0});
+ await tick();assert.equal(npc.calls.length,1,'no duplicate native status');
+ npc.system.attributes.hp.value=5;
+ fire('updateActor',npc,{'system.attributes.hp.value':5});
+ await tick();assert.equal(npc.statuses.has('dead'),true,'healing is not resurrection');
+ await nc.update({defeated:false});await tick();
+ assert.equal(npc.statuses.has('dead'),false,'manual removal remains possible');
+ for(const other of [pc,exempt]){
+  other.system.attributes.hp.value=-2;
+  fire('updateActor',other,{system:{attributes:{hp:{value:-2}}}});
+ }
+ await tick();assert.equal(pc.calls.length,0);assert.equal(exempt.calls.length,0);
+ const outside=makeActor('outside-combat');
+ outside.system.attributes.hp.value=-4;
+ game.user=users[1];
+ fire('updateActor',outside,{'system.attributes.hp.value':-4});
+ await tick();assert.equal(outside.calls.length,0,'player cannot apply rule');
+ game.user=users[0];
+ fire('updateActor',outside,{'system.attributes.hp.value':-4});
+ await tick();assert.equal(outside.statuses.has('dead'),true,'outside combat also works');
+ const invalid=makeActor('invalid-hp');
+ invalid.system.attributes.hp.value=null;
+ fire('updateActor',invalid,{'system.attributes.hp.value':null});
+ await tick();assert.equal(invalid.calls.length,0,'invalid HP fails closed');
  // No registered native Dead condition -> fail closed.
  context.CONFIG.statusEffects=[{id:'unconscious'}];
  assert.equal(api.isAvailable(),false);
  assert.equal(api.statusId(),null);
- console.log('PASS: native Dead and Combatant defeated bidirectional GM-only sync, deduplication, linked combatants, non-death neutrality, missing registry and no encounter');
+ console.log('PASS: native Dead and Combatant defeated bidirectional GM-only sync, deduplication, linked combatants, non-death neutrality, missing registry, no encounter, optional NPC-at-zero house rule');
 })().catch(error=>{console.error(error);process.exitCode=1});

@@ -1,6 +1,10 @@
 {
   "PF1AE": {
     "Settings": {
+      "NpcDeathAtZero": {
+        "Name": "Mort automatique des PNJ à 0 PV (règle maison)",
+        "Hint": "Lors d'une mise à jour des PV létaux, applique Mort aux acteurs PNJ à 0 PV ou moins. Ne concerne pas les PJ ; les soins ne ressuscitent pas. Les PNJ exemptés individuellement sont ignorés."
+      },
       "GenericEnabled": {
         "Name": "Activer les automatisations génériques",
         "Hint": "Active les événements persistants, les synchronisations et les minuteurs."

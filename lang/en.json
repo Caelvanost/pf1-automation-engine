@@ -1,6 +1,10 @@
 {
   "PF1AE": {
     "Settings": {
+      "NpcDeathAtZero": {
+        "Name": "Automatic NPC death at 0 HP (house rule)",
+        "Hint": "On a lethal HP update, marks NPC actors at 0 HP or less Dead. Does not affect PCs; healing does not resurrect. Individually exempted NPCs are ignored."
+      },
       "GenericEnabled": {
         "Name": "Enable generic automations",
         "Hint": "Enable persistent events, synchronization and timers."
