@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.46.0
+# PF1 Automation Engine v1.46.1
+
+## Présentation native des états de santé (v1.46.1)
+
+Les buffs techniques restent des sources distinctes, mais leurs boutons supplémentaires sont masqués dans le HUD PF1. Les libellés utilisent le nom natif de l'état, sans préfixe PF1AE ; les doublons d'icône identique provenant des sources techniques sont filtrés, sans toucher aux autres buffs ou aux états indépendants. Les porteurs existants sont renommés lors de la réconciliation. Aucun changement de règles de santé ; refaire le diagnostic de provenance avant réactivation.
 
 ## Health Conditions — socle expérimental (1.46.0)
 

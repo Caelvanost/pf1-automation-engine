@@ -1,3 +1,10 @@
+# 1.46.1 — Présentation native des états de santé
+
+- Retire uniquement les entrées `buff-<id>` des porteurs de santé PF1AE du HUD PF1 ; conserve les choix natifs et les buffs ordinaires.
+- Libellés natifs, sans préfixe PF1AE ; mise à jour des porteurs existants sans changer leurs UUID, statuts ou provenance.
+- Filtre les icônes identiques des porteurs techniques lorsque le même état primaire est déjà représenté par un effet visible. Respecte les réglages natifs de visibilité et les overlays ; aucune suppression mécanique d'état.
+- Tests de simulation supplémentaires. Diagnostic de provenance à relancer après mise à jour ; contrôle visuel dans Foundry requis.
+
 # 1.46.0 — Socle expérimental (alpha 1) Health Conditions
 
 - API générique `healthConditions` : registre persistant par acteur/objet/clé, politique de suppression ciblée des contributions de PV létaux, sources non létales séparées, réconciliation MJ élu et nettoyage des sources orphelines.

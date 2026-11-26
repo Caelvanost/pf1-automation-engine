@@ -30,6 +30,10 @@ The probe creates a temporary actor, temporary scene (not your live encounter), 
 
 Only after successful probe enable **Health condition management (alpha)**. No retroactive sweep of untouched actors: actor/Item/effect changes and explicitly requested reconciliation calculate current conditions. Actors carrying managed sources/records are restored on ready. Do not run competing automation of HP states. Before disabling PF1AE or re-enabling Improved Conditions, turn the health setting OFF while an elected GM is active so owned carriers and exception records can be removed.
 
+## Native presentation (1.46.1)
+
+PF1's TokenHUDPF adds a separate buff-ID choice for every buff, including technical carriers. The engine filters only verified managed health carrier choices; native condition choices and all other buffs remain. Carrier names use the native localized condition label and old names are normalized in place on reconciliation. PF1's native ActiveEffectPF.isTemporary decision is preserved; only duplicate visible managed icons of the same primary condition and image are suppressed. Independent effects, overlays, source ownership, statuses and mechanical application are unchanged. The carrier Items remain on the Actor for provenance. Repeat the runtime probe after upgrading, then validate actual HUD and token display on linked/unlinked Actors. Do not edit the technical carriers.
+
 ## API
 
 ```js
