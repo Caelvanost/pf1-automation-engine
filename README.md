@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.46.1
+# PF1 Automation Engine v1.46.2
+
+## Panneau latéral : doublons d'états (v1.46.2)
+
+Compatibilité avec les panneaux affichant séparément `.buff-list.buffs` et `.buff-list.conditions` : masque uniquement la ligne buff technique lorsque sa condition native primaire est présente et référence exactement le même ActiveEffect et le même acteur. Ne modifie ni les effets ni les autres buffs. Le panneau tiers est reconnu par sa structure HTML observée ; aucune dépendance à un nom traduit. Diagnostic de provenance à relancer après mise à jour.
 
 ## Présentation native des états de santé (v1.46.1)
 
