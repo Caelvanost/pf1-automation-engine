@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.47.0
+# PF1 Automation Engine v1.48.0
+
+## Événement générique de santé (v1.48.0)
+
+Le moteur ne contient aucune logique de classe, race, don ou aptitude particulière. Les Script Calls natifs `Après utilisation` nommés `PF1AE:health:changed` sont exécutés par le MJ élu après une variation réelle des PV, avant la réconciliation des états. Le contexte `event` expose les PV avant/après, les franchissements de seuils et le contexte de combat non ambigu ; `event.register()` et `event.unregister()` préparent des exceptions limitées à l'objet appelant. Les écritures sont validées après exécution du script. Le hook public `pf1aeHealthChanged` notifie la transition après réconciliation. Aucun traitement spécifique ni script d'aptitude livré. Mort non neutralisable. Approbation native/Trusted Table requise pour objets d'acteurs joueurs. Les libellés de paramètres ne portent plus la mention alpha.
 
 ## Agonie, stabilisation et actions éprouvantes (v1.47.0)
 

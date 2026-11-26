@@ -233,6 +233,54 @@ on("pf1ToggleActorCondition",(actor,id,value)=>notifications.push([actor.uuid,id
  const noOwner=makeActor("Actor.noowner",{owner:false});const sn=trait(noOwner,"no");
  game.user=player;await assert.rejects(api.register({actor:noOwner,sourceUuid:sn.uuid,key:"x",suppress:["dying"]}));game.user=gm;
 
+
+ // Generic health events run before conditions are committed, on elected
+ // GM only; exact approved native postUse scripts, no ability-specific logic.
+ const eactor=makeActor("Actor.event",{hp:5}),eitem=trait(eactor,"subscriber");
+ const notices=[],calls=[];
+ on("pf1aeHealthChanged",(a,e)=>{if(a===eactor)notices.push({e,statuses:[...a.statuses]})});
+ let allow=true,expired,wrongSource;
+ addon.api.scriptApprovals={check:(a,i,c)=>({approved:allow&&i===eitem})};
+ eitem.scriptCalls=[{id:"health",name:"PF1AE:health:changed",category:"postUse",async execute(_,{event}){
+  calls.push(event);expired=event;
+  assert.equal(event.sourceUuid,eitem.uuid);
+  if(event.enteredNegative){
+   assert.equal(has(eactor,"unconscious"),false);
+   const r=event.register({key:"example",suppress:["unconscious","dying","prone"],apply:["disabled"],sourceUuid:"Actor.other.Item.other"});
+   assert.equal(r.staged,true);
+   await assert.rejects(api.register({actor:eactor,sourceUuid:eitem.uuid,key:"bad",apply:["disabled"]}));
+   await assert.rejects(api.reconcile(eactor));
+  }else if(event.recoveredNonnegative)event.unregister({key:"example"});
+ }}];
+ await eactor.update({"system.attributes.hp.value":0});await tick();
+ assert.equal(calls.length,1);assert.equal(calls[0].reducedToZero,true);assert.equal(calls[0].enteredNegative,false);
+ await eactor.update({"system.attributes.hp.value":-3});await tick();
+ assert.equal(calls.length,2);assert.equal(calls[1].enteredNegative,true);assert.equal(calls[1].hpBefore,0);assert.equal(calls[1].hpAfter,-3);
+ assert.equal(has(eactor,"disabled"),true);assert.equal(has(eactor,"unconscious"),false);
+ assert.equal(api.list(eactor)[0].sourceUuid,eitem.uuid);
+ assert.equal(notices.length,2);assert.equal(notices[1].statuses.includes("unconscious"),false);
+ let expiredRejected=false;try{expired.unregister({key:"example"})}catch(_){expiredRejected=true}
+ assert.equal(expiredRejected,true);
+ await eactor.update({"system.attributes.hp.value":5});await tick();assert.equal(api.list(eactor).length,0);
+ assert.equal(calls.length,3);assert.equal(calls[2].enteredPositive,true);assert.equal(calls[2].recoveredNonnegative,true);
+ await eactor.update({"system.attributes.hp.max":25});await tick();assert.equal(calls.length,3);
+ allow=false;await eactor.update({"system.attributes.hp.value":-2});await tick();
+ assert.equal(calls.length,3);assert.equal(has(eactor,"unconscious"),true);
+ allow=true;await eactor.update({"system.attributes.hp.value":5});await tick();
+ // Fatal threshold cannot be intercepted by the pre-condition subscriber.
+ const n=calls.length;await eactor.update({"system.attributes.hp.value":-14});await tick();
+ assert.equal(calls.length,n);assert.equal(has(eactor,"dead"),true);
+ assert.equal(notices.at(-1).e.dead,true);assert.equal(notices.at(-1).statuses.includes("dead"),true);
+ // Throwing subscriber leaves its staged exception uncommitted.
+ const bad=makeActor("Scene.ev.Token.ev.Actor.base",{hp:5}),bi=trait(bad,"bad");
+ addon.api.scriptApprovals={check:()=>({approved:true})};
+ bi.scriptCalls=[{id:"bad",category:"postUse",name:"PF1AE:health:changed",async execute(_,{event}){
+  event.register({key:"bad",suppress:["unconscious"]});throw Error("fixture");
+ }}];
+ await bad.update({"system.attributes.hp.value":-1});await tick();
+ assert.equal(api.list(bad).length,0);assert.equal(has(bad,"unconscious"),true);
+ delete addon.api.scriptApprovals;
+
  // 1.47 rules are opt-in independently. Native check is not a Fortitude
  // save. Actual HP offset changes, not temporary HP, drive stabilization.
  assert.equal(registered.get("healthAgonyEnabled").default,false);
