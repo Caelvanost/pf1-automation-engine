@@ -155,9 +155,13 @@ function hcEffectIsValid(item,actor,status){
  const applicable=typeof actor.allApplicableEffects==="function"?[...actor.allApplicableEffects()]:[];
  return applicable.some(e=>e.uuid===effect.uuid)&&hcStatusIds(status).every(id=>actor.statuses?.has?.(id));
 }
+function hcNativeName(status){
+ const condition=pf1.registry.conditions.get(status);
+ return game.i18n?.localize?.(condition.name)??condition.name;
+}
 async function hcCreateSource(actor,cause,status){
  const condition=pf1.registry.conditions.get(status),ids=hcStatusIds(status);
- const name="PF1AE — "+(game.i18n?.localize?.(condition.name)??condition.name);
+ const name=hcNativeName(status);
  const f={version:1,actorUuid:actor.uuid,cause,status};
  const [item]=await actor.createEmbeddedDocuments("Item",[{
   name,type:"buff",img:condition.texture,
@@ -172,6 +176,80 @@ async function hcCreateSource(actor,cause,status){
   throw Error("Native transferable health effect could not be verified: "+status);
  }
  return item;
+}
+// Presentation only: keep native PF1 status choices and normal buffs.
+// PF1 11.11 TokenHUDPF._getStatusEffectChoices adds buff-<item id> entries
+// in addition to the native condition choices. Managed carriers need no
+// separate button, even if inactive. Never filter ordinary buff entries.
+function hcDisplayCarrier(item,actor){
+ try{return Boolean(item&&actor&&hcSafeCarrier(item,actor))}
+ catch(_){return false}
+}
+function hcFilterHudChoices(choices,actor){
+ if(!choices||!actor)return choices;
+ const hidden=hcArray(actor.items).filter(i=>hcDisplayCarrier(i,actor));
+ if(!hidden.length)return choices;
+ const result={...choices};
+ for(const item of hidden)delete result["buff-"+item.id];
+ return result;
+}
+// Foundry draws temporary ActiveEffects on tokens. PF1's own isTemporary
+// getter implements hideFromToken and overlay visibility. Preserve that
+// decision and suppress only duplicate *managed* icons of the same native
+// primary status/image, never an ordinary effect or a different condition.
+function hcVisibleCarrier(effect,nativeVisible,original){
+ if(!nativeVisible)return nativeVisible;
+ const actor=effect.actor??effect.parent?.actor;
+ if(!hcDisplayCarrier(effect.parent,actor))return nativeVisible;
+ if(effect.disabled===true||effect.isSuppressed===true)return nativeVisible;
+ if(effect.getFlag?.("core","overlay")===true)return nativeVisible;
+ const f=hcSource(effect.parent,actor);
+ if(!effect.img||!effect.uuid||typeof actor?.allApplicableEffects!=="function")return nativeVisible;
+ for(const other of actor.allApplicableEffects()){
+  if(other===effect||other.uuid===effect.uuid||other.disabled===true||
+     other.isSuppressed===true||other.img!==effect.img||!other.statuses?.has?.(f.status))continue;
+  // Call the unwrapped native getter directly, avoiding recursion.
+  if(!original.call(other))continue;
+  if(!hcDisplayCarrier(other.parent,actor))return false;
+  const of=hcSource(other.parent,actor);
+  if(of.status!==f.status)continue;
+  if(other.getFlag?.("core","overlay")===true||String(other.uuid)<String(effect.uuid))return false;
+ }
+ return nativeVisible;
+}
+const HC_DISPLAY_MARK=Symbol.for("pf1ae.healthConditionDisplay");
+function hcInstallDisplay(){
+ if(game.system?.id!=="pf1"||game.system?.version!=="11.11"||game.release?.generation!==13)return;
+ const hud=globalThis.CONFIG?.Token?.hudClass?.prototype;
+ const fn=hud?._getStatusEffectChoices;
+ if(typeof fn==="function"&&!fn[HC_DISPLAY_MARK]){
+  // PF1's configured HUD subclass, not a global TokenHUD replacement.
+  const wrapped=function(...args){
+   return hcFilterHudChoices(fn.apply(this,args),this.actor);
+  };
+  Object.defineProperty(wrapped,HC_DISPLAY_MARK,{value:true});
+  hud._getStatusEffectChoices=wrapped;
+ }
+ const effect=globalThis.CONFIG?.ActiveEffect?.documentClass?.prototype;
+ const descriptor=effect&&Object.getOwnPropertyDescriptor(effect,"isTemporary");
+ if(descriptor?.configurable&&typeof descriptor.get==="function"&&!descriptor.get[HC_DISPLAY_MARK]){
+  const original=descriptor.get;
+  const get=function(){
+   const visible=original.call(this);
+   return hcVisibleCarrier(this,visible,original);
+  };
+  Object.defineProperty(get,HC_DISPLAY_MARK,{value:true});
+  Object.defineProperty(effect,"isTemporary",{...descriptor,get});
+ }
+}
+// Update existing v1.46.0 carriers in place, not via recreation, so source
+// provenance, exception keys, duration and independent states survive.
+async function hcNormalizeCarrierLabel(item,actor){
+ if(!hcDisplayCarrier(item,actor))return;
+ const f=hcSource(item,actor),name=hcNativeName(f.status);
+ if(item.name!==name)await item.update({name},hcInternal());
+ const effect=item.effect??hcArray(item.effects)[0];
+ if(effect&&effect.name!==name)await effect.update({name},hcInternal());
 }
 function hcExternalStatus(actor,status){
  const applicable=typeof actor.allApplicableEffects==="function"?[...actor.allApplicableEffects()]:[];
@@ -216,7 +294,9 @@ async function hcReconcileInternal(actor){
  const kept=new Set(),remove=[];
  for(const item of existing){
   const f=hcSource(item,actor),key=hcSourceKey(f.cause,f.status);
-  if(wanted.has(key)&&!kept.has(key)&&hcEffectIsValid(item,actor,f.status))kept.add(key);
+  if(wanted.has(key)&&!kept.has(key)&&hcEffectIsValid(item,actor,f.status)){
+   kept.add(key);await hcNormalizeCarrierLabel(item,actor);
+  }
   else remove.push(item);
  }
  // Validate obsolete carriers before creating replacements or deleting any.
@@ -421,6 +501,7 @@ Hooks.once("init",()=>{
 });
 Hooks.once("ready",()=>{
  const mod=hcModule();if(!mod)return;
+ hcInstallDisplay();
  mod.api??={};
  mod.api.healthConditions=Object.freeze({
   isAvailable:()=>hcAvailability().available,diagnostics:hcDiagnostics,

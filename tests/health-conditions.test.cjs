@@ -38,8 +38,9 @@ function makeActor(uuid,{type="npc",hp=5,con=14,nonlethal=0,flags={},traits={liv
    const id="i"+(++seq);
    const item={...clone(row),id,uuid:this.uuid+".Item."+id,documentName:"Item",actor:this,parent:this,actions:[],scriptCalls:[],
     getFlag(ns,k){return this.flags?.[ns]?.[k]},get isActive(){return this.system?.active!==false},
+    async update(changed,o={}){Object.assign(this,changed);fire("updateItem",this,changed,o,game.user.id);return this},
     async delete(o={}){actor.items.delete(id);fire("deleteItem",this,o,game.user.id)}};
-   item.effects=(row.effects??[]).map((e,n)=>({...e,uuid:item.uuid+".ActiveEffect."+n,parent:item,actor:this,statuses:new Set(e.statuses),getFlag(ns,k){return this.flags?.[ns]?.[k]}}));
+   item.effects=(row.effects??[]).map((e,n)=>({...e,uuid:item.uuid+".ActiveEffect."+n,parent:item,actor:this,statuses:new Set(e.statuses),getFlag(ns,k){return this.flags?.[ns]?.[k]},async update(changed,o={}){Object.assign(this,changed);fire("updateActiveEffect",this,changed,o,game.user.id);return this}}));
    item.effect=item.effects[0];this.items.set(id,item);items.push(item);fire("createItem",item,options,game.user.id);
   }
   return items;
@@ -67,7 +68,16 @@ function trait(actor,id){
  const item={id,uuid:actor.uuid+".Item."+id,documentName:"Item",type:"feat",actor,parent:actor,isActive:true,effects:[]};
  actor.items.set(id,item);return item;
 }
-const context={game,pf1:{registry:{conditions}},Hooks:{on,once:on},console,
+class TestHud{
+ constructor(actor){this.actor=actor}
+ _getStatusEffectChoices(){
+  return Object.fromEntries([...conditions.keys()].map(id=>[id,{id,isActive:this.actor.statuses.has(id)}]).concat(
+   [...this.actor.items.values()].filter(i=>i.type==="buff").map(i=>["buff-"+i.id,{title:i.name,isActive:i.isActive}])));
+ }
+}
+class TestEffect{get isTemporary(){return this.visible!==false}}
+const CONFIG={Token:{hudClass:TestHud},ActiveEffect:{documentClass:TestEffect}};
+const context={game,CONFIG,pf1:{registry:{conditions}},Hooks:{on,once:on},console,
  fromUuid:async uuid=>documents.get(uuid),foundry:{utils:{randomID:()=>"request"+ ++seq}},
  Actor:{implementation:{create:async data=>makeActor("Actor.probe"+ ++seq,{flags:data.flags})}},
  Scene:{implementation:{create:async()=>{
@@ -103,6 +113,15 @@ const owned=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthCond
  await api.reconcile(a);
  assert.equal(has(a,"disabled"),true);assert.equal(has(a,"staggered"),true);
  assert.equal(has(a,"dead"),false);assert.equal(has(a,"dying"),false);
+ const carrier=owned(a)[0];assert.equal(carrier.name,"disabled");assert.equal(carrier.effect.name,"disabled");
+ const oldUuid=carrier.uuid;carrier.name="PF1AE — disabled";carrier.effect.name="PF1AE — disabled";
+ await api.reconcile(a);assert.equal(owned(a)[0].uuid,oldUuid);assert.equal(carrier.name,"disabled");assert.equal(carrier.effect.name,"disabled");
+ const [ordinary]=await a.createEmbeddedDocuments("Item",[{name:"Ordinary buff",type:"buff",system:{active:true}}]);
+ const hud=new TestHud(a)._getStatusEffectChoices();assert.equal(hud.disabled.isActive,true);assert.equal(Object.hasOwn(hud,"buff-"+carrier.id),false);assert.equal(hud["buff-"+ordinary.id].title,"Ordinary buff");
+ const getter=Object.getOwnPropertyDescriptor(TestEffect.prototype,"isTemporary").get;
+ assert.equal(getter.call(carrier.effect),true);carrier.effect.visible=false;assert.equal(getter.call(carrier.effect),false);carrier.effect.visible=true;
+ const direct={uuid:"direct",img:carrier.effect.img,statuses:new Set(["disabled"]),parent:a,actor:a,disabled:false};a.effects.push(direct);
+ assert.equal(getter.call(carrier.effect),false);assert.equal(getter.call(direct),true);direct.visible=false;assert.equal(getter.call(carrier.effect),true);a.effects.pop();
  const s1=trait(a,"source1"),s2=trait(a,"source2");
  await a.update({"system.attributes.hp.value":-3});await tick();
  for(const s of ["dying","unconscious","prone"])assert.equal(has(a,s),true);
@@ -118,6 +137,10 @@ const owned=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthCond
  await api.unregister(r1);assert.equal(api.list(a).length,1);assert.equal(has(a,"dying"),false);
  await a.setCondition("sleep",false);await tick();assert.equal(has(a,"unconscious"),false);
  await a.update({"system.attributes.hp.nonlethal":2});await tick();assert.equal(has(a,"unconscious"),true);
+ // two separately owned prone sources still display only one identical icon
+ const proneCarriers=owned(a).filter(i=>i.flags[NS].healthConditionSource.status==="prone");
+ assert.equal(proneCarriers.length,2);
+ assert.equal(proneCarriers.filter(i=>getter.call(i.effect)).length,1);
  await a.update({"system.attributes.hp.nonlethal":0});await tick();assert.equal(has(a,"unconscious"),false);
  game.user=player;
  const rp=await api.register(r1);assert.equal(rp.queued,true);assert.equal(api.list(a).length,2);
