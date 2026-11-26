@@ -2,13 +2,15 @@
  * Health conditions foundation, PF1 11.11 / Foundry 13.
  * Opt-in, runtime-probed provider. Never deletes direct actor conditions.
  * Health contributions are direct native ActiveEffects, with source flags.
- * No translated-name matching, fake feats, damage recalculation or action costs.
+ * Native stabilization, turn checks and optional strenuous-action HP loss.
  */
 const HC_NS="pf1-automation-engine";
 const HC_ENABLED="healthConditionsEnabled";
 const HC_PROOF="healthConditionsProof";
 const HC_RECORDS="healthExceptions";
 const HC_SOURCE="healthConditionSource";
+const HC_AGONY="healthAgonyEnabled",HC_STRAIN="healthStrenuousEnabled";
+const HC_AGONY_TURNS="healthAgonyTurns",HC_ACTION_COSTS="healthActionCosts";
 const HC_INTERNAL="pf1aeHealthConditionsInternal";
 const HC_ALLOWED=new Set(["disabled","dying","unconscious","prone","staggered"]);
 const HC_WORK=new Map();
@@ -310,9 +312,218 @@ async function hcDropRecords(actor,ids,{internal=true}={}){
  for(const id of ids)updates["flags."+HC_NS+"."+HC_RECORDS+".-="+id]=null;
  await actor.update(updates,internal?hcInternal():{});
 }
+// PF1 Core Rulebook, combat: disability, dying, stable characters.
+// Loss of a hit point is not an attack or an application of damage.
+// Use native Actor.update (not applyDamage, DR or temporary HP absorption).
+function hcAgonyEnabled(){return hcAvailability().available&&hcSetting(HC_AGONY,false)===true}
+function hcStrainEnabled(){return hcAvailability().available&&hcSetting(HC_STRAIN,false)===true}
+function hcNativeStableEffects(actor){
+ // Stable is a physiological state, not a persistent immunity to dying.
+ // Clear only plain direct native stable conditions, never an Item effect,
+ // scripted duration, overlay or effect with unrelated statuses/changes.
+ return hcArray(actor.effects).filter(e=>e.parent?.uuid===actor.uuid&&
+  e.getFlag?.("pf1","autoDelete")===true&&!e.origin&&!e.changes?.length&&
+  !e.getFlag?.("core","overlay")&&hcExactStatuses(e.statuses,["stable"])&&
+  !e.duration?.seconds&&!e.duration?.rounds&&!e.duration?.turns);
+}
+async function hcClearStable(actor){
+ const ids=hcNativeStableEffects(actor).map(e=>e.id);
+ if(ids.length)await actor.deleteEmbeddedDocuments("ActiveEffect",ids);
+}
+async function hcStabilize(actor){
+ const s=hcSnapshot(actor);
+ if(!s.supported||s.dead||s.nonliving||s.hp>=0)return false;
+ if(!s.stable){
+  // Object form avoids clearing a separately sourced track state.
+  await actor.setCondition("stable",{});
+  if(!actor.statuses.has("stable"))throw Error("Native stabilization condition not applied.");
+ }
+ return true;
+}
+async function hcHealthTransition(actor,delta,expectedHp){
+ if(!hcAgonyEnabled()||!hcLeader())return;
+ const s=hcSnapshot(actor);
+ if(!s.supported||s.nonliving||s.dead||s.hp!==expectedHp)return;
+ if(s.hp>=0){await hcClearStable(actor);return}
+ // PF1 BaseCharacterPF reports actual HP offset deltas, not hp.max
+ // changes or temporary HP expiry. Do not infer damage from a new max.
+ if(delta>0)await hcStabilize(actor);
+ else if(delta<0)await hcClearStable(actor);
+}
+function hcOngoingDamage(actor,bleedInfo=null){
+ // An explicit generic source means continuous damage is in effect.
+ if([...hcArray(actor.items),...hcArray(actor.effects)].some(d=>
+  hcFlag(d,"ongoingDamage")===true&&d.isActive!==false&&d.activeState!==false&&
+  d.disabled!==true&&d.isSuppressed!==true))return true;
+ if(bleedInfo?.appliedAmount>0)return true;
+ if(!actor.statuses?.has?.("bleed"))return false;
+ // An existing native Bleed condition with no configured amount is still
+ // a recognized ongoing source. But a proven, fully prevented configured
+ // bleed must not cause automatic failure on its own.
+ if(bleedInfo?.appliedAmount===0){
+  const sources=new Set(bleedInfo.sourceUuids);
+  return [...actor.allApplicableEffects()].some(e=>e.statuses?.has?.("bleed")&&
+   e.disabled!==true&&e.isSuppressed!==true&&!sources.has(e.uuid)&&!sources.has(e.parent?.uuid));
+ }
+ return true;
+}
+function hcDying(actor){
+ const p=hcPlan(actor);
+ return p.supported&&!p.dead&&!p.nonliving&&p.hp<0&&!p.stable&&
+  p.wanted.some(r=>r.status==="dying"&&r.cause==="lethal");
+}
+function hcLang(fr,en){return String(game.i18n?.lang??"en").toLowerCase().startsWith("fr")?fr:en}
+function hcWarn(msg,detail){console.warn("[PF1AE][HealthConditions] "+msg,detail);globalThis.ui?.notifications?.warn?.(msg)}
+async function hcReport(actor,message){
+ try{
+  if(typeof globalThis.ChatMessage?.create!=="function")return;
+  await ChatMessage.create({speaker:ChatMessage.getSpeaker({actor}),content:message});
+ }catch(e){console.warn("[PF1AE][HealthConditions] Chat display failed",e)}
+}
+// Use an actor-scoped high-water receipt per combatant. Claim before the
+// native roll. Never retry a pending claim after failure/reload/rewind.
+const hcTurnKey=(combatId,combatantId)=>hcRecordId(combatId,combatantId);
+const hcTurnCurrent=(combat,entry)=>Boolean(combat?.started&&combat.round===entry.round&&
+ combat.combatant?.id===entry.combatantId&&combat.combatant?.actor?.uuid===entry.actorUuid);
+async function hcAgonyTurn(actor,entry,combat,bleedInfo=null){
+ if(!hcAgonyEnabled()||!hcLeader()||!hcTurnCurrent(combat,entry)||!hcDying(actor))return {skipped:"not-dying-or-turn-changed"};
+ const key=hcTurnKey(entry.combatId,entry.combatantId),path="flags."+HC_NS+"."+HC_AGONY_TURNS+"."+key;
+ const old=hcFlag(actor,HC_AGONY_TURNS)?.[key];
+ if(Number.isInteger(old?.round)&&old.round>=entry.round)return {skipped:"already-claimed"};
+ const receipt={...entry,state:"pending"};
+ await actor.update({[path]:receipt},hcInternal());
+ const initial=hcSnapshot(actor);
+ if(!hcAgonyEnabled()||!hcDying(actor)||!hcTurnCurrent(combat,entry)||!hcLeader())return {pending:true};
+ let success=false,natural=null,total=null;
+ const ongoing=hcOngoingDamage(actor,bleedInfo);
+ if(!ongoing){
+  // rollAbilityTest builds the native Constitution check, including typed
+  // modifiers. The v11.11 d20Roll bonus option is consumed before evaluation.
+  const message=await actor.rollAbilityTest("con",{skipDialog:true,dc:10,
+   bonus:String(initial.hp)+"["+hcLang("PV négatifs","Negative HP")+"]"});
+  const roll=message?.rolls?.[0];
+  natural=roll?.natural;total=roll?.total;
+  if(!Number.isFinite(natural)||!Number.isFinite(total)||natural<1||natural>20||roll?.isStatic===true)
+   throw Error("Native Constitution roll not verified; pending agony receipt requires GM review.");
+  success=natural===20||total>=10;
+ }
+ // No late mutation after turn advance, healing, death, GM handover or
+ // unrelated damage during an asynchronous roll. Pending receipt is manual.
+ const current=hcSnapshot(actor);
+ if(!hcAgonyEnabled()||!hcLeader()||!hcTurnCurrent(combat,entry)||!hcDying(actor)||
+    current.hp!==initial.hp)return {pending:true};
+ const done={...receipt,state:"applied",success,ongoing,natural,total};
+ if(success){
+  await hcStabilize(actor);
+  await actor.update({[path]:done},hcInternal());
+ }else{
+  // Atomic Actor update: receipt and -1 real HP in the same mutation.
+  await actor.update({[path]:done,"system.attributes.hp.value":current.hp-1},hcInternal());
+ }
+ await hcReconcileInternal(actor);
+ await hcReport(actor,success?hcLang("Agonie : état stabilisé.","Dying: stabilized."):
+  ongoing?hcLang("Agonie : échec automatique (dégâts continus), −1 PV.","Dying: automatic failure (ongoing damage), −1 HP."):
+  hcLang("Agonie : échec, −1 PV.","Dying: failed check, −1 HP."));
+ return done;
+}
+let HC_TURN_TAIL=Promise.resolve();
+function hcScheduleAgony(combat){
+ if(!hcAgonyEnabled()||!hcLeader()||!combat?.started||!Number.isInteger(combat.round)||combat.round<1)return;
+ const combatant=combat.combatant,actor=combatant?.actor;
+ if(!actor?.uuid||!combatant?.id)return;
+ const entry={combatId:combat.id,combatantId:combatant.id,actorUuid:actor.uuid,round:combat.round};
+ // Snapshot the turn at hook time, rather than processing a later turn.
+ HC_TURN_TAIL=HC_TURN_TAIL.catch(()=>{}).then(async()=>{
+  if(!hcTurnCurrent(combat,entry)||!hcLeader()||!hcDying(actor))return;
+  // Existing Bleed engine uses its own persistent turn receipt; join it
+  // before agony if configured, so death or HP penalty reflects that loss.
+  const bleed=hcModule()?.api?.bleed;
+  let bleedInfo=null;
+  const sources=bleed?.list?.(actor)??[];
+  if(sources.length){
+   const r=await bleed.process(combat);
+   const receipt=bleed.receipts?.().find(x=>x.combatId===entry.combatId&&
+    x.combatantId===entry.combatantId&&x.round===entry.round&&x.actorUuid===entry.actorUuid);
+   if(r?.pending||receipt?.status!=="applied"||!Number.isFinite(receipt?.appliedAmount))
+    throw Error("Bleed outcome not verified; agony requires GM review.");
+   bleedInfo={appliedAmount:receipt.appliedAmount,sourceUuids:sources.map(d=>d.uuid)};
+  }
+  if(!hcTurnCurrent(combat,entry))return;
+  return hcEnqueue(actor,current=>hcAgonyTurn(current,entry,combat,bleedInfo));
+ }).catch(error=>console.warn("[PF1AE][HealthConditions] Agony turn requires review",entry,error));
+}
+const HC_STRENUOUS=new Set(["standard","attack","aoo","full","round"]);
+const HC_ACTIONS=new WeakMap();
+function hcBeforeAction(use){
+ if(!hcStrainEnabled()||!use?.actor||!use.action||!hcOwned(use.actor))return;
+ const actor=use.actor,s=hcSnapshot(actor),type=use.action.activation?.type;
+ if(!s.supported||s.dead||s.nonliving||s.hp>0||
+    actor.statuses?.has?.("unconscious")||actor.statuses?.has?.("helpless")||
+    !actor.statuses?.has?.("disabled")||!HC_STRENUOUS.has(type))return;
+ if(hcSettingForActor(actor)==null||game.settings.get("pf1","unchainedActionEconomy")===true)return;
+ // The pre-hook is synchronous; no HP mutation or resource consumption here.
+ if(!HC_ACTIONS.has(use))HC_ACTIONS.set(use,{actorUuid:actor.uuid,hp:s.hp,type,
+  id:foundry.utils.randomID(),healing:use.action.actionType==="heal"});
+}
+async function hcAfterAction(use){
+ const record=HC_ACTIONS.get(use);
+ if(!record||record.completed)return;
+ record.completed=true; // native ActionUse is one local process, not per attack
+ if(!hcStrainEnabled())return;
+ const actor=use.actor,s=hcSnapshot(actor);
+ if(actor.uuid!==record.actorUuid||!s.supported||s.dead||s.hp>record.hp||s.hp>0)return;
+ // A healing card is posted before its actual healing is applied in PF1.
+ // Do not assume it healed the actor, nor charge before the card resolves.
+ // Explicit GM adjudication for this path until target-specific damage bridge.
+ if(record.healing){
+  hcWarn(hcLang("Action de soin à PV négatifs : vérifier manuellement la perte de 1 PV après application des soins.",
+   "Healing action at nonpositive HP: adjudicate the 1 HP cost after actual healing."),actor.uuid);
+  return;
+ }
+ if(![...hcArray(game.users)].some(u=>u.active&&u.isGM)&&!hcLeader()){
+  hcWarn(hcLang("Aucun MJ connecté : perte de PV à arbitrer manuellement.","No active GM: adjudicate the HP loss manually."),actor.uuid);return;
+ }
+ const path="flags."+HC_NS+"."+HC_ACTION_COSTS+"."+record.id;
+ // Request is data only. The actor owner is already permitted to edit HP.
+ // The elected GM consumes the receipt in its per-actor serialized queue.
+ await actor.update({[path]:{actorUuid:actor.uuid,state:"pending",type:record.type,
+  hpAtStart:record.hp,hpAtCompletion:s.hp,createdAt:Date.now()}});
+}
+async function hcConsumeActionCosts(actor){
+ if(!hcStrainEnabled()||!hcLeader())return;
+ const ledger=hcFlag(actor,HC_ACTION_COSTS)??{};
+ for(const [id,r] of Object.entries(ledger)){
+  if(!/^[a-zA-Z0-9]{1,64}$/.test(id)||r?.state!=="pending")continue;
+  const path="flags."+HC_NS+"."+HC_ACTION_COSTS+"."+id,s=hcSnapshot(actor);
+  const age=Date.now()-r.createdAt;
+  // Never replay stale/ambiguous requests, apply to another actor, or charge
+  // a dead/recovered actor. The GM can inspect any review receipt.
+  if(r.actorUuid!==actor.uuid||!HC_STRENUOUS.has(r.type)||!Number.isFinite(age)||age<0||age>30000||
+     !Number.isFinite(r.hpAtStart)||!Number.isFinite(r.hpAtCompletion)||r.hpAtStart>0||
+     r.hpAtCompletion>r.hpAtStart||!s.supported||s.dead||s.nonliving||s.hp>0){
+   await actor.update({[path+".state"]:"review"},hcInternal());continue;
+  }
+  if(!hcLeader()||!hcStrainEnabled())return;
+  // Receipt and HP loss commit together: no separate retry of a charge.
+  await actor.update({[path+".state"]:"applied","system.attributes.hp.value":s.hp-1},hcInternal());
+  await hcHealthTransition(actor,-1,s.hp-1);
+  await hcReport(actor,hcLang("Action éprouvante : −1 PV.","Strenuous action: −1 HP."));
+ }
+ // Keep bounded applied history without deleting unresolved review rows.
+ const completed=Object.entries(hcFlag(actor,HC_ACTION_COSTS)??{}).filter(([,r])=>r?.state==="applied")
+  .sort((a,b)=>b[1].createdAt-a[1].createdAt);
+ const cleanup={};
+ for(const [id] of completed.slice(200))if(/^[a-zA-Z0-9]{1,64}$/.test(id))cleanup["flags."+HC_NS+"."+HC_ACTION_COSTS+".-="+id]=null;
+ if(Object.keys(cleanup).length)await actor.update(cleanup,hcInternal());
+}
+
 async function hcReconcileInternal(actor){
  if(!hcLeader()||!hcAvailability().available)return {skipped:"unavailable"};
  if(!actor||hcFlag(actor,"healthProbe"))return {skipped:"no-actor"};
+ if(hcAgonyEnabled()){
+  const s=hcSnapshot(actor);
+  if(s.supported&&!s.nonliving&&!s.dead&&s.hp>=0)await hcClearStable(actor);
+ }
  const rows=hcRecords(actor);
  await hcDropRecords(actor,rows.invalid);
  const plan=hcPlan(actor,rows.valid);
@@ -363,13 +574,13 @@ async function hcReconcileInternal(actor){
  for(const i of legacy)await hcDeleteLegacy(i,actor);
  return {reconciled:true,plan};
 }
-function hcQueue(actor){
+function hcEnqueue(actor,task){
  if(!actor?.uuid||!hcLeader()||!hcAvailability().available)return Promise.resolve({skipped:"unavailable"});
  const key=actor.uuid,prior=HC_WORK.get(key)??Promise.resolve();
  const next=prior.catch(()=>{}).then(async()=>{
   const current=await fromUuid(key);
   if(!current)return {skipped:"actor-missing"};
-  return hcReconcileInternal(current);
+  return task(current);
  });
  HC_WORK.set(key,next);
  next.then(()=>{if(HC_WORK.get(key)===next)HC_WORK.delete(key)},error=>{
@@ -378,6 +589,7 @@ function hcQueue(actor){
  });
  return next;
 }
+function hcQueue(actor){return hcEnqueue(actor,hcReconcileInternal)}
 function hcOwned(actor){return game.user?.isGM===true||actor?.testUserPermission?.(game.user,"OWNER")===true}
 async function hcResolve(options){
  const actor=options?.actor??(options?.actorUuid?await fromUuid(options.actorUuid):null);
@@ -457,6 +669,8 @@ function hcDiagnostics(actor){
    records:hcRecords(actor).valid,owned:hcSourceEffects(actor).map(e=>({uuid:e.uuid,...hcDirectSource(e,actor)})),
    legacy:hcSourceItems(actor).map(i=>({uuid:i.uuid,...hcSource(i,actor)})),
    actualStatuses:[...actor.statuses],
+   agonyEnabled:hcAgonyEnabled(),strenuousEnabled:hcStrainEnabled(),
+   agonyTurns:hcFlag(actor,HC_AGONY_TURNS)??{},actionCosts:hcFlag(actor,HC_ACTION_COSTS)??{},
    external:[...HC_ALLOWED,"dead","stable"].filter(s=>hcExternalStatus(actor,s))}:{})};
 }
 // Explicit runtime proof on disposable world and synthetic Actors. The
@@ -544,7 +758,12 @@ async function hcProbe(){
 }
 const hcOnActor=(actor,changed,options)=>{
  if(options?.[HC_INTERNAL]||hcFlag(actor,"healthProbe"))return;
- void hcQueue(actor);
+ const delta=options?.pf1?.deltas?.hp?.offset,expected=actor.system?.attributes?.hp?.value;
+ void hcEnqueue(actor,async current=>{
+  if(Number.isFinite(delta)&&delta!==0)await hcHealthTransition(current,delta,expected);
+  await hcConsumeActionCosts(current);
+  return hcReconcileInternal(current);
+ });
 };
 const hcOnItem=(item,change,options)=>{
  if(options?.[HC_INTERNAL]||hcFlag(item?.actor??item?.parent,"healthProbe"))return;
@@ -560,6 +779,10 @@ Hooks.once("init",()=>{
   name:"PF1AE.Settings.HealthConditions.Name",hint:"PF1AE.Settings.HealthConditions.Hint",
   onChange:value=>{if(value)void hcRestore();else void hcDisable()}});
  game.settings.register(HC_NS,HC_PROOF,{scope:"world",config:false,type:String,default:""});
+ game.settings.register(HC_NS,HC_AGONY,{scope:"world",config:true,type:Boolean,default:false,
+  name:"PF1AE.Settings.HealthAgony.Name",hint:"PF1AE.Settings.HealthAgony.Hint"});
+ game.settings.register(HC_NS,HC_STRAIN,{scope:"world",config:true,type:Boolean,default:false,
+  name:"PF1AE.Settings.HealthStrenuous.Name",hint:"PF1AE.Settings.HealthStrenuous.Hint"});
 });
 Hooks.once("ready",()=>{
  const mod=hcModule();if(!mod)return;
@@ -577,7 +800,14 @@ Hooks.once("ready",()=>{
  Hooks.on("updateActiveEffect",hcOnEffect);
  Hooks.on("createActiveEffect",(effect,options)=>{hcNotifyOwnedEffect(effect,true,options);hcOnEffect(effect,null,options)});
  Hooks.on("deleteActiveEffect",(effect,options)=>{hcNotifyOwnedEffect(effect,false,options);hcOnEffect(effect,null,options)});
- Hooks.on("updateCombat",()=>{void hcRestore()});
+ Hooks.on("updateCombat",(combat,changes)=>{void hcRestore();
+  if(Object.hasOwn(changes??{},"round")||Object.hasOwn(changes??{},"turn"))hcScheduleAgony(combat);
+ });
+ Hooks.on("combatTurnChange",(combat,prior,current)=>{
+  if(prior?.round!==current?.round||prior?.combatantId!==current?.combatantId)hcScheduleAgony(combat);
+ });
+ Hooks.on("pf1PreActionUse",hcBeforeAction);
+ Hooks.on("pf1PostActionUse",use=>{void hcAfterAction(use).catch(e=>console.warn("[PF1AE][HealthConditions] Action cost requires review",e))});
  Hooks.on("deleteCombat",()=>{void hcRestore()});
  Hooks.on("canvasReady",()=>{void hcRestore()});
  Hooks.on("updateUser",(_u,c)=>{if(Object.hasOwn(c??{},"active"))void hcRestore()});

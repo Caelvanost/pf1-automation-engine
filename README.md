@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.46.3
+# PF1 Automation Engine v1.47.0
+
+## Agonie, stabilisation et actions éprouvantes (v1.47.0)
+
+Deux options expérimentales indépendantes, désactivées par défaut, exigent le moteur de santé natif validé par le diagnostic. Test de Constitution DD 10 au début du tour, malus égal aux PV négatifs, 20 naturel réussi, échec automatique en présence de dégâts continus identifiés (un saignement PF1AE intégralement neutralisé ne suffit pas). Reçus persistants par combattant et round, perte directe de 1 PV (pas de RD, résistance ou PV temporaires). Soins effectifs stabilisant à PV négatifs et nouvelle perte de PV relançant l'agonie. Actions simples/attaques et actions complexes effectivement résolues : coût de 1 PV pour un acteur conscient hors de combat, sauf soins réels ; les cartes de soins différées et actions ambiguës restent à arbitrer. Les restrictions d'économie d'actions, récupération horaire et aptitudes particulières restent à venir. Voir la documentation de santé.
 
 ## Conditions de santé natives sans objets Buff (v1.46.3)
 

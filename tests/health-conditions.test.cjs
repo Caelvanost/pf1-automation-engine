@@ -6,7 +6,7 @@ assert.ok(manifest.esmodules.includes("scripts/health-conditions.js"));
 const NS="pf1-automation-engine",hooks=new Map(),settings=new Map(),registered=new Map();
 const on=(n,fn)=>hooks.set(n,[...(hooks.get(n)??[]),fn]);
 const fire=(n,...args)=>{for(const fn of hooks.get(n)??[])fn(...args)};
-const gm={id:"gm",isGM:true},player={id:"player",isGM:false};
+const gm={id:"gm",isGM:true,active:true},player={id:"player",isGM:false,active:true};
 const conditions=new Map(["dead","stable","disabled","dying","unconscious","prone","staggered","sleep","helpless"].map(id=>[id,{name:id,texture:id+".svg",statuses:new Set(id==="disabled"?["staggered"]:id==="unconscious"?["helpless"]:id==="sleep"?["helpless","unconscious"]:[])}]));
 conditions.trackedConditions=()=>[["dead","disabled","dying","stable"]];
 let seq=0,deadSync=0;
@@ -14,10 +14,10 @@ const notifications=[];
 const addon={version:manifest.version,api:{generic:{isLeader:()=>game.user===gm},deathDefeated:{reconcileActor:async()=>{deadSync++}}}};
 const improved={active:false},actors=new Map(),scenes=new Map(),documents=new Map(),combats=new Map();
 const game={version:"13.351",release:{generation:13},system:{id:"pf1",version:"11.11"},
- user:gm,modules:new Map([[NS,addon],["pf1-improved-conditions",improved]]),
+ user:gm,users:[gm,player],modules:new Map([[NS,addon],["pf1-improved-conditions",improved]]),
  actors,scenes,combats,time:{worldTime:0},i18n:{localize:k=>k},
  settings:{register(ns,k,c){registered.set(k,c);settings.set(k,c.default)},
- get(ns,k){if(ns==="pf1")return {getActorConfig:()=>({rules:{useWoundsAndVigor:false}})};return settings.get(k)},
+ get(ns,k){if(ns==="pf1"){if(k==="unchainedActionEconomy")return false;return {getActorConfig:()=>({rules:{useWoundsAndVigor:false}})}};return settings.get(k)},
  async set(ns,k,v){settings.set(k,v);registered.get(k)?.onChange?.(v)}}};
 function clone(x){return JSON.parse(JSON.stringify(x))}
 function put(root,key,value){
@@ -63,7 +63,7 @@ function makeActor(uuid,{type="npc",hp=5,con=14,nonlethal=0,flags={},traits={liv
  getFlag(ns,key){return this.flags?.[ns]?.[key]},testUserPermission(){return owner},
  get statuses(){return new Set([...this.allApplicableEffects()].flatMap(e=>e.disabled?[]:[...e.statuses]))},
  *allApplicableEffects(){yield* this.effects;for(const item of this.items.values())if(item.isActive!==false)yield* item.effects??[]},
- async update(changed,options={}){for(const [k,v] of Object.entries(changed))put(this,k,v);fire("updateActor",this,changed,options,game.user.id);return this},
+ async update(changed,options={}){const prev=this.system.attributes.hp.value;for(const [k,v] of Object.entries(changed))put(this,k,v);const delta=this.system.attributes.hp.value-prev;if(delta){options={...options,pf1:{...options.pf1,deltas:{hp:{offset:delta}}}}}fire("updateActor",this,changed,options,game.user.id);return this},
  async createEmbeddedDocuments(kind,rows,options={}){
   if(kind==="ActiveEffect"){
    const effects=rows.map(row=>{
@@ -116,7 +116,7 @@ class TestHud{
 }
 class TestEffect{get isTemporary(){return this.visible!==false}}
 const CONFIG={Token:{hudClass:TestHud},ActiveEffect:{documentClass:TestEffect}};
-const context={game,CONFIG,pf1:contextPf1,Hooks:{on,once:on,callAll:fire},console,
+const context={game,CONFIG,pf1:contextPf1,Hooks:{on,once:on,callAll:fire},console,ui:{notifications:{warn:()=>{}}},
  fromUuid:async uuid=>documents.get(uuid),foundry:{utils:{randomID:()=>"request"+ ++seq,deepClone:clone,mergeObject:merge}},
  Actor:{implementation:{create:async data=>makeActor("Actor.probe"+ ++seq,{flags:data.flags})}},
  Scene:{implementation:{create:async()=>{
@@ -232,6 +232,84 @@ on("pf1ToggleActorCondition",(actor,id,value)=>notifications.push([actor.uuid,id
  await assert.rejects(api.register({actor:synth,sourceUuid:s1.uuid,key:"bad",suppress:["dying"]}));
  const noOwner=makeActor("Actor.noowner",{owner:false});const sn=trait(noOwner,"no");
  game.user=player;await assert.rejects(api.register({actor:noOwner,sourceUuid:sn.uuid,key:"x",suppress:["dying"]}));game.user=gm;
+
+ // 1.47 rules are opt-in independently. Native check is not a Fortitude
+ // save. Actual HP offset changes, not temporary HP, drive stabilization.
+ assert.equal(registered.get("healthAgonyEnabled").default,false);
+ assert.equal(registered.get("healthStrenuousEnabled").default,false);
+ await game.settings.set(NS,"healthAgonyEnabled",true);
+ await game.settings.set(NS,"healthStrenuousEnabled",true);
+ const agon=makeActor("Actor.agon",{hp:5});
+ await agon.update({"system.attributes.hp.value":-5});await tick();
+ assert.equal(has(agon,"dying"),true);
+ await agon.update({"system.attributes.hp.value":-3});await tick();
+ assert.equal(has(agon,"stable"),true);assert.equal(has(agon,"dying"),false);
+ assert.equal(has(agon,"unconscious"),true);
+ await agon.update({"system.attributes.hp.value":-4});await tick();
+ assert.equal(has(agon,"stable"),false);assert.equal(has(agon,"dying"),true);
+ let rolls=0,rollNatural=1,rollTotal=3,lastOptions;
+ agon.rollAbilityTest=async(id,options)=>{assert.equal(id,"con");rolls++;lastOptions=options;return {rolls:[{natural:rollNatural,total:rollTotal}]}};
+ const ac={id:"agony-combat",started:true,round:1,turn:0,combatant:{id:"ac",actor:agon}};
+ combats.set(ac.id,ac);
+ fire("updateCombat",ac,{turn:0});fire("combatTurnChange",ac,{round:0,combatantId:null},{round:1,combatantId:"ac"});
+ await tick();
+ assert.equal(rolls,1);assert.equal(lastOptions.dc,10);assert.equal(lastOptions.bonus.startsWith("-4["),true);
+ assert.equal(agon.system.attributes.hp.value,-5);
+ fire("updateCombat",ac,{turn:0});await tick();assert.equal(rolls,1);assert.equal(agon.system.attributes.hp.value,-5);
+ ac.round=2;rollNatural=20;rollTotal=4;fire("updateCombat",ac,{round:2});await tick();
+ assert.equal(rolls,2);assert.equal(has(agon,"stable"),true);assert.equal(has(agon,"dying"),false);assert.equal(agon.system.attributes.hp.value,-5);
+ await agon.update({"system.attributes.hp.value":-6});await tick();
+ const ongoing=trait(agon,"ongoing");ongoing.flags={[NS]:{ongoingDamage:true}};
+ ongoing.getFlag=(ns,k)=>ongoing.flags?.[ns]?.[k];
+ ac.round=3;fire("updateCombat",ac,{round:3});await tick();
+ assert.equal(rolls,2);assert.equal(agon.system.attributes.hp.value,-7);
+ ac.round=2;fire("updateCombat",ac,{round:2});await tick();assert.equal(agon.system.attributes.hp.value,-7);
+ await agon.update({"system.attributes.hp.value":0});await tick();
+ assert.equal(has(agon,"stable"),false);assert.equal(has(agon,"disabled"),true);
+ const use=type=>({actor:agon,action:{activation:{type},actionType:"mwak"}});
+ const move=use("move");fire("pf1PreActionUse",move);fire("pf1PostActionUse",move);await tick();
+ assert.equal(agon.system.attributes.hp.value,0);
+ const cancel=use("standard");fire("pf1PreActionUse",cancel);await tick();assert.equal(agon.system.attributes.hp.value,0);
+ const attack=use("attack");fire("pf1PreActionUse",attack);
+ fire("pf1PostActionUse",attack);fire("pf1PostActionUse",attack);await tick();
+ assert.equal(agon.system.attributes.hp.value,-1);assert.equal(has(agon,"dying"),true);
+ assert.equal(Object.values(agon.flags[NS].healthActionCosts).filter(r=>r.state==="applied").length,1);
+ await agon.update({"system.attributes.hp.value":0});await tick();
+ const selfHeal=use("standard");fire("pf1PreActionUse",selfHeal);
+ await agon.update({"system.attributes.hp.value":2});await tick();
+ fire("pf1PostActionUse",selfHeal);await tick();assert.equal(agon.system.attributes.hp.value,2);
+ await agon.update({"system.attributes.hp.value":0});await tick();
+ const healCard=use("standard");healCard.action.actionType="heal";
+ fire("pf1PreActionUse",healCard);fire("pf1PostActionUse",healCard);await tick();assert.equal(agon.system.attributes.hp.value,0);
+ const swift=use("swift");fire("pf1PreActionUse",swift);fire("pf1PostActionUse",swift);await tick();assert.equal(agon.system.attributes.hp.value,0);
+ // A player initiates native use; only elected GM consumes pending receipt.
+ game.user=player;const playerAttack=use("standard");fire("pf1PreActionUse",playerAttack);fire("pf1PostActionUse",playerAttack);await tick();
+ assert.equal(agon.system.attributes.hp.value,0);
+ game.user=gm;fire("updateActor",agon,{},{});await tick();
+ assert.equal(agon.system.attributes.hp.value,-1);
+ fire("updateActor",agon,{},{});await tick();assert.equal(agon.system.attributes.hp.value,-1);
+
+ // Synthetic actor, both mitigated and real continuous damage: a proven
+ // zero-damage bleed does not force failure. The bleed receipt is exact.
+ const wounded=makeActor("Scene.ag.Token.ag.Actor.base",{hp:-2});
+ await api.reconcile(wounded);
+ let syntheticRolls=0;
+ wounded.rollAbilityTest=async()=>{syntheticRolls++;return {rolls:[{natural:12,total:10}]}};
+ const bc={id:"bleed-combat",started:true,round:1,turn:0,combatant:{id:"bc",actor:wounded}};
+ combats.set(bc.id,bc);
+ const bleedSource=trait(wounded,"bleed-source");
+ let amount=0;
+ addon.api.bleed={list:actor=>actor===wounded?[bleedSource]:[],process:async()=>({applied:true,amount}),
+  receipts:()=>[{combatId:bc.id,combatantId:"bc",round:bc.round,actorUuid:wounded.uuid,status:"applied",appliedAmount:amount}]};
+ fire("updateCombat",bc,{turn:0});await tick();assert.equal(syntheticRolls,1);assert.equal(has(wounded,"stable"),true);
+ await wounded.update({"system.attributes.hp.value":-3});await tick();
+ amount=2;bc.round=2;fire("updateCombat",bc,{round:2});await tick();
+ assert.equal(syntheticRolls,1);assert.equal(wounded.system.attributes.hp.value,-4);assert.equal(has(wounded,"dying"),true);
+ delete addon.api.bleed;
+
+ await game.settings.set(NS,"healthAgonyEnabled",false);
+ await game.settings.set(NS,"healthStrenuousEnabled",false);
+
  improved.active=true;assert.equal(api.isAvailable(),false);await assert.rejects(api.reconcile(a));
  improved.active=false;await game.settings.set(NS,"healthConditionsEnabled",false);await tick();
  assert.equal(owned(st).length,0);assert.equal(has(st,"stable"),true);assert.equal(api.isAvailable(),false);
