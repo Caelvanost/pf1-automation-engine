@@ -271,6 +271,17 @@ on("pf1ToggleActorCondition",(actor,id,value)=>notifications.push([actor.uuid,id
  const n=calls.length;await eactor.update({"system.attributes.hp.value":-14});await tick();
  assert.equal(calls.length,n);assert.equal(has(eactor,"dead"),true);
  assert.equal(notices.at(-1).e.dead,true);assert.equal(notices.at(-1).statuses.includes("dead"),true);
+ // A shared native context must not suppress a different actor's event.
+ const bulkA=makeActor("Actor.bulkA",{hp:5}),bulkB=makeActor("Actor.bulkB",{hp:5});
+ const bulkNotices=[];
+ on("pf1aeHealthChanged",(a,e)=>{if(a===bulkA||a===bulkB)bulkNotices.push(e.actorUuid)});
+ bulkA.system.attributes.hp.value=0;bulkB.system.attributes.hp.value=0;
+ const sharedOptions={pf1:{deltas:{hp:{offset:-5}}}};
+ fire("updateActor",bulkA,{},sharedOptions,gm.id);fire("updateActor",bulkB,{},sharedOptions,gm.id);
+ fire("updateActor",bulkA,{},sharedOptions,gm.id);await tick();
+ assert.equal(bulkNotices.filter(x=>x===bulkA.uuid).length,1);
+ assert.equal(bulkNotices.filter(x=>x===bulkB.uuid).length,1);
+
  // Throwing subscriber leaves its staged exception uncommitted.
  const bad=makeActor("Scene.ev.Token.ev.Actor.base",{hp:5}),bi=trait(bad,"bad");
  addon.api.scriptApprovals={check:()=>({approved:true})};

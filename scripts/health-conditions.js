@@ -15,7 +15,7 @@ const HC_INTERNAL="pf1aeHealthConditionsInternal";
 const HC_ALLOWED=new Set(["disabled","dying","unconscious","prone","staggered"]);
 const HC_WORK=new Map();
 const HC_EVENT_CALL="PF1AE:health:changed",HC_EVENT_HOOK="pf1aeHealthChanged";
-const HC_EVENT_ACTIVE=new Set(),HC_EVENT_OPTIONS=new WeakSet();
+const HC_EVENT_ACTIVE=new Set(),HC_EVENT_OPTIONS=new WeakMap();
 const hcArray=v=>Array.isArray(v)?v:v?.contents??(typeof v?.values==="function"?[...v.values()]:[]);
 const hcModule=()=>game.modules.get(HC_NS);
 const hcLeader=()=>hcModule()?.api?.generic?.isLeader?.()===true&&game.user?.isGM===true;
@@ -877,8 +877,12 @@ const hcOnActor=(actor,changed,options,userId)=>{
  const delta=options?.pf1?.deltas?.hp?.offset,expected=actor.system?.attributes?.hp?.value;
  const real=Number.isFinite(delta)&&delta!==0&&Number.isFinite(expected);
  if(real&&options&&typeof options==="object"&&hcLeader()&&hcAvailability().available){
-  if(HC_EVENT_OPTIONS.has(options))return;
-  HC_EVENT_OPTIONS.add(options);
+  // A bulk update may reuse the same options object for different actors.
+  const key=JSON.stringify([actor.uuid,expected,delta]);
+  let seen=HC_EVENT_OPTIONS.get(options);
+  if(!seen)HC_EVENT_OPTIONS.set(options,seen=new Set());
+  if(seen.has(key))return;
+  seen.add(key);
  }
  void hcEnqueue(actor,async current=>{
   const event=real?await hcProcessHealthEvent(current,expected-delta,expected,"native",userId??null):null;
