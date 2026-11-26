@@ -134,9 +134,22 @@ function hcStatusIds(status){
  if(!c)throw Error("Native PF1 condition unavailable: "+status);
  return [...new Set([status,...(c.statuses??[])])];
 }
+function hcExactStatuses(statuses,expected){
+ return JSON.stringify([...(statuses??[])].sort())===JSON.stringify([...expected].sort());
+}
+function hcSafeCarrier(item,actor){
+ const f=hcSource(item,actor);if(!f)return false;
+ const ids=hcStatusIds(f.status),effects=hcArray(item.effects);
+ if(hcArray(item.scriptCalls).length||hcArray(item.actions).length||
+    (item.system?.changes??[]).length||!hcExactStatuses(item.system?.conditions,ids)||effects.length>1)return false;
+ // A deactivated native buff can legitimately have no tracker. Any other
+ // effect, added status or mechanical change is unknown provenance.
+ return effects.every(e=>e.getFlag?.("pf1","tracker")===true&&
+  hcExactStatuses(e.statuses,ids)&&!(e.changes?.length));
+}
 function hcEffectIsValid(item,actor,status){
  const effect=item?.effect??hcArray(item?.effects).find(e=>e.getFlag?.("pf1","tracker")===true);
- if(!effect||effect.transfer!==true||effect.disabled===true||effect.isSuppressed===true||
+ if(!hcSafeCarrier(item,actor)||!effect||effect.transfer!==true||effect.disabled===true||effect.isSuppressed===true||
     !hcStatusIds(status).every(id=>effect.statuses?.has?.(id)))return false;
  // Foundry v13 applies transfer effects from Items, not as Actor.effects.
  const applicable=typeof actor.allApplicableEffects==="function"?[...actor.allApplicableEffects()]:[];
@@ -163,17 +176,11 @@ async function hcCreateSource(actor,cause,status){
 function hcExternalStatus(actor,status){
  const applicable=typeof actor.allApplicableEffects==="function"?[...actor.allApplicableEffects()]:[];
  return applicable.some(e=>e.disabled!==true&&e.isSuppressed!==true&&
-  e.statuses?.has?.(status)&&!hcSource(e.parent,actor));
+  e.statuses?.has?.(status)&&!hcSafeCarrier(e.parent,actor));
 }
 async function hcDeleteSource(item,actor){
- if(!hcSource(item,actor))throw Error("Refusing to delete unowned health source.");
- // Never delete a managed buff that was repurposed as an ordinary item.
- const calls=hcArray(item.scriptCalls),actions=hcArray(item.actions);
- const changes=item.system?.changes??[];
- const f=hcSource(item,actor);
- if(calls.length||actions.length||changes.length||
-    JSON.stringify([...(item.system?.conditions??[])].sort())!==JSON.stringify(hcStatusIds(f.status).sort()))
-  throw Error("Managed health buff was modified; GM review required: "+item.uuid);
+ if(!hcSafeCarrier(item,actor))
+  throw Error("Managed health buff has unknown provenance or was modified; GM review required: "+item.uuid);
  await item.delete(hcInternal());
 }
 async function hcDropRecords(actor,ids,{internal=true}={}){
@@ -212,6 +219,8 @@ async function hcReconcileInternal(actor){
   if(wanted.has(key)&&!kept.has(key)&&hcEffectIsValid(item,actor,f.status))kept.add(key);
   else remove.push(item);
  }
+ // Validate obsolete carriers before creating replacements or deleting any.
+ for(const item of remove)if(!hcSafeCarrier(item,actor))throw Error("Modified health carrier needs GM review: "+item.uuid);
  for(const [key,r] of wanted)if(!kept.has(key))await hcCreateSource(actor,r.cause,r.status);
  // Recovery does not stand a fallen creature up. Convert only a verified
  // health-created fall to an ordinary native prone condition before cleanup.
@@ -319,12 +328,15 @@ function hcDiagnostics(actor){
 }
 // Explicit runtime proof on disposable world and synthetic Actors. The
 // provider stays disabled unless both paths preserve independent conditions.
-async function hcProbeOne(actor){
+async function hcProbeOne(actor,baseActor=null){
  const checks=[];
+ const checkIsolation=()=>{if(baseActor&&([...HC_ALLOWED,"sleep","stable","dead"].some(s=>baseActor.statuses?.has?.(s))||hcSourceItems(baseActor).length))throw Error("Synthetic Actor leaked to world Actor.")};
  for(const status of ["unconscious","prone","disabled","dying","staggered"]){
   const item=await hcCreateSource(actor,"probe",status);
   if(!hcEffectIsValid(item,actor,status))throw Error("Transfer verification failed: "+status);
+  checkIsolation();
   await actor.setCondition(status,true);
+  checkIsolation();
   if(!hcExternalStatus(actor,status))throw Error("Native independent condition was coalesced: "+status);
   await hcDeleteSource(item,actor);
   if(!actor.statuses?.has?.(status)||!hcExternalStatus(actor,status))throw Error("Independent condition lost: "+status);
@@ -345,6 +357,17 @@ async function hcProbeOne(actor){
  if(!actor.statuses?.has?.("stable"))throw Error("Stable track lost.");
  await actor.setCondition("stable",false);
  checks.push("stable-track");
+ // In the opposite order, creating a transferred state must not let
+ // native condition-track cleanup erase a pre-existing independent state.
+ await actor.setCondition("stable",true);
+ const carrier=await hcCreateSource(actor,"probe","disabled");
+ checkIsolation();
+ if(!hcExternalStatus(actor,"stable"))throw Error("Creating source erased independent track state.");
+ await hcDeleteSource(carrier,actor);
+ if(!hcExternalStatus(actor,"stable"))throw Error("Removing source erased independent track state.");
+ await actor.setCondition("stable",false);
+ checks.push("preexisting-track");
+ checkIsolation();
  return checks;
 }
 let HC_PROBING=false;
@@ -368,7 +391,7 @@ async function hcProbe(){
   const proto=await actor.getTokenDocument({actorLink:false,x:100,y:100});
   const [token]=await scene.createEmbeddedDocuments("Token",[proto.toObject()]);
   if(!token?.actor||token.actor.uuid===actor.uuid)throw Error("Synthetic Actor creation failed.");
-  const unlinked=await hcProbeOne(token.actor);
+  const unlinked=await hcProbeOne(token.actor,actor);
   if(actor.statuses?.has?.("unconscious")||actor.statuses?.has?.("prone"))throw Error("Synthetic Actor leaked to world Actor.");
   result={passed:true,linked,unlinked,fingerprint:hcFingerprint()};
  }finally{

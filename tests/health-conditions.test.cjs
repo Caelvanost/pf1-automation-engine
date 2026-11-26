@@ -96,7 +96,7 @@ const owned=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthCond
  await a.update({"system.attributes.hp.value":0});await tick();assert.equal(owned(a).length,0);
  improved.active=true;await assert.rejects(api.probe());improved.active=false;
  const proof=await api.probe();assert.equal(proof.passed,true);
- assert.equal(proof.linked.length,7);assert.equal(proof.unlinked.length,7);
+ assert.equal(proof.linked.length,8);assert.equal(proof.unlinked.length,8);
  assert.equal(scenes.size,0);assert.equal(actors.size,1);
  await game.settings.set(NS,"healthConditionsEnabled",true);
  assert.equal(api.isAvailable(),true);

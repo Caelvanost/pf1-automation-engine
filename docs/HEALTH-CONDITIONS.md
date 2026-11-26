@@ -26,7 +26,7 @@ try {
 }
 ```
 
-The probe creates a temporary actor, temporary scene (not your live encounter), linked and unlinked tokens, and verifies that independent unconscious, prone, disabled, dying, staggered, sleep secondary and stable track contributions survive removal of a managed carrier. Temporary documents are deleted in finally. Failed probe invalidates previous proof. Proof is bound to the exact core, system and PF1AE version. Not a multiplayer test.
+The probe creates a temporary actor, temporary scene (not your live encounter), linked and unlinked tokens, and verifies that independent unconscious, prone, disabled, dying, staggered, sleep secondary, stable track and pre-existing track contributions survive removal of a managed carrier. Temporary documents are deleted in finally. Failed probe invalidates previous proof. Proof is bound to the exact core, system and PF1AE version. Not a multiplayer test.
 
 Only after successful probe enable **Health condition management (alpha)**. No retroactive sweep of untouched actors: actor/Item/effect changes and explicitly requested reconciliation calculate current conditions. Actors carrying managed sources/records are restored on ready. Do not run competing automation of HP states. Before disabling PF1AE or re-enabling Improved Conditions, turn the health setting OFF while an elected GM is active so owned carriers and exception records can be removed.
 
@@ -55,7 +55,7 @@ Allowed status IDs: disabled, dying, unconscious, prone, staggered. Dead is not 
 
 Normal living HP zero: disabled. Negative: dying (unless native stable is present), unconscious, prone. Nonlethal >0: equal HP gives staggered, greater HP gives separate unconscious and prone. Death: at or below -Constitution, Constitution <=0 or ability damage >= score; undead and constructs at <=0. Native Dead is applied directly, never removed automatically. PF1AE deathDefeated reconciles tracker. On health recovery a managed fall is converted to ordinary prone, never automatically stands the creature up. Existing direct effects and other Item effects are not deleted. Native stable is respected but not automatically created or removed.
 
-Actor without normal health, wounds/vigor rules, invalid HP, free-text regeneration (enabled/suppressed state unknown), and actors flagged healthConditionsManual=true remain manual. Existing direct conditions created by another provider have unknown provenance; never silently adopted or deleted. Repurposed carrier with changes, actions or scripts fails closed during cleanup. Do not edit managed carriers.
+Actor without normal health, wounds/vigor rules, invalid HP, free-text regeneration (enabled/suppressed state unknown), and actors flagged healthConditionsManual=true remain manual. Existing direct conditions created by another provider have unknown provenance; never silently adopted or deleted. Repurposed carrier with changes, actions, scripts, extra ActiveEffects or additional statuses fails closed during cleanup. Do not edit managed carriers.
 
 ## Limitations and next milestone
 
