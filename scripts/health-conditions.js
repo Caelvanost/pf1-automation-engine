@@ -1,7 +1,7 @@
 /**
  * Health conditions foundation, PF1 11.11 / Foundry 13.
  * Opt-in, runtime-probed provider. Never deletes direct actor conditions.
- * Health contributions are native transferable effects on dedicated PF1 buffs.
+ * Health contributions are direct native ActiveEffects, with source flags.
  * No translated-name matching, fake feats, damage recalculation or action costs.
  */
 const HC_NS="pf1-automation-engine";
@@ -24,8 +24,8 @@ function hcProvider(){
   return {available:false,reason:"unsupported-system"};
  if(game.modules.get("pf1-improved-conditions")?.active)
   return {available:false,reason:"improved-conditions-conflict"};
- if(!globalThis.pf1?.registry?.conditions?.get||!hcModule()?.api?.generic?.isLeader)
-  return {available:false,reason:"native-registry-or-generic-unavailable"};
+ if(!globalThis.pf1?.registry?.conditions?.get||!hcModule()?.api?.generic?.isLeader||!HC_ROUTER_READY)
+  return {available:false,reason:"native-router-registry-or-generic-unavailable"};
  return {available:true,reason:null};
 }
 function hcAvailability(){
@@ -119,16 +119,14 @@ function hcPlan(actor,records=hcRecords(actor).valid){
   wanted:[...lethal].map(status=>({cause:"lethal",status})).concat(
    [...nonlethal].map(status=>({cause:"nonlethal",status})))};
 }
-const hcSourceKey=(cause,status)=>cause+":"+status;
+// v1 flags are supported exclusively for safe migration/cleanup of old Items.
 function hcSource(item,actor){
  const f=hcFlag(item,HC_SOURCE);
  if(item?.type!=="buff"||f?.version!==1||f.actorUuid!==actor?.uuid||
     !["lethal","nonlethal","probe"].includes(f.cause)||!HC_ALLOWED.has(f.status))return null;
  return f;
 }
-function hcSourceItems(actor){
- return hcArray(actor.items).filter(i=>hcSource(i,actor));
-}
+function hcSourceItems(actor){return hcArray(actor?.items).filter(i=>hcSource(i,actor))}
 function hcStatusIds(status){
  const c=pf1.registry.conditions.get(status);
  if(!c)throw Error("Native PF1 condition unavailable: "+status);
@@ -142,208 +140,169 @@ function hcSafeCarrier(item,actor){
  const ids=hcStatusIds(f.status),effects=hcArray(item.effects);
  if(hcArray(item.scriptCalls).length||hcArray(item.actions).length||
     (item.system?.changes??[]).length||!hcExactStatuses(item.system?.conditions,ids)||effects.length>1)return false;
- // A deactivated native buff can legitimately have no tracker. Any other
- // effect, added status or mechanical change is unknown provenance.
  return effects.every(e=>e.getFlag?.("pf1","tracker")===true&&
   hcExactStatuses(e.statuses,ids)&&!(e.changes?.length));
 }
-function hcEffectIsValid(item,actor,status){
- const effect=item?.effect??hcArray(item?.effects).find(e=>e.getFlag?.("pf1","tracker")===true);
- if(!hcSafeCarrier(item,actor)||!effect||effect.transfer!==true||effect.disabled===true||effect.isSuppressed===true||
-    !hcStatusIds(status).every(id=>effect.statuses?.has?.(id)))return false;
- // Foundry v13 applies transfer effects from Items, not as Actor.effects.
- const applicable=typeof actor.allApplicableEffects==="function"?[...actor.allApplicableEffects()]:[];
- return applicable.some(e=>e.uuid===effect.uuid)&&hcStatusIds(status).every(id=>actor.statuses?.has?.(id));
+function hcDirectSource(effect,actor){
+ const f=hcFlag(effect,HC_SOURCE);
+ if(!effect||effect.parent?.uuid!==actor?.uuid||f?.version!==2||
+    f.actorUuid!==actor.uuid||!HC_ALLOWED.has(f.status)||
+    !Array.isArray(f.causes)||!f.causes.length||
+    f.causes.some(c=>!["lethal","nonlethal","probe"].includes(c)))return null;
+ return f;
 }
-function hcNativeName(status){
- const condition=pf1.registry.conditions.get(status);
- return game.i18n?.localize?.(condition.name)??condition.name;
+function hcSourceEffects(actor){return hcArray(actor?.effects).filter(e=>hcDirectSource(e,actor))}
+function hcSafeDirect(effect,actor){
+ const f=hcDirectSource(effect,actor);
+ return Boolean(f&&effect.getFlag?.("pf1","autoDelete")===true&&
+  effect.transfer!==true&&!effect.origin&&!effect.changes?.length&&
+  !effect.getFlag?.("core","overlay")&&hcExactStatuses(effect.statuses,hcStatusIds(f.status)));
 }
-async function hcCreateSource(actor,cause,status){
- const condition=pf1.registry.conditions.get(status),ids=hcStatusIds(status);
- const name=hcNativeName(status);
- const f={version:1,actorUuid:actor.uuid,cause,status};
- const [item]=await actor.createEmbeddedDocuments("Item",[{
-  name,type:"buff",img:condition.texture,
-  flags:{[HC_NS]:{[HC_SOURCE]:f}},
-  system:{subType:"temp",active:true,conditions:ids,hideFromToken:false},
-  effects:[{name,img:condition.texture,type:"buff",transfer:true,disabled:false,
-   statuses:ids,flags:{pf1:{tracker:true}},duration:{startTime:game.time.worldTime}}]
- }],hcInternal());
- if(!item)throw Error("Could not create native health contribution.");
- if(!hcEffectIsValid(item,actor,status)){
-  await item.delete(hcInternal());
-  throw Error("Native transferable health effect could not be verified: "+status);
+function hcDirectValid(effect,actor){
+ const f=hcDirectSource(effect,actor);
+ return Boolean(f&&hcSafeDirect(effect,actor)&&effect.disabled!==true&&effect.isSuppressed!==true&&
+  [...actor.allApplicableEffects()].some(e=>e.uuid===effect.uuid)&&
+  hcStatusIds(f.status).every(id=>actor.statuses?.has?.(id)));
+}
+function hcNativeData(status){
+ const c=pf1.registry.conditions.get(status);
+ return {name:c.name,img:c.texture,statuses:hcStatusIds(status),flags:{pf1:{autoDelete:true}}};
+}
+async function hcCreateSource(actor,causes,status){
+ const data=hcNativeData(status);
+ data.transfer=false;
+ data.flags[HC_NS]={[HC_SOURCE]:{version:2,actorUuid:actor.uuid,causes:[...new Set(causes)],status}};
+ const [effect]=await actor.createEmbeddedDocuments("ActiveEffect",[data],hcInternal());
+ if(!effect)throw Error("Could not create native health condition.");
+ if(!hcDirectValid(effect,actor)){
+  if(hcSafeDirect(effect,actor))await actor.deleteEmbeddedDocuments("ActiveEffect",[effect.id],hcInternal());
+  throw Error("Native direct health effect could not be verified: "+status);
  }
- return item;
+ return effect;
 }
-// Presentation only: keep native PF1 status choices and normal buffs.
-// PF1 11.11 TokenHUDPF._getStatusEffectChoices adds buff-<item id> entries
-// in addition to the native condition choices. Managed carriers need no
-// separate button, even if inactive. Never filter ordinary buff entries.
-function hcDisplayCarrier(item,actor){
- try{return Boolean(item&&actor&&hcSafeCarrier(item,actor))}
- catch(_){return false}
+function hcExternalStatus(actor,status){
+ const applicable=typeof actor.allApplicableEffects==="function"?[...actor.allApplicableEffects()]:[];
+ return applicable.some(e=>e.disabled!==true&&e.isSuppressed!==true&&e.statuses?.has?.(status)&&
+  !hcSafeDirect(e,actor)&&!hcSafeCarrier(e.parent,actor));
 }
-function hcFilterHudChoices(choices,actor){
- if(!choices||!actor)return choices;
- const hidden=hcArray(actor.items).filter(i=>hcDisplayCarrier(i,actor));
- if(!hidden.length)return choices;
- const result={...choices};
- for(const item of hidden)delete result["buff-"+item.id];
+async function hcDeleteSource(effect,actor){
+ if(!hcSafeDirect(effect,actor))throw Error("Modified native health effect; GM review required: "+effect.uuid);
+ await actor.deleteEmbeddedDocuments("ActiveEffect",[effect.id],hcInternal());
+}
+async function hcDeleteLegacy(item,actor){
+ if(!hcSafeCarrier(item,actor))throw Error("Modified legacy health buff; GM review required: "+item.uuid);
+ await item.delete(hcInternal());
+}
+// PF1 11.11 ActorPF.setConditions searches this.effects.find(ae => ...).
+// A native request must never coalesce with our automatic source or delete it.
+// Adapt ONLY calls that intersect a managed direct effect, including track
+// expansion. Ordinary calls use the original PF1 implementation untouched.
+// The collision branch follows the 11.11 native semantics: registry,
+// immunities, boolean-only track expansion, overlay data, document CRUD and
+// native notification. No temporary mutation of the Actor or its Collection.
+let HC_ROUTER_READY=false;
+const HC_ROUTER_MARK=Symbol.for("pf1ae.healthConditionNativeRouter");
+async function hcRouteConditions(actor,original,conditions={},context={}){
+ const owned=hcSourceEffects(actor);
+ if(!owned.length)return original(conditions,context);
+ const next=foundry.utils.deepClone(conditions);
+ for(const track of pf1.registry.conditions.trackedConditions()){
+  const enabled=track.find(id=>next[id]===true);
+  if(enabled)for(const id of track)if(id!==enabled)next[id]=false;
+ }
+ if(!Object.keys(next).some(id=>owned.some(e=>e.statuses?.has?.(id))))return original(conditions,context);
+ if(owned.some(e=>!hcSafeDirect(e,actor)))throw Error("Modified PF1AE health source: GM review required.");
+ const autoIds=new Set(owned.map(e=>e.id)),deletes=new Set(),creates=[],result={};
+ const before=new Set(actor.statuses);
+ const immunities=actor.getConditionImmunities();
+ for(const [id,value] of Object.entries(next)){
+  if(!pf1.registry.conditions.has(id))continue;
+  if(value===true&&immunities.has(id))continue;
+  // This is the only semantic change from native lookup: owned effects are
+  // excluded. An independent native effect remains a separate document.
+  const prior=actor.statuses.has(id)?actor.effects.find(e=>!autoIds.has(e.id)&&e.statuses.has(id)):null;
+  if(value&&!prior){
+   let data=hcNativeData(id);
+   if(value?.overlay){delete value.overlay;data.flags.core={overlay:true}}
+   if(typeof value!=="boolean")data=foundry.utils.mergeObject(data,value);
+   creates.push(data);result[id]=value;
+  }else if(!value&&prior){deletes.add(prior.id);result[id]=false}
+ }
+ context.pf1??={};context.pf1.updateConditionTracks=false;
+ if(deletes.size)await actor.deleteEmbeddedDocuments("ActiveEffect",[...deletes],context);
+ if(creates.length)await actor.createEmbeddedDocuments("ActiveEffect",creates,context);
+ // A document source can change without a visible status transition.
+ // Notify only real transitions, not false while another source remains.
+ const after=new Set(actor.statuses),changed={};
+ for(const id of new Set([...before,...after]))if(pf1.registry.conditions.has(id)&&before.has(id)!==after.has(id))changed[id]=after.has(id);
+ actor._conditionToggleNotify(changed);
  return result;
 }
-// Foundry draws temporary ActiveEffects on tokens. PF1's own isTemporary
-// getter implements hideFromToken and overlay visibility. Preserve that
-// decision and suppress only duplicate *managed* icons of the same native
-// primary status/image, never an ordinary effect or a different condition.
-function hcVisibleCarrier(effect,nativeVisible,original){
+function hcInstallNativeRouter(){
+ if(game.system?.id!=="pf1"||game.system?.version!=="11.11"||game.release?.generation!==13)return;
+ const proto=globalThis.pf1?.documents?.actor?.ActorPF?.prototype,fn=proto?.setConditions;
+ if(typeof fn!=="function")return;
+ if(fn[HC_ROUTER_MARK]){HC_ROUTER_READY=true;return}
+ try{
+  if(game.modules.get("lib-wrapper")?.active&&typeof globalThis.libWrapper?.register==="function"){
+   globalThis.libWrapper.register(HC_NS,"pf1.documents.actor.ActorPF.prototype.setConditions",function(wrapped,conditions,context){
+    return hcRouteConditions(this,wrapped,conditions,context);
+   },"MIXED");
+  }else{
+   const wrapped=function(conditions,context){return hcRouteConditions(this,fn.bind(this),conditions,context)};
+   Object.defineProperty(wrapped,HC_ROUTER_MARK,{value:true});
+   proto.setConditions=wrapped;
+  }
+  HC_ROUTER_READY=true;
+ }catch(error){console.warn("[PF1AE][HealthConditions] Native condition router unavailable",error)}
+}
+// Owned direct effects use native status data. Only an identical visible
+// external source suppresses our duplicate token icon; no HUD/DOM patch.
+const HC_DISPLAY_MARK=Symbol.for("pf1ae.healthConditionDisplay");
+function hcVisibleDirect(effect,nativeVisible,original){
  if(!nativeVisible)return nativeVisible;
- const actor=effect.actor??effect.parent?.actor;
- if(!hcDisplayCarrier(effect.parent,actor))return nativeVisible;
- if(effect.disabled===true||effect.isSuppressed===true)return nativeVisible;
- if(effect.getFlag?.("core","overlay")===true)return nativeVisible;
- const f=hcSource(effect.parent,actor);
- if(!effect.img||!effect.uuid||typeof actor?.allApplicableEffects!=="function")return nativeVisible;
+ const actor=effect.actor??effect.parent;
+ if(!hcSafeDirect(effect,actor)||effect.disabled===true||effect.isSuppressed===true)return nativeVisible;
+ const f=hcDirectSource(effect,actor);
  for(const other of actor.allApplicableEffects()){
   if(other===effect||other.uuid===effect.uuid||other.disabled===true||
-     other.isSuppressed===true||other.img!==effect.img||!other.statuses?.has?.(f.status))continue;
-  // Call the unwrapped native getter directly, avoiding recursion.
-  if(!original.call(other))continue;
-  if(!hcDisplayCarrier(other.parent,actor))return false;
-  const of=hcSource(other.parent,actor);
-  if(of.status!==f.status)continue;
-  if(other.getFlag?.("core","overlay")===true||String(other.uuid)<String(effect.uuid))return false;
+     other.isSuppressed===true||other.img!==effect.img||!other.statuses?.has?.(f.status)||!original.call(other))continue;
+  if(!hcSafeDirect(other,actor)||String(other.uuid)<String(effect.uuid))return false;
  }
  return nativeVisible;
 }
-// Optional side-panel compatibility. Observed markup contains a separate
-// temporary buff row and native condition row for the exact same effect.
-// Never identify a carrier by its translated label, image, or item ID alone.
-const HC_PANEL_BUFF=".buff-list.buffs li.buff[data-item-id][data-uuid][data-effect-uuid]";
-const HC_PANEL_CONDITION=".buff-list.conditions li.condition[data-condition-id][data-uuid][data-effect-uuid]";
-const HC_PANEL_MARK="data-pf1ae-health-duplicate";
-const HC_PANEL_SELECTOR=HC_PANEL_BUFF+","+HC_PANEL_CONDITION+",["+HC_PANEL_MARK+"]";
-function hcPanelEffectUuid(data){
- const id=data?.effectUuid,actorUuid=data?.uuid;
- if(typeof id!=="string"||!id||typeof actorUuid!=="string"||!actorUuid)return null;
- return id.startsWith(".")?actorUuid+id:id;
-}
-function hcPanelKey(data,status){
- return JSON.stringify([data.uuid,hcPanelEffectUuid(data),status]);
-}
-function hcPanelDuplicate(row,actor,nativeKeys){
- const d=row.dataset;
- if(!actor||actor.uuid!==d.uuid)return false;
- const item=actor.items?.get?.(d.itemId);
- if(!hcDisplayCarrier(item,actor)||item.isActive===false)return false;
- const f=hcSource(item,actor),effect=item.effect??hcArray(item.effects)[0];
- if(!effect||effect.uuid!==hcPanelEffectUuid(d)||!hcEffectIsValid(item,actor,f.status))return false;
- return nativeKeys.has(hcPanelKey(d,f.status));
-}
-async function hcRefreshPanel(root,resolve=uuid=>fromUuid(uuid)){
- // Each scan is presentation-only. Resolve a synthetic Actor by its complete
- // UUID, once per actor per scan, never by its base actor ID.
- const rows=[...root.querySelectorAll(HC_PANEL_BUFF)];
- const actors=new Map();
- await Promise.all([...new Set(rows.map(r=>r.dataset.uuid))].map(async uuid=>{
-  try{actors.set(uuid,await resolve(uuid))}catch(_){actors.set(uuid,null)}
- }));
- // Read current markup AFTER awaits, since a panel may have been rerendered.
- const nativeKeys=new Set([...root.querySelectorAll(HC_PANEL_CONDITION)]
-  .map(row=>hcPanelKey(row.dataset,row.dataset.conditionId)));
- for(const row of root.querySelectorAll(HC_PANEL_BUFF)){
-  const hide=hcPanelDuplicate(row,actors.get(row.dataset.uuid),nativeKeys);
-  row.toggleAttribute(HC_PANEL_MARK,hide);
- }
- // If a panel reuses nodes for a different purpose, undo our marker.
- for(const row of root.querySelectorAll("["+HC_PANEL_MARK+"]"))
-  if(!row.matches(HC_PANEL_BUFF))row.removeAttribute(HC_PANEL_MARK);
-}
-let HC_PANEL_OBSERVER=null,HC_PANEL_PENDING=false,HC_PANEL_RUNNING=false,HC_PANEL_DIRTY=false;
-function hcSchedulePanel(){
- if(!HC_PANEL_OBSERVER)return;
- HC_PANEL_DIRTY=true;
- if(HC_PANEL_PENDING||HC_PANEL_RUNNING)return;
- HC_PANEL_PENDING=true;
- requestAnimationFrame(async()=>{
-  HC_PANEL_PENDING=false;HC_PANEL_RUNNING=true;HC_PANEL_DIRTY=false;
-  try{await hcRefreshPanel(document.body)}
-  catch(e){console.warn("[PF1AE][HealthConditions] Side panel presentation",e)}
-  finally{HC_PANEL_RUNNING=false;if(HC_PANEL_DIRTY)hcSchedulePanel()}
- });
-}
-function hcPanelMutationRelevant(m){
- const el=m.target?.nodeType===1?m.target:m.target?.parentElement;
- if(el?.closest?.(".buff-list"))return true;
- if(m.type!=="childList")return false;
- return [...m.addedNodes,...m.removedNodes].some(n=>n.nodeType===1&&
-  (n.matches?.(".buff-list")||n.querySelector?.(".buff-list")));
-}
-function hcInstallPanelDisplay(){
- if(HC_PANEL_OBSERVER||typeof document==="undefined"||!document.body||
-    typeof MutationObserver!=="function"||typeof requestAnimationFrame!=="function")return;
- // A dedicated attribute avoids altering the third-party panel's own DOM,
- // event handlers, or document lifecycle. Never set hideFromToken.
- const style=document.createElement("style");
- style.id="pf1ae-health-panel-display";
- style.textContent="["+HC_PANEL_MARK+"] { display: none !important; }";
- if(!document.getElementById(style.id))document.head.append(style);
- HC_PANEL_OBSERVER=new MutationObserver(records=>{
-  if(records.some(hcPanelMutationRelevant))hcSchedulePanel();
- });
- HC_PANEL_OBSERVER.observe(document.body,{subtree:true,childList:true,attributes:true,
-  attributeFilter:["class","data-item-id","data-uuid","data-effect-uuid","data-condition-id"]});
- // Do not observe our own marker (avoids mutation/refresh loops).
- for(const hook of ["updateActor","createItem","updateItem","deleteItem","createActiveEffect",
-  "updateActiveEffect","deleteActiveEffect","canvasReady"])Hooks.on(hook,hcSchedulePanel);
- hcSchedulePanel();
-}
-
-const HC_DISPLAY_MARK=Symbol.for("pf1ae.healthConditionDisplay");
 function hcInstallDisplay(){
  if(game.system?.id!=="pf1"||game.system?.version!=="11.11"||game.release?.generation!==13)return;
- hcInstallPanelDisplay();
- const hud=globalThis.CONFIG?.Token?.hudClass?.prototype;
- const fn=hud?._getStatusEffectChoices;
- if(typeof fn==="function"&&!fn[HC_DISPLAY_MARK]){
-  // PF1's configured HUD subclass, not a global TokenHUD replacement.
-  const wrapped=function(...args){
-   return hcFilterHudChoices(fn.apply(this,args),this.actor);
-  };
-  Object.defineProperty(wrapped,HC_DISPLAY_MARK,{value:true});
-  hud._getStatusEffectChoices=wrapped;
- }
  const effect=globalThis.CONFIG?.ActiveEffect?.documentClass?.prototype;
  const descriptor=effect&&Object.getOwnPropertyDescriptor(effect,"isTemporary");
  if(descriptor?.configurable&&typeof descriptor.get==="function"&&!descriptor.get[HC_DISPLAY_MARK]){
-  const original=descriptor.get;
-  const get=function(){
-   const visible=original.call(this);
-   return hcVisibleCarrier(this,visible,original);
-  };
+  const original=descriptor.get,get=function(){return hcVisibleDirect(this,original.call(this),original)};
   Object.defineProperty(get,HC_DISPLAY_MARK,{value:true});
   Object.defineProperty(effect,"isTemporary",{...descriptor,get});
  }
 }
-// Update existing v1.46.0 carriers in place, not via recreation, so source
-// provenance, exception keys, duration and independent states survive.
-async function hcNormalizeCarrierLabel(item,actor){
- if(!hcDisplayCarrier(item,actor))return;
- const f=hcSource(item,actor),name=hcNativeName(f.status);
- if(item.name!==name)await item.update({name},hcInternal());
- const effect=item.effect??hcArray(item.effects)[0];
- if(effect&&effect.name!==name)await effect.update({name},hcInternal());
+// Our CRUD suppresses PF1 track cleanup; that also suppresses its native
+// notifications. Emit the real status changes after owned document CRUD,
+// locally on each client, so condition panels can refresh on healing.
+// Never send a false event if another source still supplies that status.
+function hcNotifyOwnedEffect(effect,created,options){
+ if(!options?.[HC_INTERNAL])return;
+ const actor=effect?.actor??effect?.parent;
+ if(!hcDirectSource(effect,actor))return;
+ for(const id of effect.statuses){
+  const active=actor.statuses?.has?.(id)===true;
+  if(created){
+   if(!active||[...actor.allApplicableEffects()].some(e=>e.uuid!==effect.uuid&&
+      e.disabled!==true&&e.isSuppressed!==true&&e.statuses?.has?.(id)))continue;
+  }else if(active)continue;
+  Hooks.callAll?.("pf1ToggleActorCondition",actor,id,active);
+ }
 }
-function hcExternalStatus(actor,status){
- const applicable=typeof actor.allApplicableEffects==="function"?[...actor.allApplicableEffects()]:[];
- return applicable.some(e=>e.disabled!==true&&e.isSuppressed!==true&&
-  e.statuses?.has?.(status)&&!hcSafeCarrier(e.parent,actor));
-}
-async function hcDeleteSource(item,actor){
- if(!hcSafeCarrier(item,actor))
-  throw Error("Managed health buff has unknown provenance or was modified; GM review required: "+item.uuid);
- await item.delete(hcInternal());
+function hcNotifyLegacyDelete(item,options){
+ if(!options?.[HC_INTERNAL])return;
+ const actor=item?.actor??item?.parent,f=hcSource(item,actor);
+ if(!f)return;
+ for(const id of hcStatusIds(f.status))if(!actor.statuses?.has?.(id))Hooks.callAll?.("pf1ToggleActorCondition",actor,id,false);
 }
 async function hcDropRecords(actor,ids,{internal=true}={}){
  if(!ids.length)return;
@@ -357,45 +316,51 @@ async function hcReconcileInternal(actor){
  const rows=hcRecords(actor);
  await hcDropRecords(actor,rows.invalid);
  const plan=hcPlan(actor,rows.valid);
- const existing=hcSourceItems(actor).filter(i=>hcSource(i,actor).cause!=="probe");
+ const existing=hcSourceEffects(actor).filter(e=>!hcDirectSource(e,actor).causes.includes("probe"));
+ const legacy=hcSourceItems(actor).filter(i=>hcSource(i,actor).cause!=="probe");
+ // Validate all owned documents before touching any, never adopt unmarked
+ // direct conditions. Legacy buffs are removed only if structurally verified.
+ for(const e of existing)if(!hcSafeDirect(e,actor))throw Error("Modified native health effect: "+e.uuid);
+ for(const i of legacy)if(!hcSafeCarrier(i,actor))throw Error("Modified legacy health buff: "+i.uuid);
  if(!plan.supported){
-  // When a previously managed actor is explicitly returned to manual mode,
-  // only our own sources are removed; external conditions are never altered.
-  for(const item of existing)await hcDeleteSource(item,actor);
+  for(const e of existing)await hcDeleteSource(e,actor);
+  for(const i of legacy)await hcDeleteLegacy(i,actor);
   return {skipped:plan.reason};
  }
  if(plan.deathByHealth&&!actor.statuses?.has?.("dead")){
-  // Object form avoids PF1 setConditions' boolean track-clearing branch.
-  // Never remove Dead here, even on healing; resurrection remains explicit.
   await actor.setCondition("dead",{overlay:true});
   if(!actor.statuses?.has?.("dead"))throw Error("Native Dead condition was not applied.");
   await hcModule()?.api?.deathDefeated?.reconcileActor?.(actor);
  }
- if(plan.dead){
-  await hcDropRecords(actor,rows.valid.map(r=>r.id));
+ if(plan.dead)await hcDropRecords(actor,rows.valid.map(r=>r.id));
+ // One direct effect per native primary, even when both lethal and
+ // nonlethal health rules contribute. Preserve the separate cause flags.
+ const wanted=new Map();
+ for(const row of plan.wanted){
+  if(!wanted.has(row.status))wanted.set(row.status,new Set());
+  wanted.get(row.status).add(row.cause);
  }
- const wanted=new Map(plan.wanted.map(r=>[hcSourceKey(r.cause,r.status),r]));
  const kept=new Set(),remove=[];
- for(const item of existing){
-  const f=hcSource(item,actor),key=hcSourceKey(f.cause,f.status);
-  if(wanted.has(key)&&!kept.has(key)&&hcEffectIsValid(item,actor,f.status)){
-   kept.add(key);await hcNormalizeCarrierLabel(item,actor);
-  }
-  else remove.push(item);
+ for(const e of existing){
+  const f=hcDirectSource(e,actor),causes=wanted.get(f.status);
+  if(causes&&!kept.has(f.status)&&hcDirectValid(e,actor)){
+   kept.add(f.status);
+   if(!hcExactStatuses(f.causes,causes))await e.update({["flags."+HC_NS+"."+HC_SOURCE+".causes"]:[...causes]},hcInternal());
+  }else remove.push(e);
  }
- // Validate obsolete carriers before creating replacements or deleting any.
- for(const item of remove)if(!hcSafeCarrier(item,actor))throw Error("Modified health carrier needs GM review: "+item.uuid);
- for(const [key,r] of wanted)if(!kept.has(key))await hcCreateSource(actor,r.cause,r.status);
- // Recovery does not stand a fallen creature up. Convert only a verified
- // health-created fall to an ordinary native prone condition before cleanup.
- // A suppression during negative HP removes only our own fall contribution.
- if(!plan.wanted.some(r=>r.status==="prone")&&
-    remove.some(i=>{const f=hcSource(i,actor);return f.status==="prone"&&
-      (plan.dead||plan.hp>=0||f.cause==="nonlethal")})&&!hcExternalStatus(actor,"prone")){
+ for(const [status,causes] of wanted)if(!kept.has(status))await hcCreateSource(actor,causes,status);
+ // A recovered creature does not automatically stand. Convert our
+ // physical fall into an independent native prone effect before cleanup.
+ const falling=remove.some(e=>{const f=hcDirectSource(e,actor);return f.status==="prone"&&
+  (plan.dead||plan.hp>=0||f.causes.includes("nonlethal"))})||
+  legacy.some(i=>{const f=hcSource(i,actor);return f.status==="prone"&&
+   (plan.dead||plan.hp>=0||f.cause==="nonlethal")});
+ if(!wanted.has("prone")&&falling&&!hcExternalStatus(actor,"prone")){
   await actor.setCondition("prone",true);
   if(!hcExternalStatus(actor,"prone"))throw Error("Could not retain the physical prone state after recovery.");
  }
- for(const item of remove)await hcDeleteSource(item,actor);
+ for(const e of remove)await hcDeleteSource(e,actor);
+ for(const i of legacy)await hcDeleteLegacy(i,actor);
  return {reconciled:true,plan};
 }
 function hcQueue(actor){
@@ -467,7 +432,7 @@ function hcActors(){
  return [...actors.values()];
 }
 function hcTracked(actor){
- return hcSourceItems(actor).length>0||Object.keys(hcFlag(actor,HC_RECORDS)??{}).length>0;
+ return hcSourceEffects(actor).length>0||hcSourceItems(actor).length>0||Object.keys(hcFlag(actor,HC_RECORDS)??{}).length>0;
 }
 async function hcRestore(){
  if(!hcLeader()||!hcAvailability().available)return;
@@ -478,8 +443,10 @@ async function hcDisable(){
  for(const actor of hcActors()){
   await HC_WORK.get(actor.uuid)?.catch(()=>{});
   if(hcSetting(HC_ENABLED,false)===true)return;
+  for(const effect of hcSourceEffects(actor))if(!hcDirectSource(effect,actor).causes.includes("probe"))
+   await hcDeleteSource(effect,actor).catch(e=>console.warn("[PF1AE][HealthConditions] Cleanup needs GM review",e));
   for(const item of hcSourceItems(actor))if(hcSource(item,actor).cause!=="probe")
-   await hcDeleteSource(item,actor).catch(e=>console.warn("[PF1AE][HealthConditions] Cleanup needs GM review",e));
+   await hcDeleteLegacy(item,actor).catch(e=>console.warn("[PF1AE][HealthConditions] Legacy cleanup needs GM review",e));
   await hcDropRecords(actor,Object.keys(hcFlag(actor,HC_RECORDS)??{}).filter(id=>/^[a-f0-9]+$/.test(id)));
  }
 }
@@ -487,21 +454,27 @@ function hcDiagnostics(actor){
  const availability=hcAvailability();
  return {...availability,provider:hcProvider(),proof:hcSetting(HC_PROOF,""),
   fingerprint:hcFingerprint(),...(actor?{actorUuid:actor.uuid,plan:hcPlan(actor),
-   records:hcRecords(actor).valid,owned:hcSourceItems(actor).map(i=>({uuid:i.uuid,...hcSource(i,actor)})),
+   records:hcRecords(actor).valid,owned:hcSourceEffects(actor).map(e=>({uuid:e.uuid,...hcDirectSource(e,actor)})),
+   legacy:hcSourceItems(actor).map(i=>({uuid:i.uuid,...hcSource(i,actor)})),
+   actualStatuses:[...actor.statuses],
    external:[...HC_ALLOWED,"dead","stable"].filter(s=>hcExternalStatus(actor,s))}:{})};
 }
 // Explicit runtime proof on disposable world and synthetic Actors. The
 // provider stays disabled unless both paths preserve independent conditions.
 async function hcProbeOne(actor,baseActor=null){
  const checks=[];
- const checkIsolation=()=>{if(baseActor&&([...HC_ALLOWED,"sleep","stable","dead"].some(s=>baseActor.statuses?.has?.(s))||hcSourceItems(baseActor).length))throw Error("Synthetic Actor leaked to world Actor.")};
+ const checkIsolation=()=>{if(baseActor&&([...HC_ALLOWED,"sleep","stable","dead"].some(s=>baseActor.statuses?.has?.(s))||hcSourceEffects(baseActor).length||hcSourceItems(baseActor).length))throw Error("Synthetic Actor leaked to world Actor.")};
  for(const status of ["unconscious","prone","disabled","dying","staggered"]){
-  const item=await hcCreateSource(actor,"probe",status);
-  if(!hcEffectIsValid(item,actor,status))throw Error("Transfer verification failed: "+status);
+  const item=await hcCreateSource(actor,["probe"],status);
+  if(!hcDirectValid(item,actor))throw Error("Native direct effect verification failed: "+status);
   checkIsolation();
   await actor.setCondition(status,true);
   checkIsolation();
   if(!hcExternalStatus(actor,status))throw Error("Native independent condition was coalesced: "+status);
+  await actor.setCondition(status,false);
+  if(hcExternalStatus(actor,status)||!actor.statuses?.has?.(status)||!hcDirectValid(item,actor))throw Error("Native removal changed automatic source: "+status);
+  await actor.toggleStatusEffect(status,{active:true});
+  if(!hcExternalStatus(actor,status))throw Error("HUD/native toggle did not preserve independent source: "+status);
   await hcDeleteSource(item,actor);
   if(!actor.statuses?.has?.(status)||!hcExternalStatus(actor,status))throw Error("Independent condition lost: "+status);
   await actor.setCondition(status,false);
@@ -509,13 +482,13 @@ async function hcProbeOne(actor,baseActor=null){
  }
  // Also prove an independent secondary condition from a different primary.
  await actor.setCondition("sleep",true);
- const unconscious=await hcCreateSource(actor,"probe","unconscious");
+ const unconscious=await hcCreateSource(actor,["probe"],"unconscious");
  await hcDeleteSource(unconscious,actor);
  if(!actor.statuses?.has?.("sleep")||!actor.statuses?.has?.("unconscious"))
   throw Error("Sleep provenance lost.");
  await actor.setCondition("sleep",false);
  checks.push("sleep-secondary");
- const dying=await hcCreateSource(actor,"probe","dying");
+ const dying=await hcCreateSource(actor,["probe"],"dying");
  await actor.setCondition("stable",true);
  await hcDeleteSource(dying,actor);
  if(!actor.statuses?.has?.("stable"))throw Error("Stable track lost.");
@@ -524,13 +497,18 @@ async function hcProbeOne(actor,baseActor=null){
  // In the opposite order, creating a transferred state must not let
  // native condition-track cleanup erase a pre-existing independent state.
  await actor.setCondition("stable",true);
- const carrier=await hcCreateSource(actor,"probe","disabled");
+ const carrier=await hcCreateSource(actor,["probe"],"disabled");
  checkIsolation();
  if(!hcExternalStatus(actor,"stable"))throw Error("Creating source erased independent track state.");
  await hcDeleteSource(carrier,actor);
  if(!hcExternalStatus(actor,"stable"))throw Error("Removing source erased independent track state.");
  await actor.setCondition("stable",false);
  checks.push("preexisting-track");
+ // Removing the final health source must actually remove native statuses.
+ const last=await hcCreateSource(actor,["probe"],"unconscious");
+ await hcDeleteSource(last,actor);
+ if(actor.statuses?.has?.("unconscious")||actor.statuses?.has?.("helpless")||hcSourceEffects(actor).length||hcSourceItems(actor).length)throw Error("Final native status or technical Item remained after cleanup.");
+ checks.push("final-source-removal");
  checkIsolation();
  return checks;
 }
@@ -585,7 +563,7 @@ Hooks.once("init",()=>{
 });
 Hooks.once("ready",()=>{
  const mod=hcModule();if(!mod)return;
- hcInstallDisplay();
+ hcInstallNativeRouter();hcInstallDisplay();
  mod.api??={};
  mod.api.healthConditions=Object.freeze({
   isAvailable:()=>hcAvailability().available,diagnostics:hcDiagnostics,
@@ -595,10 +573,10 @@ Hooks.once("ready",()=>{
  Hooks.on("updateActor",hcOnActor);
  Hooks.on("updateItem",hcOnItem);
  Hooks.on("createItem",(item,options)=>hcOnItem(item,null,options));
- Hooks.on("deleteItem",(item,options)=>hcOnItem(item,null,options));
+ Hooks.on("deleteItem",(item,options)=>{hcNotifyLegacyDelete(item,options);hcOnItem(item,null,options)});
  Hooks.on("updateActiveEffect",hcOnEffect);
- Hooks.on("createActiveEffect",(effect,options)=>hcOnEffect(effect,null,options));
- Hooks.on("deleteActiveEffect",(effect,options)=>hcOnEffect(effect,null,options));
+ Hooks.on("createActiveEffect",(effect,options)=>{hcNotifyOwnedEffect(effect,true,options);hcOnEffect(effect,null,options)});
+ Hooks.on("deleteActiveEffect",(effect,options)=>{hcNotifyOwnedEffect(effect,false,options);hcOnEffect(effect,null,options)});
  Hooks.on("updateCombat",()=>{void hcRestore()});
  Hooks.on("deleteCombat",()=>{void hcRestore()});
  Hooks.on("canvasReady",()=>{void hcRestore()});

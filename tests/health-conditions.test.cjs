@@ -8,7 +8,9 @@ const on=(n,fn)=>hooks.set(n,[...(hooks.get(n)??[]),fn]);
 const fire=(n,...args)=>{for(const fn of hooks.get(n)??[])fn(...args)};
 const gm={id:"gm",isGM:true},player={id:"player",isGM:false};
 const conditions=new Map(["dead","stable","disabled","dying","unconscious","prone","staggered","sleep","helpless"].map(id=>[id,{name:id,texture:id+".svg",statuses:new Set(id==="disabled"?["staggered"]:id==="unconscious"?["helpless"]:id==="sleep"?["helpless","unconscious"]:[])}]));
+conditions.trackedConditions=()=>[["dead","disabled","dying","stable"]];
 let seq=0,deadSync=0;
+const notifications=[];
 const addon={version:manifest.version,api:{generic:{isLeader:()=>game.user===gm},deathDefeated:{reconcileActor:async()=>{deadSync++}}}};
 const improved={active:false},actors=new Map(),scenes=new Map(),documents=new Map(),combats=new Map();
 const game={version:"13.351",release:{generation:13},system:{id:"pf1",version:"11.11"},
@@ -24,6 +26,37 @@ function put(root,key,value){
  const last=parts.at(-1);
  if(last.startsWith("-="))delete target[last.slice(2)];else target[last]=value;
 }
+function merge(a,b){for(const [k,v] of Object.entries(b??{})){if(v&&typeof v==="object"&&!Array.isArray(v)){a[k]??={};merge(a[k],v)}else a[k]=v}return a}
+class TestActor{
+ async setCondition(id,value,context){return this.setConditions({[id]:value},context)}
+ async toggleStatusEffect(id,{active}={}){return this.setCondition(id,active??!this.statuses.has(id))}
+ getConditionImmunities(){return new Set()}
+ _conditionToggleNotify(rows){for(const [id,value] of Object.entries(rows))fire("pf1ToggleActorCondition",this,id,value)}
+ async setConditions(conditions={},context={}){
+  const rows=clone(conditions),remove=[],create=[],result={};
+  for(const track of contextPf1.registry.conditions.trackedConditions()){
+   const enabled=track.find(s=>rows[s]===true);
+   if(enabled)for(const s of track)if(s!==enabled)rows[s]=false;
+  }
+  for(const [id,value] of Object.entries(rows)){
+   if(!contextPf1.registry.conditions.has(id))continue;
+   const old=this.statuses.has(id)?this.effects.find(e=>e.statuses.has(id)):null;
+   if(value&&!old){
+    const c=contextPf1.registry.conditions.get(id),data={name:c.name,img:c.texture,
+     statuses:[id,...c.statuses],flags:{pf1:{autoDelete:true}}};
+    if(value?.overlay){delete value.overlay;data.flags.core={overlay:true}}
+    if(typeof value!=="boolean")merge(data,value);
+    create.push(data);result[id]=value;
+   }else if(!value&&old){remove.push(old.id);result[id]=false}
+  }
+  context.pf1??={};context.pf1.updateConditionTracks=false;
+  if(remove.length)await this.deleteEmbeddedDocuments("ActiveEffect",remove,context);
+  if(create.length)await this.createEmbeddedDocuments("ActiveEffect",create,context);
+  this._conditionToggleNotify(result);
+  return result;
+ }
+}
+const contextPf1={registry:{conditions},documents:{actor:{ActorPF:TestActor}}};
 function makeActor(uuid,{type="npc",hp=5,con=14,nonlethal=0,flags={},traits={living:true},owner=true}={}){
  const actor={uuid,id:uuid.split(".").at(-1),documentName:"Actor",type,flags:clone(flags),items:new Map(),effects:[],
  system:{attributes:{hp:{value:hp,max:20,nonlethal}},abilities:{con:{total:con,damage:0}},traits},
@@ -32,6 +65,17 @@ function makeActor(uuid,{type="npc",hp=5,con=14,nonlethal=0,flags={},traits={liv
  *allApplicableEffects(){yield* this.effects;for(const item of this.items.values())if(item.isActive!==false)yield* item.effects??[]},
  async update(changed,options={}){for(const [k,v] of Object.entries(changed))put(this,k,v);fire("updateActor",this,changed,options,game.user.id);return this},
  async createEmbeddedDocuments(kind,rows,options={}){
+  if(kind==="ActiveEffect"){
+   const effects=rows.map(row=>{
+    const id="e"+ ++seq;
+    const effect={...clone(row),id,uuid:this.uuid+".ActiveEffect."+id,parent:this,actor:this,disabled:false,
+     statuses:new Set(row.statuses),getFlag(ns,k){return this.flags?.[ns]?.[k]},
+     async update(changed,o={}){for(const [k,v] of Object.entries(changed))put(this,k,v);fire("updateActiveEffect",this,changed,o,game.user.id);return this}};
+    this.effects.push(effect);return effect;
+   });
+   for(const e of effects)fire("createActiveEffect",e,options,game.user.id);
+   return effects;
+  }
   assert.equal(kind,"Item");
   const items=[];
   for(const row of rows){
@@ -45,22 +89,17 @@ function makeActor(uuid,{type="npc",hp=5,con=14,nonlethal=0,flags={},traits={liv
   }
   return items;
  },
- async setCondition(id,value){
-  // PF1 11.11 selects direct Actor.effects, not allApplicableEffects().
-  const track=["dead","disabled","dying","stable"];
-  if(value===true&&track.includes(id))for(const other of track.filter(s=>s!==id))await this.setCondition(other,false);
-  const old=this.statuses.has(id)?this.effects.find(e=>e.statuses.has(id)):null;
-  if(value&&!old){
-   const e={uuid:this.uuid+".ActiveEffect."+ ++seq,parent:this,actor:this,disabled:false,
-    statuses:new Set([id,...conditions.get(id).statuses])};
-   this.effects.push(e);fire("createActiveEffect",e,{},game.user.id);
-  }else if(!value&&old){
-   this.effects=this.effects.filter(e=>e!==old);fire("deleteActiveEffect",old,{},game.user.id);
-  }
+ async deleteEmbeddedDocuments(kind,ids,options={}){
+  assert.equal(kind,"ActiveEffect");
+  const removed=this.effects.filter(e=>ids.includes(e.id));
+  this.effects=this.effects.filter(e=>!ids.includes(e.id));
+  for(const e of removed)fire("deleteActiveEffect",e,options,game.user.id);
+  return removed;
  },
  async getTokenDocument(data){return {toObject:()=>({actorId:this.id,actorLink:data.actorLink})}},
  async delete(){actors.delete(this.id);documents.delete(this.uuid)}
  };
+ Object.setPrototypeOf(actor,TestActor.prototype);
  documents.set(uuid,actor);if(uuid.startsWith("Actor."))actors.set(actor.id,actor);
  return actor;
 }
@@ -77,8 +116,8 @@ class TestHud{
 }
 class TestEffect{get isTemporary(){return this.visible!==false}}
 const CONFIG={Token:{hudClass:TestHud},ActiveEffect:{documentClass:TestEffect}};
-const context={game,CONFIG,pf1:{registry:{conditions}},Hooks:{on,once:on},console,
- fromUuid:async uuid=>documents.get(uuid),foundry:{utils:{randomID:()=>"request"+ ++seq}},
+const context={game,CONFIG,pf1:contextPf1,Hooks:{on,once:on,callAll:fire},console,
+ fromUuid:async uuid=>documents.get(uuid),foundry:{utils:{randomID:()=>"request"+ ++seq,deepClone:clone,mergeObject:merge}},
  Actor:{implementation:{create:async data=>makeActor("Actor.probe"+ ++seq,{flags:data.flags})}},
  Scene:{implementation:{create:async()=>{
   const id="scene"+ ++seq;
@@ -94,11 +133,13 @@ const context={game,CONFIG,pf1:{registry:{conditions}},Hooks:{on,once:on},consol
  }}}
 };
 context.globalThis=context;
-vm.runInNewContext(src+"\nglobalThis.panelRefresh=hcRefreshPanel;",context);fire("init");fire("ready");
+vm.runInNewContext(src,context);fire("init");fire("ready");
 const api=addon.api.healthConditions;
 const tick=async()=>{for(let i=0;i<30;i++)await new Promise(r=>setTimeout(r,0))};
 const has=(actor,status)=>actor.statuses.has(status);
-const owned=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthConditionSource);
+const owned=actor=>actor.effects.filter(e=>e.flags?.[NS]?.healthConditionSource?.version===2);
+const legacy=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthConditionSource);
+on("pf1ToggleActorCondition",(actor,id,value)=>notifications.push([actor.uuid,id,value]));
 (async()=>{
  assert.equal(api.isAvailable(),false);
  assert.equal(registered.get("healthConditionsEnabled").default,false);
@@ -106,59 +147,34 @@ const owned=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthCond
  await a.update({"system.attributes.hp.value":0});await tick();assert.equal(owned(a).length,0);
  improved.active=true;await assert.rejects(api.probe());improved.active=false;
  const proof=await api.probe();assert.equal(proof.passed,true);
- assert.equal(proof.linked.length,8);assert.equal(proof.unlinked.length,8);
+ assert.equal(proof.linked.length,9);assert.equal(proof.unlinked.length,9);
  assert.equal(scenes.size,0);assert.equal(actors.size,1);
  await game.settings.set(NS,"healthConditionsEnabled",true);
  assert.equal(api.isAvailable(),true);
  await api.reconcile(a);
  assert.equal(has(a,"disabled"),true);assert.equal(has(a,"staggered"),true);
  assert.equal(has(a,"dead"),false);assert.equal(has(a,"dying"),false);
- const carrier=owned(a)[0];assert.equal(carrier.name,"disabled");assert.equal(carrier.effect.name,"disabled");
- const oldUuid=carrier.uuid;carrier.name="PF1AE — disabled";carrier.effect.name="PF1AE — disabled";
- await api.reconcile(a);assert.equal(owned(a)[0].uuid,oldUuid);assert.equal(carrier.name,"disabled");assert.equal(carrier.effect.name,"disabled");
+ const carrier=owned(a)[0];
+ assert.equal(carrier.name,"disabled");assert.equal(carrier.parent,a);assert.equal(legacy(a).length,0);
+ assert.equal(carrier.flags.pf1.autoDelete,true);
  const [ordinary]=await a.createEmbeddedDocuments("Item",[{name:"Ordinary buff",type:"buff",system:{active:true}}]);
- const hud=new TestHud(a)._getStatusEffectChoices();assert.equal(hud.disabled.isActive,true);assert.equal(Object.hasOwn(hud,"buff-"+carrier.id),false);assert.equal(hud["buff-"+ordinary.id].title,"Ordinary buff");
+ const hud=new TestHud(a)._getStatusEffectChoices();assert.equal(hud.disabled.isActive,true);
+ assert.equal(Object.keys(hud).filter(k=>k.startsWith("buff-")).length,1);assert.equal(hud["buff-"+ordinary.id].title,"Ordinary buff");
  const getter=Object.getOwnPropertyDescriptor(TestEffect.prototype,"isTemporary").get;
- assert.equal(getter.call(carrier.effect),true);carrier.effect.visible=false;assert.equal(getter.call(carrier.effect),false);carrier.effect.visible=true;
- const direct={uuid:"direct",img:carrier.effect.img,statuses:new Set(["disabled"]),parent:a,actor:a,disabled:false};a.effects.push(direct);
- assert.equal(getter.call(carrier.effect),false);assert.equal(getter.call(direct),true);direct.visible=false;assert.equal(getter.call(carrier.effect),true);a.effects.pop();
-
- // Reproduce the reported external side panel: both rows reference the
- // same exact ActiveEffect, with a relative UUID as in the actual HTML.
- const panelRow=(kind,data)=>{
-  const attrs=new Set();
-  return {kind,dataset:{...data},attrs,toggleAttribute(k,v){if(v)attrs.add(k);else attrs.delete(k)},
-   removeAttribute(k){attrs.delete(k)},matches(s){return s.startsWith(".buff-list.buffs")&&this.kind==="buff"}};
- };
- const checkPanel=async actor=>{
-  const c=owned(actor)[0],status=c.flags[NS].healthConditionSource.status;
-  const relative=c.effect.uuid.slice(actor.uuid.length);
-  const buff=panelRow("buff",{uuid:actor.uuid,itemId:c.id,effectUuid:relative});
-  const condition=panelRow("condition",{uuid:actor.uuid,conditionId:status,effectUuid:relative});
-  const wrongActor=panelRow("condition",{uuid:"Actor.other",conditionId:status,effectUuid:relative});
-  const ordinaryRow=panelRow("buff",{uuid:actor.uuid,itemId:"ordinary",effectUuid:relative});
-  const wrongEffect=panelRow("buff",{uuid:actor.uuid,itemId:c.id,effectUuid:relative+"x"});
-  const wrongStatus=panelRow("condition",{uuid:actor.uuid,conditionId:"helpless",effectUuid:relative});
-  let rows=[buff,condition,ordinaryRow,wrongEffect,wrongActor,wrongStatus];
-  const root={querySelectorAll(s){
-   if(s.startsWith(".buff-list.buffs"))return rows.filter(r=>r.kind==="buff");
-   if(s.startsWith(".buff-list.conditions"))return rows.filter(r=>r.kind==="condition");
-   return rows.filter(r=>r.attrs.has("data-pf1ae-health-duplicate"));
-  }};
-  const marker="data-pf1ae-health-duplicate",resolve=async id=>documents.get(id);
-  await context.panelRefresh(root,resolve);
-  assert.equal(buff.attrs.has(marker),true);
-  for(const r of [condition,ordinaryRow,wrongEffect,wrongActor,wrongStatus])assert.equal(r.attrs.has(marker),false);
-  // A full effect UUID is equivalent to the observed relative UUID.
-  condition.dataset.effectUuid=c.effect.uuid;await context.panelRefresh(root,resolve);assert.equal(buff.attrs.has(marker),true);
-  rows=rows.filter(r=>r!==condition);await context.panelRefresh(root,resolve);assert.equal(buff.attrs.has(marker),false);
-  rows.push(condition);await context.panelRefresh(root,resolve);assert.equal(buff.attrs.has(marker),true);
-  buff.kind="other";await context.panelRefresh(root,resolve);assert.equal(buff.attrs.has(marker),false);
-  buff.kind="buff";await context.panelRefresh(root,async()=>null);assert.equal(buff.attrs.has(marker),false);
-  assert.equal(actor.items.get(c.id),c);assert.equal(actor.statuses.has(status),true);
- };
- await checkPanel(a);
-
+ assert.equal(getter.call(carrier),true);carrier.visible=false;assert.equal(getter.call(carrier),false);carrier.visible=true;
+ await a.setCondition("disabled",true);
+ const direct=a.effects.find(e=>e!==carrier&&e.statuses.has("disabled"));
+ assert.ok(direct);assert.equal(getter.call(carrier),false);assert.equal(getter.call(direct),true);
+ await a.setCondition("disabled",false);assert.equal(a.effects.includes(direct),false);assert.equal(has(a,"disabled"),true);
+ assert.equal(getter.call(carrier),true);
+ // Old carrier migration: a verified v1 Item is deleted, no native state
+ // or ordinary buff is lost and the v2 effect retains its identity.
+ const [old]=await a.createEmbeddedDocuments("Item",[{name:"PF1AE — disabled",type:"buff",
+  flags:{[NS]:{healthConditionSource:{version:1,actorUuid:a.uuid,cause:"lethal",status:"disabled"}}},
+  system:{active:true,conditions:["disabled","staggered"]},
+  effects:[{name:"disabled",img:"disabled.svg",transfer:true,statuses:["disabled","staggered"],flags:{pf1:{tracker:true}}}]}]);
+ await api.reconcile(a);assert.equal(a.items.has(old.id),false);assert.equal(owned(a)[0],carrier);
+ assert.equal(a.items.has(ordinary.id),true);assert.equal(has(a,"disabled"),true);
  const s1=trait(a,"source1"),s2=trait(a,"source2");
  await a.update({"system.attributes.hp.value":-3});await tick();
  for(const s of ["dying","unconscious","prone"])assert.equal(has(a,s),true);
@@ -174,10 +190,10 @@ const owned=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthCond
  await api.unregister(r1);assert.equal(api.list(a).length,1);assert.equal(has(a,"dying"),false);
  await a.setCondition("sleep",false);await tick();assert.equal(has(a,"unconscious"),false);
  await a.update({"system.attributes.hp.nonlethal":2});await tick();assert.equal(has(a,"unconscious"),true);
- // two separately owned prone sources still display only one identical icon
- const proneCarriers=owned(a).filter(i=>i.flags[NS].healthConditionSource.status==="prone");
- assert.equal(proneCarriers.length,2);
- assert.equal(proneCarriers.filter(i=>getter.call(i.effect)).length,1);
+ // Lethal and nonlethal causes share one native primary effect.
+ const proneCarriers=owned(a).filter(e=>e.flags[NS].healthConditionSource.status==="prone");
+ assert.equal(proneCarriers.length,1);
+ assert.equal(proneCarriers[0].flags[NS].healthConditionSource.causes.length,2);
  await a.update({"system.attributes.hp.nonlethal":0});await tick();assert.equal(has(a,"unconscious"),false);
  game.user=player;
  const rp=await api.register(r1);assert.equal(rp.queued,true);assert.equal(api.list(a).length,2);
@@ -186,7 +202,9 @@ const owned=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthCond
  a.items.delete(s2.id);fire("deleteItem",s2,{},gm.id);await tick();
  assert.equal(api.list(a).length,0);assert.equal(has(a,"dying"),true);assert.equal(has(a,"stable"),false);
  await a.update({"system.attributes.hp.value":5});await tick();
- assert.equal(has(a,"unconscious"),false);assert.equal(has(a,"dying"),false);assert.equal(has(a,"prone"),true);assert.equal(owned(a).length,0);
+ assert.equal(has(a,"unconscious"),false);assert.equal(has(a,"helpless"),false);assert.equal(has(a,"dying"),false);assert.equal(has(a,"prone"),true);assert.equal(owned(a).length,0);assert.equal(legacy(a).length,0);
+ assert.ok(notifications.some(([uuid,id,v])=>uuid===a.uuid&&id==="unconscious"&&v===false));
+ assert.ok(notifications.some(([uuid,id,v])=>uuid===a.uuid&&id==="dying"&&v===false));
  const b=makeActor("Actor.b",{hp:-3});const sb=trait(b,"ferocity");
  await api.reconcile(b);
  await api.register({actor:b,sourceUuid:sb.uuid,key:"exception",suppress:["dying","unconscious","prone"],apply:["disabled"]});
@@ -207,7 +225,7 @@ const owned=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthCond
  const synth=makeActor("Scene.s.Token.t.Actor.a",{hp:-1});const ss=trait(synth,"x");
  await api.register({actor:synth,sourceUuid:ss.uuid,key:"unique",suppress:["unconscious","prone","dying"],apply:["disabled"]});
  assert.equal(has(synth,"disabled"),true);assert.equal(has(a,"disabled"),false);
- await checkPanel(synth);
+ assert.equal(legacy(synth).length,0);assert.equal(owned(synth)[0].parent,synth);
  const combat={id:"c",started:true};combats.set("c",combat);
  await api.register({actor:synth,sourceUuid:ss.uuid,key:"combat-bound",combatId:"c",suppress:["dying"]});
  combats.delete("c");await api.reconcile(synth);assert.equal(api.list(synth).length,1);
@@ -217,5 +235,5 @@ const owned=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthCond
  improved.active=true;assert.equal(api.isAvailable(),false);await assert.rejects(api.reconcile(a));
  improved.active=false;await game.settings.set(NS,"healthConditionsEnabled",false);await tick();
  assert.equal(owned(st).length,0);assert.equal(has(st,"stable"),true);assert.equal(api.isAvailable(),false);
- console.log("PASS health condition policy, source separation, sleep/prone/nonlethal, death, orphan cleanup, permissions, runtime probe and opt-in gate (simulation)");
+ console.log("PASS direct native health source policy, protected native routing, notifications, legacy migration, independent conditions, linked/synthetic actors and opt-in probe (simulation)");
 })().catch(err=>{console.error(err);process.exitCode=1});
