@@ -18,7 +18,7 @@ const hcLeader=()=>hcModule()?.api?.generic?.isLeader?.()===true&&game.user?.isG
 const hcInternal=()=>({[HC_INTERNAL]:true,pf1:{updateConditionTracks:false}});
 const hcFlag=(d,k)=>d?.getFlag?.(HC_NS,k)??d?.flags?.[HC_NS]?.[k];
 const hcSetting=(k,d)=>{try{return game.settings.get(HC_NS,k)??d}catch(_){return d}};
-const hcFingerprint=()=>[game.version??game.release?.version??"",game.system?.id,game.system?.version].join("|");
+const hcFingerprint=()=>[game.version??game.release?.version??"",game.system?.id,game.system?.version,hcModule()?.version??""].join("|");
 function hcProvider(){
  if(game.release?.generation!==13||game.system?.id!=="pf1"||game.system?.version!=="11.11")
   return {available:false,reason:"unsupported-system"};
@@ -176,11 +176,11 @@ async function hcDeleteSource(item,actor){
   throw Error("Managed health buff was modified; GM review required: "+item.uuid);
  await item.delete(hcInternal());
 }
-async function hcDropRecords(actor,ids){
+async function hcDropRecords(actor,ids,{internal=true}={}){
  if(!ids.length)return;
  const updates={};
  for(const id of ids)updates["flags."+HC_NS+"."+HC_RECORDS+".-="+id]=null;
- await actor.update(updates,hcInternal());
+ await actor.update(updates,internal?hcInternal():{});
 }
 async function hcReconcileInternal(actor){
  if(!hcLeader()||!hcAvailability().available)return {skipped:"unavailable"};
@@ -188,8 +188,13 @@ async function hcReconcileInternal(actor){
  const rows=hcRecords(actor);
  await hcDropRecords(actor,rows.invalid);
  const plan=hcPlan(actor,rows.valid);
- if(!plan.supported)return {skipped:plan.reason};
  const existing=hcSourceItems(actor).filter(i=>hcSource(i,actor).cause!=="probe");
+ if(!plan.supported){
+  // When a previously managed actor is explicitly returned to manual mode,
+  // only our own sources are removed; external conditions are never altered.
+  for(const item of existing)await hcDeleteSource(item,actor);
+  return {skipped:plan.reason};
+ }
  if(plan.deathByHealth&&!actor.statuses?.has?.("dead")){
   // Object form avoids PF1 setConditions' boolean track-clearing branch.
   // Never remove Dead here, even on healing; resurrection remains explicit.
@@ -211,8 +216,9 @@ async function hcReconcileInternal(actor){
  // Recovery does not stand a fallen creature up. Convert only a verified
  // health-created fall to an ordinary native prone condition before cleanup.
  // A suppression during negative HP removes only our own fall contribution.
- if((plan.dead||plan.hp>=0)&&!plan.wanted.some(r=>r.status==="prone")&&
-    remove.some(i=>hcSource(i,actor).status==="prone")&&!hcExternalStatus(actor,"prone")){
+ if(!plan.wanted.some(r=>r.status==="prone")&&
+    remove.some(i=>{const f=hcSource(i,actor);return f.status==="prone"&&
+      (plan.dead||plan.hp>=0||f.cause==="nonlethal")})&&!hcExternalStatus(actor,"prone")){
   await actor.setCondition("prone",true);
   if(!hcExternalStatus(actor,"prone"))throw Error("Could not retain the physical prone state after recovery.");
  }
@@ -267,7 +273,7 @@ async function hcRegister(options){
 async function hcUnregister(options){
  const {actor,id}=await hcResolve(options);
  // Remove only this source/key tuple. Allow cleanup even when provider disabled.
- await hcDropRecords(actor,[id]);
+ await hcDropRecords(actor,[id],{internal:false});
  return {unregistered:true,id,...(hcLeader()?await hcQueue(actor):{queued:true})};
 }
 async function hcRequestReconcile(actor){
@@ -297,6 +303,8 @@ async function hcRestore(){
 async function hcDisable(){
  if(!hcLeader())return;
  for(const actor of hcActors()){
+  await HC_WORK.get(actor.uuid)?.catch(()=>{});
+  if(hcSetting(HC_ENABLED,false)===true)return;
   for(const item of hcSourceItems(actor))if(hcSource(item,actor).cause!=="probe")
    await hcDeleteSource(item,actor).catch(e=>console.warn("[PF1AE][HealthConditions] Cleanup needs GM review",e));
   await hcDropRecords(actor,Object.keys(hcFlag(actor,HC_RECORDS)??{}).filter(id=>/^[a-f0-9]+$/.test(id)));
@@ -323,6 +331,20 @@ async function hcProbeOne(actor){
   await actor.setCondition(status,false);
   checks.push(status);
  }
+ // Also prove an independent secondary condition from a different primary.
+ await actor.setCondition("sleep",true);
+ const unconscious=await hcCreateSource(actor,"probe","unconscious");
+ await hcDeleteSource(unconscious,actor);
+ if(!actor.statuses?.has?.("sleep")||!actor.statuses?.has?.("unconscious"))
+  throw Error("Sleep provenance lost.");
+ await actor.setCondition("sleep",false);
+ checks.push("sleep-secondary");
+ const dying=await hcCreateSource(actor,"probe","dying");
+ await actor.setCondition("stable",true);
+ await hcDeleteSource(dying,actor);
+ if(!actor.statuses?.has?.("stable"))throw Error("Stable track lost.");
+ await actor.setCondition("stable",false);
+ checks.push("stable-track");
  return checks;
 }
 let HC_PROBING=false;
@@ -333,16 +355,21 @@ async function hcProbe(){
  HC_PROBING=true;
  let actor,scene,result;
  try{
+  await game.settings.set(HC_NS,HC_PROOF,"");
   actor=await Actor.implementation.create({name:"PF1AE temporary health probe",type:"npc",
    flags:{[HC_NS]:{healthProbe:true}}});
   if(!actor)throw Error("Temporary actor creation failed.");
-  const linked=await hcProbeOne(actor);
   scene=await Scene.implementation.create({name:"PF1AE temporary health probe",navigation:false,
    active:false,width:1000,height:1000});
-  const proto=await actor.getTokenDocument({actorLink:false,x:0,y:0});
+  const linkedProto=await actor.getTokenDocument({actorLink:true,x:0,y:0});
+  const [linkedToken]=await scene.createEmbeddedDocuments("Token",[linkedProto.toObject()]);
+  if(linkedToken?.actor?.uuid!==actor.uuid)throw Error("Linked Actor creation failed.");
+  const linked=await hcProbeOne(linkedToken.actor);
+  const proto=await actor.getTokenDocument({actorLink:false,x:100,y:100});
   const [token]=await scene.createEmbeddedDocuments("Token",[proto.toObject()]);
   if(!token?.actor||token.actor.uuid===actor.uuid)throw Error("Synthetic Actor creation failed.");
   const unlinked=await hcProbeOne(token.actor);
+  if(actor.statuses?.has?.("unconscious")||actor.statuses?.has?.("prone"))throw Error("Synthetic Actor leaked to world Actor.");
   result={passed:true,linked,unlinked,fingerprint:hcFingerprint()};
  }finally{
   try{if(scene)await scene.delete();}finally{try{if(actor)await actor.delete();}finally{HC_PROBING=false;}}
