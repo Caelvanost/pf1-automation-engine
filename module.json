@@ -2,7 +2,7 @@
   "id": "pf1-automation-engine",
   "title": "PF1 Automation Engine",
   "description": "Pathfinder 1e automation engine for Foundry v13: attacks, cover including PF1 Waters aquatic immersion, defenses, saves, rests and native item scripts.",
-  "version": "1.45.0",
+  "version": "1.46.0-alpha.1",
   "authors": [
     {
       "name": "Caelvanost"
@@ -47,6 +47,7 @@
     "scripts/auto-discovery.js",
     "scripts/effect-groups.js",
     "scripts/generic-automation.js",
+    "scripts/health-conditions.js",
     "scripts/duration-manager.js",
     "scripts/rest-daily.js",
     "scripts/rest-automation.js",
@@ -103,6 +104,6 @@
       "path": "lang/fr.json"
     }
   ],
-  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.45.0/pf1-automation-engine-v1.45.0.zip",
+  "download": "https://github.com/Caelvanost/pf1-automation-engine/releases/download/v1.46.0-alpha.1/pf1-automation-engine-v1.46.0-alpha.1.zip",
   "socket": true
 }

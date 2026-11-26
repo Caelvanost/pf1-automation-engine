@@ -58,6 +58,10 @@
         "Hint": "2D (default) uses the tactical map and ignores elevations, Wall Height and roof layers. 3D requires tested versions of Levels and Wall Height; Better Roofs is optional. When 3D data cannot be verified, no cover is guessed.",
         "TwoD": "2D — tactical map (default)",
         "ThreeD": "3D — Levels and Wall Height (optional)"
+      },
+      "HealthConditions": {
+        "Name": "Health condition management (alpha)",
+        "Hint": "Disable Improved Conditions and pass the native disposable Actor probe before enabling. Strenuous action costs and automatic stabilization are not implemented yet."
       }
     },
     "Range": {

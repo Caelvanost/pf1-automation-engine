@@ -1,3 +1,10 @@
+# 1.46.0-alpha.1 — Socle expérimental Health Conditions
+
+- API générique `healthConditions` : registre persistant par acteur/objet/clé, politique de suppression ciblée des contributions de PV létaux, sources non létales séparées, réconciliation MJ élu et nettoyage des sources orphelines.
+- ActiveEffects transférés depuis des buffs natifs dédiés : pas de suppression des états indépendants ni de don fictif. Mort native au seuil officiel des créatures ordinaires, jamais neutralisée ni retirée automatiquement.
+- Désactivé par défaut, incompatible avec Improved Conditions actif, validation de provenance native obligatoire sur un acteur temporaire lié et non lié. Créatures à régénération libre et variantes blessures/vigueur restent manuelles.
+- Sources installées PF1 11.11 et Koboldworks Resting 3.0.0.1 vérifiées ; documentation, diagnostic et tests de simulation. 56 suites maintenues. Les actions éprouvantes, la stabilisation automatique et Férocité orque complète ne sont pas encore livrées.
+
 # 1.45.0 — Synchronisation générique Mort ⇄ Vaincu
 
 - Ajoute la synchronisation bidirectionnelle **état natif PF1 « Mort »** ↔ **combattant « Vaincu »** dans les rencontres Foundry 13.
