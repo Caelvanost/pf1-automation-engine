@@ -7,7 +7,6 @@
  * replacement ActiveEffect or changes HP.
  */
 const DDS_NS='pf1-automation-engine';
-const DDS_WRITING=new Set();
 const DDS_HANDLING=new Set();
 const DDS_CHANGE_OPTION='pf1aeDeathDefeatedSync';
 
@@ -98,8 +97,8 @@ async function ddsFromDefeated(combatant,change,options){
  await ddsGuard(actor,async()=>{
   const wanted=change.defeated===true;
   const current=ddsIsDead(actor,id);
-  if(current===null||current===wanted)return;
-  await actor.toggleStatusEffect(id,{active:wanted});
+  if(current===null)return;
+  if(current!==wanted)await actor.toggleStatusEffect(id,{active:wanted});
   // A linked Actor may be represented by multiple tokens in encounters.
   // Every such combatant must reflect the same native Actor condition.
   for(const sibling of ddsCombatants(actor)){
@@ -113,8 +112,12 @@ const ddsRelevantEffect=effect=>{
  const id=ddsDeadId();
  return id&&effect?.statuses?.has?.(id);
 };
-function ddsOnEffect(effect){
- if(!ddsRelevantEffect(effect))return;
+function ddsOnEffect(effect,change){
+ // An update can REMOVE the only Dead status from an existing native
+ // ActiveEffect: its new statuses no longer contain the ID, so inspect the
+ // changed statuses field as well before reconciling.
+ if(!ddsRelevantEffect(effect)&&
+    !Object.prototype.hasOwnProperty.call(change??{},'statuses'))return;
  const actor=effect?.parent;
  if(actor?.documentName==='Actor')void ddsFromDead(actor);
 }
