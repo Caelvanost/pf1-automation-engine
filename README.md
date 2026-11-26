@@ -1,4 +1,19 @@
-# PF1 Automation Engine v1.44.1
+# PF1 Automation Engine v1.45.0
+
+## État natif Mort ⇄ combattant Vaincu (v1.45.0)
+
+Dans les rencontres Foundry, l'ajout de l'état natif PF1 **Mort** à un token marque automatiquement son combattant **Vaincu**. Retirer **Mort** retire également **Vaincu**. Inversement, basculer **Vaincu** dans le suivi des rencontres ajoute ou retire l'état PF1 **Mort** sur le token.
+
+- Le **MJ élu** effectue les mises à jour ; le service n'agit que sur les combattants possédant un token et un acteur.
+- Les modifications utilisent les méthodes natives `Actor.toggleStatusEffect()` et `Combatant.update()`, sans modifier les PV ni créer d'effet personnalisé.
+- Le statut natif `dead` / `pf1_dead` doit exister dans `CONFIG.statusEffects`; aucun effet de substitution n'est inventé.
+- La synchronisation s'applique aux combattants partageant le même acteur, puisque les états natifs sont attachés à cet acteur.
+- Le service n'automatise **pas** la mort par les PV à 0 (PF1 distingue notamment mourant, inconscient et mort).
+- API de diagnostic : `game.modules.get("pf1-automation-engine").api.deathDefeated` (`isAvailable()`, `statusId()`, `isDead(actor)`, `reconcileActor(actor)`).
+
+Tests automatisés (55 suites maintenues) et scénarios natifs simulés. Tester aussi dans Foundry avec un MJ connecté et un joueur propriétaire du token.
+
+
 
 ## Correction du dialogue d'utilisation par action (v1.44.1)
 
