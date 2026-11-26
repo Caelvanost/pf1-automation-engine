@@ -61,7 +61,15 @@
       },
       "HealthConditions": {
         "Name": "Gestion des états de santé (alpha)",
-        "Hint": "Désactivez Improved Conditions, puis réussissez le diagnostic natif sur des acteurs temporaires avant d'activer. Les actions éprouvantes et la stabilisation automatique ne sont pas encore gérées."
+        "Hint": "Désactivez Improved Conditions, puis réussissez le diagnostic natif sur des acteurs temporaires avant d'activer. Agonie et actions éprouvantes disposent de paramètres séparés."
+      },
+      "HealthAgony": {
+        "Name": "Agonie et stabilisation (alpha)",
+        "Hint": "Test de Constitution au début du tour, stabilisation par soins et perte de PV en cas d'échec. Exige la gestion des états de santé validée."
+      },
+      "HealthStrenuous": {
+        "Name": "Actions éprouvantes à 0 PV ou moins (alpha)",
+        "Hint": "Perte de 1 PV réel après une action éprouvante résolue, pour une créature consciente hors de combat. Les cartes de soins et cas ambigus restent manuels."
       }
     },
     "Range": {
@@ -219,9 +227,5 @@
       "SkipDialog": "Ignorer le dialogue",
       "Hint": "Exécute directement cette action avec ses paramètres par défaut, sans afficher le dialogue natif d'utilisation."
     }
-  },
-  "PF1AE.Settings.HealthAgony.Name": "Agonie et stabilisation (alpha)",
-  "PF1AE.Settings.HealthAgony.Hint": "Test de Constitution au début du tour, stabilisation par soins et perte de PV en cas d'échec. Exige la gestion des états de santé validée.",
-  "PF1AE.Settings.HealthStrenuous.Name": "Actions éprouvantes à 0 PV ou moins (alpha)",
-  "PF1AE.Settings.HealthStrenuous.Hint": "Perte de 1 PV réel après une action éprouvante résolue, pour une créature consciente hors de combat. Les cartes de soins et cas ambigus restent manuels."
+  }
 }

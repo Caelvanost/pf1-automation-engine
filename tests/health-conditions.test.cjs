@@ -288,6 +288,25 @@ on("pf1ToggleActorCondition",(actor,id,value)=>notifications.push([actor.uuid,id
  game.user=gm;fire("updateActor",agon,{},{});await tick();
  assert.equal(agon.system.attributes.hp.value,-1);
  fire("updateActor",agon,{},{});await tick();assert.equal(agon.system.attributes.hp.value,-1);
+
+ // Synthetic actor, both mitigated and real continuous damage: a proven
+ // zero-damage bleed does not force failure. The bleed receipt is exact.
+ const wounded=makeActor("Scene.ag.Token.ag.Actor.base",{hp:-2});
+ await api.reconcile(wounded);
+ let syntheticRolls=0;
+ wounded.rollAbilityTest=async()=>{syntheticRolls++;return {rolls:[{natural:12,total:10}]}};
+ const bc={id:"bleed-combat",started:true,round:1,turn:0,combatant:{id:"bc",actor:wounded}};
+ combats.set(bc.id,bc);
+ const bleedSource=trait(wounded,"bleed-source");
+ let amount=0;
+ addon.api.bleed={list:actor=>actor===wounded?[bleedSource]:[],process:async()=>({applied:true,amount}),
+  receipts:()=>[{combatId:bc.id,combatantId:"bc",round:bc.round,actorUuid:wounded.uuid,status:"applied",appliedAmount:amount}]};
+ fire("updateCombat",bc,{turn:0});await tick();assert.equal(syntheticRolls,1);assert.equal(has(wounded,"stable"),true);
+ await wounded.update({"system.attributes.hp.value":-3});await tick();
+ amount=2;bc.round=2;fire("updateCombat",bc,{round:2});await tick();
+ assert.equal(syntheticRolls,1);assert.equal(wounded.system.attributes.hp.value,-4);assert.equal(has(wounded,"dying"),true);
+ delete addon.api.bleed;
+
  await game.settings.set(NS,"healthAgonyEnabled",false);
  await game.settings.set(NS,"healthStrenuousEnabled",false);
 

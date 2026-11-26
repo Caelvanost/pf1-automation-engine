@@ -350,12 +350,22 @@ async function hcHealthTransition(actor,delta,expectedHp){
  if(delta>0)await hcStabilize(actor);
  else if(delta<0)await hcClearStable(actor);
 }
-function hcOngoingDamage(actor){
- if(actor.statuses?.has?.("bleed"))return true;
- if(hcModule()?.api?.bleed?.list?.(actor)?.length)return true;
- return [...hcArray(actor.items),...hcArray(actor.effects)].some(d=>
+function hcOngoingDamage(actor,bleedInfo=null){
+ // An explicit generic source means continuous damage is in effect.
+ if([...hcArray(actor.items),...hcArray(actor.effects)].some(d=>
   hcFlag(d,"ongoingDamage")===true&&d.isActive!==false&&d.activeState!==false&&
-  d.disabled!==true&&d.isSuppressed!==true);
+  d.disabled!==true&&d.isSuppressed!==true))return true;
+ if(bleedInfo?.appliedAmount>0)return true;
+ if(!actor.statuses?.has?.("bleed"))return false;
+ // An existing native Bleed condition with no configured amount is still
+ // a recognized ongoing source. But a proven, fully prevented configured
+ // bleed must not cause automatic failure on its own.
+ if(bleedInfo?.appliedAmount===0){
+  const sources=new Set(bleedInfo.sourceUuids);
+  return [...actor.allApplicableEffects()].some(e=>e.statuses?.has?.("bleed")&&
+   e.disabled!==true&&e.isSuppressed!==true&&!sources.has(e.uuid)&&!sources.has(e.parent?.uuid));
+ }
+ return true;
 }
 function hcDying(actor){
  const p=hcPlan(actor);
@@ -375,7 +385,7 @@ async function hcReport(actor,message){
 const hcTurnKey=(combatId,combatantId)=>hcRecordId(combatId,combatantId);
 const hcTurnCurrent=(combat,entry)=>Boolean(combat?.started&&combat.round===entry.round&&
  combat.combatant?.id===entry.combatantId&&combat.combatant?.actor?.uuid===entry.actorUuid);
-async function hcAgonyTurn(actor,entry,combat){
+async function hcAgonyTurn(actor,entry,combat,bleedInfo=null){
  if(!hcAgonyEnabled()||!hcLeader()||!hcTurnCurrent(combat,entry)||!hcDying(actor))return {skipped:"not-dying-or-turn-changed"};
  const key=hcTurnKey(entry.combatId,entry.combatantId),path="flags."+HC_NS+"."+HC_AGONY_TURNS+"."+key;
  const old=hcFlag(actor,HC_AGONY_TURNS)?.[key];
@@ -383,9 +393,9 @@ async function hcAgonyTurn(actor,entry,combat){
  const receipt={...entry,state:"pending"};
  await actor.update({[path]:receipt},hcInternal());
  const initial=hcSnapshot(actor);
- if(!hcDying(actor)||!hcTurnCurrent(combat,entry)||!hcLeader())return {pending:true};
+ if(!hcAgonyEnabled()||!hcDying(actor)||!hcTurnCurrent(combat,entry)||!hcLeader())return {pending:true};
  let success=false,natural=null,total=null;
- const ongoing=hcOngoingDamage(actor);
+ const ongoing=hcOngoingDamage(actor,bleedInfo);
  if(!ongoing){
   // rollAbilityTest builds the native Constitution check, including typed
   // modifiers. The v11.11 d20Roll bonus option is consumed before evaluation.
@@ -393,14 +403,14 @@ async function hcAgonyTurn(actor,entry,combat){
    bonus:String(initial.hp)+"["+hcLang("PV négatifs","Negative HP")+"]"});
   const roll=message?.rolls?.[0];
   natural=roll?.natural;total=roll?.total;
-  if(!Number.isFinite(natural)||!Number.isFinite(total)||natural<1||natural>20)
+  if(!Number.isFinite(natural)||!Number.isFinite(total)||natural<1||natural>20||roll?.isStatic===true)
    throw Error("Native Constitution roll not verified; pending agony receipt requires GM review.");
   success=natural===20||total>=10;
  }
  // No late mutation after turn advance, healing, death, GM handover or
  // unrelated damage during an asynchronous roll. Pending receipt is manual.
  const current=hcSnapshot(actor);
- if(!hcLeader()||!hcTurnCurrent(combat,entry)||!hcDying(actor)||
+ if(!hcAgonyEnabled()||!hcLeader()||!hcTurnCurrent(combat,entry)||!hcDying(actor)||
     current.hp!==initial.hp)return {pending:true};
  const done={...receipt,state:"applied",success,ongoing,natural,total};
  if(success){
@@ -428,12 +438,18 @@ function hcScheduleAgony(combat){
   // Existing Bleed engine uses its own persistent turn receipt; join it
   // before agony if configured, so death or HP penalty reflects that loss.
   const bleed=hcModule()?.api?.bleed;
-  if(bleed?.list?.(actor)?.length){
+  let bleedInfo=null;
+  const sources=bleed?.list?.(actor)??[];
+  if(sources.length){
    const r=await bleed.process(combat);
-   if(r?.pending)throw Error("Bleed receipt pending; agony requires GM review.");
+   const receipt=bleed.receipts?.().find(x=>x.combatId===entry.combatId&&
+    x.combatantId===entry.combatantId&&x.round===entry.round&&x.actorUuid===entry.actorUuid);
+   if(r?.pending||receipt?.status!=="applied"||!Number.isFinite(receipt?.appliedAmount))
+    throw Error("Bleed outcome not verified; agony requires GM review.");
+   bleedInfo={appliedAmount:receipt.appliedAmount,sourceUuids:sources.map(d=>d.uuid)};
   }
   if(!hcTurnCurrent(combat,entry))return;
-  return hcEnqueue(actor,current=>hcAgonyTurn(current,entry,combat));
+  return hcEnqueue(actor,current=>hcAgonyTurn(current,entry,combat,bleedInfo));
  }).catch(error=>console.warn("[PF1AE][HealthConditions] Agony turn requires review",entry,error));
 }
 const HC_STRENUOUS=new Set(["standard","attack","aoo","full","round"]);

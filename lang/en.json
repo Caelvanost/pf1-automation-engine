@@ -61,7 +61,15 @@
       },
       "HealthConditions": {
         "Name": "Health condition management (alpha)",
-        "Hint": "Disable Improved Conditions and pass the native disposable Actor probe before enabling. Strenuous action costs and automatic stabilization are not implemented yet."
+        "Hint": "Disable Improved Conditions, then pass the native probe on temporary actors before enabling. Dying checks and strenuous actions have separate settings."
+      },
+      "HealthAgony": {
+        "Name": "Dying checks and stabilization (alpha)",
+        "Hint": "Start-of-turn Constitution check, stabilization by healing and HP loss on failure. Requires validated health conditions."
+      },
+      "HealthStrenuous": {
+        "Name": "Strenuous actions at nonpositive HP (alpha)",
+        "Hint": "Lose 1 real HP after a completed strenuous action while conscious and disabled. Deferred healing cards and ambiguous cases remain manual."
       }
     },
     "Range": {
@@ -219,9 +227,5 @@
       "SkipDialog": "Skip use dialog",
       "Hint": "Use this action directly with its default parameters, without opening the native use configuration dialog."
     }
-  },
-  "PF1AE.Settings.HealthAgony.Name": "Dying checks and stabilization (alpha)",
-  "PF1AE.Settings.HealthAgony.Hint": "Start-of-turn Constitution check, stabilization by healing and HP loss on failure. Requires validated health conditions.",
-  "PF1AE.Settings.HealthStrenuous.Name": "Strenuous actions at nonpositive HP (alpha)",
-  "PF1AE.Settings.HealthStrenuous.Hint": "Lose 1 real HP after a completed strenuous action while conscious and disabled. Deferred healing cards and ambiguous cases remain manual."
+  }
 }
