@@ -1,3 +1,10 @@
+# 1.48.2 — Validation automatique du moteur de santé
+
+- Supprime le prérequis de lancement manuel de la macro : validation native automatique par le MJ élu lors de l'activation/démarrage si nécessaire, avec déduplication et échec fermé.
+- Preuve liée au build Foundry, version PF1 et révision du contrat de provenance, non à la version générale PF1AE. Migration des preuves natives reconnues sur le même environnement (1.46.3, 1.47.0, 1.48.0, 1.48.1). Pas de migration des anciennes preuves à porteurs Buff.
+- Incompatibilité ou échec : avertissement MJ, diagnostic consultable, pas de répétition automatique en boucle. Réactivation ou diagnostic manuel permet de réessayer ; macro toujours disponible. Changements d'acteurs intervenus pendant la validation réconciliés ensuite sans rejouer les événements historiques ni les tours manqués.
+- Aucun paramètre supplémentaire ni règle particulière. PF1 11.11 / Foundry 13 uniquement ; autres versions restent bloquées jusqu'à validation de leur compatibilité par le développement.
+
 # 1.48.1 — Test de stabilisation sur clic dans le chat
 
 - Au début du tour, carte de Constitution DD 10 à destination des propriétaires et MJ, sans lancer le dé. Le clic autorisé déclenche le jet PF1 natif par le MJ élu (malus de PV négatifs actuel, 20 naturel).
