@@ -94,7 +94,7 @@ const context={game,CONFIG,pf1:{registry:{conditions}},Hooks:{on,once:on},consol
  }}}
 };
 context.globalThis=context;
-vm.runInNewContext(src,context);fire("init");fire("ready");
+vm.runInNewContext(src+"\nglobalThis.panelRefresh=hcRefreshPanel;",context);fire("init");fire("ready");
 const api=addon.api.healthConditions;
 const tick=async()=>{for(let i=0;i<30;i++)await new Promise(r=>setTimeout(r,0))};
 const has=(actor,status)=>actor.statuses.has(status);
@@ -122,6 +122,43 @@ const owned=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthCond
  assert.equal(getter.call(carrier.effect),true);carrier.effect.visible=false;assert.equal(getter.call(carrier.effect),false);carrier.effect.visible=true;
  const direct={uuid:"direct",img:carrier.effect.img,statuses:new Set(["disabled"]),parent:a,actor:a,disabled:false};a.effects.push(direct);
  assert.equal(getter.call(carrier.effect),false);assert.equal(getter.call(direct),true);direct.visible=false;assert.equal(getter.call(carrier.effect),true);a.effects.pop();
+
+ // Reproduce the reported external side panel: both rows reference the
+ // same exact ActiveEffect, with a relative UUID as in the actual HTML.
+ const panelRow=(kind,data)=>{
+  const attrs=new Set();
+  return {kind,dataset:{...data},attrs,toggleAttribute(k,v){if(v)attrs.add(k);else attrs.delete(k)},
+   removeAttribute(k){attrs.delete(k)},matches(s){return s.startsWith(".buff-list.buffs")&&this.kind==="buff"}};
+ };
+ const checkPanel=async actor=>{
+  const c=owned(actor)[0],status=c.flags[NS].healthConditionSource.status;
+  const relative=c.effect.uuid.slice(actor.uuid.length);
+  const buff=panelRow("buff",{uuid:actor.uuid,itemId:c.id,effectUuid:relative});
+  const condition=panelRow("condition",{uuid:actor.uuid,conditionId:status,effectUuid:relative});
+  const wrongActor=panelRow("condition",{uuid:"Actor.other",conditionId:status,effectUuid:relative});
+  const ordinaryRow=panelRow("buff",{uuid:actor.uuid,itemId:"ordinary",effectUuid:relative});
+  const wrongEffect=panelRow("buff",{uuid:actor.uuid,itemId:c.id,effectUuid:relative+"x"});
+  const wrongStatus=panelRow("condition",{uuid:actor.uuid,conditionId:"helpless",effectUuid:relative});
+  let rows=[buff,condition,ordinaryRow,wrongEffect,wrongActor,wrongStatus];
+  const root={querySelectorAll(s){
+   if(s.startsWith(".buff-list.buffs"))return rows.filter(r=>r.kind==="buff");
+   if(s.startsWith(".buff-list.conditions"))return rows.filter(r=>r.kind==="condition");
+   return rows.filter(r=>r.attrs.has("data-pf1ae-health-duplicate"));
+  }};
+  const marker="data-pf1ae-health-duplicate",resolve=async id=>documents.get(id);
+  await context.panelRefresh(root,resolve);
+  assert.equal(buff.attrs.has(marker),true);
+  for(const r of [condition,ordinaryRow,wrongEffect,wrongActor,wrongStatus])assert.equal(r.attrs.has(marker),false);
+  // A full effect UUID is equivalent to the observed relative UUID.
+  condition.dataset.effectUuid=c.effect.uuid;await context.panelRefresh(root,resolve);assert.equal(buff.attrs.has(marker),true);
+  rows=rows.filter(r=>r!==condition);await context.panelRefresh(root,resolve);assert.equal(buff.attrs.has(marker),false);
+  rows.push(condition);await context.panelRefresh(root,resolve);assert.equal(buff.attrs.has(marker),true);
+  buff.kind="other";await context.panelRefresh(root,resolve);assert.equal(buff.attrs.has(marker),false);
+  buff.kind="buff";await context.panelRefresh(root,async()=>null);assert.equal(buff.attrs.has(marker),false);
+  assert.equal(actor.items.get(c.id),c);assert.equal(actor.statuses.has(status),true);
+ };
+ await checkPanel(a);
+
  const s1=trait(a,"source1"),s2=trait(a,"source2");
  await a.update({"system.attributes.hp.value":-3});await tick();
  for(const s of ["dying","unconscious","prone"])assert.equal(has(a,s),true);
@@ -170,6 +207,7 @@ const owned=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthCond
  const synth=makeActor("Scene.s.Token.t.Actor.a",{hp:-1});const ss=trait(synth,"x");
  await api.register({actor:synth,sourceUuid:ss.uuid,key:"unique",suppress:["unconscious","prone","dying"],apply:["disabled"]});
  assert.equal(has(synth,"disabled"),true);assert.equal(has(a,"disabled"),false);
+ await checkPanel(synth);
  const combat={id:"c",started:true};combats.set("c",combat);
  await api.register({actor:synth,sourceUuid:ss.uuid,key:"combat-bound",combatId:"c",suppress:["dying"]});
  combats.delete("c");await api.reconcile(synth);assert.equal(api.list(synth).length,1);

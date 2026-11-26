@@ -1,3 +1,9 @@
+# 1.46.2 — Affichage des états dans le panneau latéral
+
+- Corrige le doublon observé hors TokenHUD : une ligne buff temporaire et une ligne condition native pointent vers le même ActiveEffect.
+- Filtrage visuel par UUID d'acteur (lié ou synthétique), ID de buff, provenance PF1AE validée, UUID d'effet relatif ou complet et identifiant de condition primaire. Lignes natives, états secondaires et buffs ordinaires conservés.
+- Réapplique le filtre lors du rendu du panneau sans modifier ses documents ni ses gestionnaires ; retire le masquage si la condition native disparaît. Tests de simulation, vérification visuelle réelle requise.
+
 # 1.46.1 — Présentation native des états de santé
 
 - Retire uniquement les entrées `buff-<id>` des porteurs de santé PF1AE du HUD PF1 ; conserve les choix natifs et les buffs ordinaires.

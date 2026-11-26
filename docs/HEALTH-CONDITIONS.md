@@ -34,6 +34,10 @@ Only after successful probe enable **Health condition management (alpha)**. No r
 
 PF1's TokenHUDPF adds a separate buff-ID choice for every buff, including technical carriers. The engine filters only verified managed health carrier choices; native condition choices and all other buffs remain. Carrier names use the native localized condition label and old names are normalized in place on reconciliation. PF1's native ActiveEffectPF.isTemporary decision is preserved; only duplicate visible managed icons of the same primary condition and image are suppressed. Independent effects, overlays, source ownership, statuses and mechanical application are unchanged. The carrier Items remain on the Actor for provenance. Repeat the runtime probe after upgrading, then validate actual HUD and token display on linked/unlinked Actors. Do not edit the technical carriers.
 
+### Side panel (1.46.2)
+
+The reported separate panel has `.buff-list.buffs` and `.buff-list.conditions` rows outside the native Token HUD. A client-side observer marks only a verified managed buff row whose exact actor UUID, effect UUID (relative or absolute), and primary condition ID are also present in a native condition row. CSS hides that redundant row; no documents or panel handlers are modified. Ordinary buffs, secondary conditions and unmatched rows remain visible. Refreshes are coalesced, and the marker is removed when the matching row disappears. This is a compatibility adapter for the observed markup, not an assertion about all third-party panels. Repeat the provenance probe and visually check linked/unlinked actors after upgrading.
+
 ## API
 
 ```js

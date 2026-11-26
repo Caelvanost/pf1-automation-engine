@@ -217,9 +217,93 @@ function hcVisibleCarrier(effect,nativeVisible,original){
  }
  return nativeVisible;
 }
+// Optional side-panel compatibility. Observed markup contains a separate
+// temporary buff row and native condition row for the exact same effect.
+// Never identify a carrier by its translated label, image, or item ID alone.
+const HC_PANEL_BUFF=".buff-list.buffs li.buff[data-item-id][data-uuid][data-effect-uuid]";
+const HC_PANEL_CONDITION=".buff-list.conditions li.condition[data-condition-id][data-uuid][data-effect-uuid]";
+const HC_PANEL_MARK="data-pf1ae-health-duplicate";
+const HC_PANEL_SELECTOR=HC_PANEL_BUFF+","+HC_PANEL_CONDITION+",["+HC_PANEL_MARK+"]";
+function hcPanelEffectUuid(data){
+ const id=data?.effectUuid,actorUuid=data?.uuid;
+ if(typeof id!=="string"||!id||typeof actorUuid!=="string"||!actorUuid)return null;
+ return id.startsWith(".")?actorUuid+id:id;
+}
+function hcPanelKey(data,status){
+ return JSON.stringify([data.uuid,hcPanelEffectUuid(data),status]);
+}
+function hcPanelDuplicate(row,actor,nativeKeys){
+ const d=row.dataset;
+ if(!actor||actor.uuid!==d.uuid)return false;
+ const item=actor.items?.get?.(d.itemId);
+ if(!hcDisplayCarrier(item,actor)||item.isActive===false)return false;
+ const f=hcSource(item,actor),effect=item.effect??hcArray(item.effects)[0];
+ if(!effect||effect.uuid!==hcPanelEffectUuid(d)||!hcEffectIsValid(item,actor,f.status))return false;
+ return nativeKeys.has(hcPanelKey(d,f.status));
+}
+async function hcRefreshPanel(root,resolve=uuid=>fromUuid(uuid)){
+ // Each scan is presentation-only. Resolve a synthetic Actor by its complete
+ // UUID, once per actor per scan, never by its base actor ID.
+ const rows=[...root.querySelectorAll(HC_PANEL_BUFF)];
+ const actors=new Map();
+ await Promise.all([...new Set(rows.map(r=>r.dataset.uuid))].map(async uuid=>{
+  try{actors.set(uuid,await resolve(uuid))}catch(_){actors.set(uuid,null)}
+ }));
+ // Read current markup AFTER awaits, since a panel may have been rerendered.
+ const nativeKeys=new Set([...root.querySelectorAll(HC_PANEL_CONDITION)]
+  .map(row=>hcPanelKey(row.dataset,row.dataset.conditionId)));
+ for(const row of root.querySelectorAll(HC_PANEL_BUFF)){
+  const hide=hcPanelDuplicate(row,actors.get(row.dataset.uuid),nativeKeys);
+  row.toggleAttribute(HC_PANEL_MARK,hide);
+ }
+ // If a panel reuses nodes for a different purpose, undo our marker.
+ for(const row of root.querySelectorAll("["+HC_PANEL_MARK+"]"))
+  if(!row.matches(HC_PANEL_BUFF))row.removeAttribute(HC_PANEL_MARK);
+}
+let HC_PANEL_OBSERVER=null,HC_PANEL_PENDING=false,HC_PANEL_RUNNING=false,HC_PANEL_DIRTY=false;
+function hcSchedulePanel(){
+ if(!HC_PANEL_OBSERVER)return;
+ HC_PANEL_DIRTY=true;
+ if(HC_PANEL_PENDING||HC_PANEL_RUNNING)return;
+ HC_PANEL_PENDING=true;
+ requestAnimationFrame(async()=>{
+  HC_PANEL_PENDING=false;HC_PANEL_RUNNING=true;HC_PANEL_DIRTY=false;
+  try{await hcRefreshPanel(document.body)}
+  catch(e){console.warn("[PF1AE][HealthConditions] Side panel presentation",e)}
+  finally{HC_PANEL_RUNNING=false;if(HC_PANEL_DIRTY)hcSchedulePanel()}
+ });
+}
+function hcPanelMutationRelevant(m){
+ const el=m.target?.nodeType===1?m.target:m.target?.parentElement;
+ if(el?.closest?.(".buff-list"))return true;
+ if(m.type!=="childList")return false;
+ return [...m.addedNodes,...m.removedNodes].some(n=>n.nodeType===1&&
+  (n.matches?.(".buff-list")||n.querySelector?.(".buff-list")));
+}
+function hcInstallPanelDisplay(){
+ if(HC_PANEL_OBSERVER||typeof document==="undefined"||!document.body||
+    typeof MutationObserver!=="function"||typeof requestAnimationFrame!=="function")return;
+ // A dedicated attribute avoids altering the third-party panel's own DOM,
+ // event handlers, or document lifecycle. Never set hideFromToken.
+ const style=document.createElement("style");
+ style.id="pf1ae-health-panel-display";
+ style.textContent="["+HC_PANEL_MARK+"] { display: none !important; }";
+ if(!document.getElementById(style.id))document.head.append(style);
+ HC_PANEL_OBSERVER=new MutationObserver(records=>{
+  if(records.some(hcPanelMutationRelevant))hcSchedulePanel();
+ });
+ HC_PANEL_OBSERVER.observe(document.body,{subtree:true,childList:true,attributes:true,
+  attributeFilter:["class","data-item-id","data-uuid","data-effect-uuid","data-condition-id"]});
+ // Do not observe our own marker (avoids mutation/refresh loops).
+ for(const hook of ["updateActor","createItem","updateItem","deleteItem","createActiveEffect",
+  "updateActiveEffect","deleteActiveEffect","canvasReady"])Hooks.on(hook,hcSchedulePanel);
+ hcSchedulePanel();
+}
+
 const HC_DISPLAY_MARK=Symbol.for("pf1ae.healthConditionDisplay");
 function hcInstallDisplay(){
  if(game.system?.id!=="pf1"||game.system?.version!=="11.11"||game.release?.generation!==13)return;
+ hcInstallPanelDisplay();
  const hud=globalThis.CONFIG?.Token?.hudClass?.prototype;
  const fn=hud?._getStatusEffectChoices;
  if(typeof fn==="function"&&!fn[HC_DISPLAY_MARK]){
