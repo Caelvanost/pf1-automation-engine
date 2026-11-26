@@ -1,4 +1,4 @@
-# 1.46.0-alpha.1 — Socle expérimental Health Conditions
+# 1.46.0 — Socle expérimental (alpha 1) Health Conditions
 
 - API générique `healthConditions` : registre persistant par acteur/objet/clé, politique de suppression ciblée des contributions de PV létaux, sources non létales séparées, réconciliation MJ élu et nettoyage des sources orphelines.
 - ActiveEffects transférés depuis des buffs natifs dédiés : pas de suppression des états indépendants ni de don fictif. Mort native au seuil officiel des créatures ordinaires, jamais neutralisée ni retirée automatiquement.
