@@ -14,6 +14,8 @@ const HC_AGONY_TURNS="healthAgonyTurns",HC_ACTION_COSTS="healthActionCosts";
 const HC_INTERNAL="pf1aeHealthConditionsInternal";
 const HC_ALLOWED=new Set(["disabled","dying","unconscious","prone","staggered"]);
 const HC_WORK=new Map();
+const HC_EVENT_CALL="PF1AE:health:changed",HC_EVENT_HOOK="pf1aeHealthChanged";
+const HC_EVENT_ACTIVE=new Set(),HC_EVENT_OPTIONS=new WeakMap();
 const hcArray=v=>Array.isArray(v)?v:v?.contents??(typeof v?.values==="function"?[...v.values()]:[]);
 const hcModule=()=>game.modules.get(HC_NS);
 const hcLeader=()=>hcModule()?.api?.generic?.isLeader?.()===true&&game.user?.isGM===true;
@@ -81,7 +83,7 @@ function hcRecords(actor){
   const item=hcItem(actor,r?.sourceUuid);
   if(!hcValidText(r?.sourceUuid,400)||!hcValidText(r?.key,100)||
      id!==hcRecordId(r.sourceUuid,r.key)||r.actorUuid!==actor.uuid||
-     !item||item.isActive===false||!Array.isArray(r.suppress)||!Array.isArray(r.apply)||
+     !item||item.isActive===false||item.activeState===false||!Array.isArray(r.suppress)||!Array.isArray(r.apply)||
      [...r.suppress,...r.apply].some(s=>!HC_ALLOWED.has(s))||
      (r.combatId!=null&&!hcCombatActive(r.combatId))){
    invalid.push(id);continue;
@@ -350,6 +352,109 @@ async function hcHealthTransition(actor,delta,expectedHp){
  if(delta>0)await hcStabilize(actor);
  else if(delta<0)await hcClearStable(actor);
 }
+// Generic incoming health event. A real, committed HP change is required;
+// no discovery on ready, no fake attacks, and no translated ability names.
+function hcEvent(actor,before,after,reason,userId=null){
+ const s=hcSnapshot(actor);
+ if(!s.supported||!Number.isFinite(before)||!Number.isFinite(after)||before===after||s.hp!==after)return null;
+ const matches=[];
+ for(const combat of hcArray(game.combats)){
+  if(!combat.started)continue;
+  const combatants=hcArray(combat.combatants);
+  for(const c of combatants)if(c.actor?.uuid===actor.uuid)matches.push({combat,c});
+ }
+ const match=matches.length===1?matches[0]:null,combat=match?.combat;
+ return Object.freeze({type:"health:changed",eventId:foundry.utils.randomID(),actorUuid:actor.uuid,
+  hpBefore:before,hpAfter:after,hpDelta:after-before,reason,userId,
+  reducedToZero:before>0&&after<=0,enteredNegative:before>=0&&after<0,
+  recoveredNonnegative:before<0&&after>=0,enteredPositive:before<=0&&after>0,
+  constitution:s.con,deathByHealth:s.deathByHealth,dead:s.dead,nonliving:s.nonliving,
+  combatId:combat?.id??null,combatantId:match?.c.id??null,
+  round:combat?.round??null,activeCombatantId:combat?.combatant?.id??null});
+}
+function hcEventCalls(item){
+ return hcArray(item?.scriptCalls??item?.system?.scriptCalls).filter(c=>
+  c.category==="postUse"&&c.name===HC_EVENT_CALL&&typeof c.execute==="function");
+}
+function hcEventSourceActive(actor,item){
+ return hcItem(actor,item?.uuid)===item&&item.isActive!==false&&item.activeState!==false;
+}
+function hcEventApproved(actor,item,call){
+ // Same native Script Call approval policy as the bleed service, including
+ // Trusted Table Mode. Never execute arbitrary code from a remote message.
+ const owners=hcArray(game.users).some(u=>!u.isGM&&actor.testUserPermission?.(u,"OWNER")===true);
+ if(!owners)return true;
+ return hcModule()?.api?.scriptApprovals?.check?.(actor,item,call)?.approved===true;
+}
+function hcEventCurrent(actor,event){
+ const s=hcSnapshot(actor);
+ return hcLeader()&&hcAvailability().available&&s.supported&&s.hp===event.hpAfter;
+}
+async function hcRunHealthEvent(actor,event){
+ if(!event||!hcEventCurrent(actor,event)||event.dead)return;
+ if(HC_EVENT_ACTIVE.has(actor.uuid))return;
+ HC_EVENT_ACTIVE.add(actor.uuid);
+ try{
+  for(const item of hcArray(actor.items).sort((a,b)=>a.uuid.localeCompare(b.uuid))){
+   if(!hcEventCurrent(actor,event)||hcSnapshot(actor).dead)break;
+   if(!hcEventSourceActive(actor,item))continue;
+   const calls=hcEventCalls(item);
+   if(calls.length!==1)continue;
+   const call=calls[0];
+   if(!hcEventApproved(actor,item,call))continue;
+   let open=true;
+   const changes=new Map();
+   // Only the calling embedded Item can write its own exception keys.
+   // Stage writes until the native script completes; no recursive queue
+   // awaits, and failed scripts cannot commit a staged exception.
+   const assertOpen=()=>{
+    if(!open||!hcEventCurrent(actor,event)||!hcEventSourceActive(actor,item))
+     throw Error("Health event scope expired.");
+   };
+   const context=Object.freeze({...event,sourceUuid:item.uuid,
+    register(options={}){
+     assertOpen();
+     const {key}=options;
+     if(!hcValidText(key,100))throw Error("Invalid health exception key.");
+     const {id,row}=hcBuildRecord(actor,item.uuid,key,options);
+     changes.set(id,row);
+     return {staged:true,id};
+    },
+    unregister({key}={}){
+     assertOpen();
+     if(!hcValidText(key,100))throw Error("Invalid health exception key.");
+     const id=hcRecordId(item.uuid,key);changes.set(id,null);
+     return {staged:true,id};
+    }
+   });
+   try{
+    await call.execute({action:null},{event:context,api:hcModule().api.healthConditions});
+    open=false;
+    if(!hcEventCurrent(actor,event)||hcSnapshot(actor).dead||!hcEventSourceActive(actor,item)||
+       hcEventCalls(item)[0]!==call||!hcEventApproved(actor,item,call))continue;
+    const update={};
+    for(const [id,row] of changes)update["flags."+HC_NS+"."+HC_RECORDS+"."+(row?id:"-="+id)]=row;
+    if(Object.keys(update).length)await actor.update(update,hcInternal());
+   }catch(error){
+    console.warn("[PF1AE][HealthConditions] Health Script Call failed",item.uuid,error);
+   }finally{open=false}
+  }
+ }finally{HC_EVENT_ACTIVE.delete(actor.uuid)}
+}
+function hcNotifyHealthEvent(actor,event){
+ if(!event||!hcEventCurrent(actor,event))return;
+ // Read-only notification AFTER the final reconciliation. Foundry hooks
+ // are synchronous notifications, not a way to delay the state engine.
+ Hooks.callAll?.(HC_EVENT_HOOK,actor,event);
+}
+async function hcProcessHealthEvent(actor,before,after,reason,userId=null,{transition=true}={}){
+ const event=hcEvent(actor,before,after,reason,userId);
+ if(!event)return null;
+ if(transition)await hcHealthTransition(actor,event.hpDelta,after);
+ if(!event.dead)await hcRunHealthEvent(actor,event);
+ return event;
+}
+
 function hcOngoingDamage(actor,bleedInfo=null){
  // An explicit generic source means continuous damage is in effect.
  if([...hcArray(actor.items),...hcArray(actor.effects)].some(d=>
@@ -413,14 +518,17 @@ async function hcAgonyTurn(actor,entry,combat,bleedInfo=null){
  if(!hcAgonyEnabled()||!hcLeader()||!hcTurnCurrent(combat,entry)||!hcDying(actor)||
     current.hp!==initial.hp)return {pending:true};
  const done={...receipt,state:"applied",success,ongoing,natural,total};
+ let healthEvent=null;
  if(success){
   await hcStabilize(actor);
   await actor.update({[path]:done},hcInternal());
  }else{
   // Atomic Actor update: receipt and -1 real HP in the same mutation.
   await actor.update({[path]:done,"system.attributes.hp.value":current.hp-1},hcInternal());
+  healthEvent=await hcProcessHealthEvent(actor,current.hp,actor.system.attributes.hp.value,"agony",game.user.id,{transition:false});
  }
  await hcReconcileInternal(actor);
+ hcNotifyHealthEvent(actor,healthEvent);
  await hcReport(actor,success?hcLang("Agonie : état stabilisé.","Dying: stabilized."):
   ongoing?hcLang("Agonie : échec automatique (dégâts continus), −1 PV.","Dying: automatic failure (ongoing damage), −1 HP."):
   hcLang("Agonie : échec, −1 PV.","Dying: failed check, −1 HP."));
@@ -506,7 +614,8 @@ async function hcConsumeActionCosts(actor){
   if(!hcLeader()||!hcStrainEnabled())return;
   // Receipt and HP loss commit together: no separate retry of a charge.
   await actor.update({[path+".state"]:"applied","system.attributes.hp.value":s.hp-1},hcInternal());
-  await hcHealthTransition(actor,-1,s.hp-1);
+  const event=await hcProcessHealthEvent(actor,s.hp,actor.system.attributes.hp.value,"strenuous",game.user.id);
+  await hcReconcileInternal(actor);hcNotifyHealthEvent(actor,event);
   await hcReport(actor,hcLang("Action éprouvante : −1 PV.","Strenuous action: −1 HP."));
  }
  // Keep bounded applied history without deleting unresolved review rows.
@@ -603,12 +712,9 @@ function hcPolicyList(value){
  if(!Array.isArray(value)||value.some(s=>!HC_ALLOWED.has(s)))throw Error("Unsupported health condition (Dead cannot be suppressed or applied).");
  return [...new Set(value)];
 }
-async function hcRegister(options){
- const availability=hcAvailability();
- if(!availability.available)throw Error("Health Conditions unavailable: "+availability.reason);
- const {actor,sourceUuid,key,id}=await hcResolve(options);
- const source=hcItem(actor,sourceUuid);
- if(!source||source.isActive===false)throw Error("Source must be an active embedded Item on this exact Actor.");
+function hcBuildRecord(actor,sourceUuid,key,options){
+ const id=hcRecordId(sourceUuid,key),source=hcItem(actor,sourceUuid);
+ if(!source||source.isActive===false||source.activeState===false)throw Error("Source must be an active embedded Item on this exact Actor.");
  const s=hcSnapshot(actor);
  if(!s.supported||s.dead)throw Error("Actor cannot receive a health exception: "+(s.reason??"dead"));
  const suppress=hcPolicyList(options.suppress),apply=hcPolicyList(options.apply);
@@ -616,12 +722,21 @@ async function hcRegister(options){
  const combatId=options.combatId??null;
  if(combatId!=null&&(!hcValidText(combatId,100)||!hcCombatActive(combatId)))throw Error("Combat is not active.");
  const row={actorUuid:actor.uuid,sourceUuid,key,suppress,apply,combatId};
+ return {id,row};
+}
+async function hcRegister(options){
+ const availability=hcAvailability();
+ if(!availability.available)throw Error("Health Conditions unavailable: "+availability.reason);
+ const {actor,sourceUuid,key}=await hcResolve(options);
+ if(HC_EVENT_ACTIVE.has(actor.uuid))throw Error("Use event.register() inside a health Script Call.");
+ const {id,row}=hcBuildRecord(actor,sourceUuid,key,options);
  // Individual flat flag path; parallel exceptions cannot replace the registry.
  await actor.update({["flags."+HC_NS+"."+HC_RECORDS+"."+id]:row});
  return {registered:true,id,...(hcLeader()?await hcQueue(actor):{queued:true})};
 }
 async function hcUnregister(options){
  const {actor,id}=await hcResolve(options);
+ if(HC_EVENT_ACTIVE.has(actor.uuid))throw Error("Use event.unregister() inside a health Script Call.");
  // Remove only this source/key tuple. Allow cleanup even when provider disabled.
  await hcDropRecords(actor,[id],{internal:false});
  return {unregistered:true,id,...(hcLeader()?await hcQueue(actor):{queued:true})};
@@ -629,6 +744,7 @@ async function hcUnregister(options){
 async function hcRequestReconcile(actor){
  if(!hcAvailability().available)throw Error("Health Conditions unavailable: "+hcAvailability().reason);
  if(!hcOwned(actor))throw Error("Actor OWNER permission required.");
+ if(HC_EVENT_ACTIVE.has(actor.uuid))throw Error("Health event reconciliation is automatic after the Script Call.");
  if(hcLeader())return hcQueue(actor);
  // Native Actor update, no custom player-to-GM executable payload.
  await actor.update({["flags."+HC_NS+".healthReconcileRequest"]:foundry.utils.randomID()});
@@ -756,13 +872,26 @@ async function hcProbe(){
  await game.settings.set(HC_NS,HC_PROOF,hcFingerprint());
  return result;
 }
-const hcOnActor=(actor,changed,options)=>{
+const hcOnActor=(actor,changed,options,userId)=>{
  if(options?.[HC_INTERNAL]||hcFlag(actor,"healthProbe"))return;
  const delta=options?.pf1?.deltas?.hp?.offset,expected=actor.system?.attributes?.hp?.value;
+ const real=Number.isFinite(delta)&&delta!==0&&Number.isFinite(expected);
+ if(real&&options&&typeof options==="object"&&hcLeader()&&hcAvailability().available){
+  // A bulk update may reuse the same options object for different actors.
+  const key=JSON.stringify([actor.uuid,expected,delta]);
+  let seen=HC_EVENT_OPTIONS.get(options);
+  if(!seen)HC_EVENT_OPTIONS.set(options,seen=new Set());
+  if(seen.has(key))return;
+  seen.add(key);
+ }
  void hcEnqueue(actor,async current=>{
-  if(Number.isFinite(delta)&&delta!==0)await hcHealthTransition(current,delta,expected);
+  const event=real?await hcProcessHealthEvent(current,expected-delta,expected,"native",userId??null):null;
+  // Reconcile and notify before processing a queued action cost (it may
+  // produce a separate health event with a different committed HP value).
+  const result=await hcReconcileInternal(current);
+  hcNotifyHealthEvent(current,event);
   await hcConsumeActionCosts(current);
-  return hcReconcileInternal(current);
+  return result;
  });
 };
 const hcOnItem=(item,change,options)=>{
@@ -790,6 +919,7 @@ Hooks.once("ready",()=>{
  mod.api??={};
  mod.api.healthConditions=Object.freeze({
   isAvailable:()=>hcAvailability().available,diagnostics:hcDiagnostics,
+  eventHook:HC_EVENT_HOOK,subscriptionName:HC_EVENT_CALL,
   list:actor=>hcRecords(actor).valid.map(r=>({...r,suppress:[...r.suppress],apply:[...r.apply]})),
   register:hcRegister,unregister:hcUnregister,reconcile:hcRequestReconcile,probe:hcProbe
  });

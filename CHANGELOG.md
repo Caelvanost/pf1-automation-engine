@@ -1,3 +1,11 @@
+# 1.48.0 — Événement générique de santé et libellés de paramètres
+
+- Retire `(alpha)` de tous les libellés de paramètres FR/EN ; le statut expérimental reste au niveau de la release.
+- Script Call natif `PF1AE:health:changed` (Après utilisation) : PV avant/après, seuils et contexte combat ; exécution MJ élu après variation réelle et avant application des états. Approbations existantes et Trusted Table. Pas de capacité spéciale codée dans le moteur.
+- `event.register()` / `event.unregister()` préparent des exceptions par objet appelant, sans réentrer dans la file de réconciliation. Écritures validées après succès du script ; échec ou contexte périmé n'applique pas les exceptions préparées. Mort non interceptable.
+- Hook public `pf1aeHealthChanged(actor,event)` après réconciliation, également sur pertes de PV internes dues à l'agonie et aux actions éprouvantes. Pas de rejeu sur ready, soins/dégâts sans changement réel ou modification du maximum.
+- Tests de simulation, régression et documentation. Validation Foundry réelle à effectuer.
+
 # 1.47.0 — Agonie, stabilisation et actions éprouvantes (alpha)
 
 - Options séparées, désactivées par défaut, dépendantes du diagnostic de santé natif. Règles PF1 : Constitution DD 10 avec malus de PV négatifs, réussite naturelle 20, perte de 1 PV en cas d'échec, échec automatique pour dégâts continus identifiés. Exécution par MJ élu au début du tour, reçu persistant par acteur/combatant/round, sans rejeu après échec ou retour en arrière.
