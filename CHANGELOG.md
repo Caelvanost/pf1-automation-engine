@@ -1,3 +1,11 @@
+# 1.46.3 — Conditions natives de santé sans Buff technique
+
+- Remplace les objets Buff techniques par des ActiveEffects natifs directs identifiés par une provenance persistante, un par condition primaire ; causes létales/non létales séparées dans les flags. Migration des anciens porteurs vérifiés, sans effacer les effets indépendants.
+- Adaptation de `ActorPF.setConditions` limitée aux collisions avec une contribution automatique directe, prenant en compte les pistes natives, immunités et effets indépendants. Délégation native sinon. Protection validée par un nouveau diagnostic sur tokens liés/non liés avant activation.
+- Rétablit les notifications natives des transitions réelles de conditions lors de création/retrait des contributions automatiques ; la guérison retire les états appartenant au moteur mais ne relève pas automatiquement une créature à terre. Aucun retrait d'états directs de provenance inconnue.
+- Retire les filtres HUD et panneau HTML ajoutés pour les buffs techniques. Conserve uniquement le filtrage d'icône identique lorsqu'une autre source visible fournit le même état.
+- Tests de simulation, régression et diagnostic réel obligatoire. Les actions éprouvantes et la stabilisation automatique restent hors périmètre.
+
 # 1.46.2 — Affichage des états dans le panneau latéral
 
 - Corrige le doublon observé hors TokenHUD : une ligne buff temporaire et une ligne condition native pointent vers le même ActiveEffect.

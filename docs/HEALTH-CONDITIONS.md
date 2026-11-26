@@ -1,13 +1,13 @@
-# Health Conditions — alpha 1 (PF1 11.11 / Foundry 13)
+# Health Conditions — native direct source alpha (PF1 11.11 / Foundry 13)
 
 ## Scope and guard
 
-Opt-in foundation, not a full replacement for PF1 Improved Conditions. Refuses to activate with that module active, on other PF1 versions, or before the in-world provenance probe succeeds. Default disabled. No global interception of ActorPF.setCondition(), fake feats, damage recalculation or daily resource engine. Test in a copy of the world.
+Opt-in foundation, not a full replacement for PF1 Improved Conditions. Refuses to activate with that module active, on other PF1 versions, or before the in-world provenance probe succeeds. Default disabled. No fake feats, damage recalculation or daily resource engine. The exact PF1 11.11 ActorPF.setConditions method is adapted only for collisions with a verified managed direct effect; every other request delegates to the original. Test in a copy of the world.
 
 Installed PF1 11.11 sources confirm:
 - ActorPF._preUpdate converts hp.value into hp.offset; BaseCharacterPF._detectHealthChange stores deltas in context.pf1.deltas.
 - ActorPF.setConditions searches direct Actor.effects only. Its dying track contains dead, disabled, dying and stable; direct boolean true calls can remove other members. Disabled adds staggered; unconscious adds helpless; sleep adds unconscious and helpless.
-- ItemBuffPF.getRawEffectData, _updateTrackingEffect and ActiveEffectPF.isSuppressed implement native transferable Item effects. A temporary buff is used exclusively as a source carrier, not a fictional feat. Native secondary statuses and applicability are verified.
+- Direct ActiveEffects use PF1's native condition data: registry name, image, primary and secondary statuses, and pf1.autoDelete. The engine adds its private version-2 source flag and uses exact document UUIDs. No new Buff Item is created.
 - ActorPF.performRest computes rechargeItems({period:"day"}) before pf1PreActorRest, commits item updates and emits pf1ActorRest. Koboldworks Resting 3.0.0.1 only changes healing updateData in pf1PreActorRest, not native item recharge.
 
 ## Runtime validation and activation
@@ -26,17 +26,13 @@ try {
 }
 ```
 
-The probe creates a temporary actor, temporary scene (not your live encounter), linked and unlinked tokens, and verifies that independent unconscious, prone, disabled, dying, staggered, sleep secondary, stable track and pre-existing track contributions survive removal of a managed carrier. Temporary documents are deleted in finally. Failed probe invalidates previous proof. Proof is bound to the exact core, system and PF1AE version. Not a multiplayer test.
+The probe creates a temporary actor, temporary scene, linked and unlinked tokens, and verifies that independent unconscious, prone, disabled, dying, staggered, sleep secondary, stable track and pre-existing track contributions survive removal of a native direct contribution. It verifies independent removal while the automatic source remains, native HUD toggle creation, and final-source removal without leftover status or technical Item. Temporary documents are deleted in finally. Failed probe invalidates previous proof. Proof is bound to the exact core, system and PF1AE version. Not a multiplayer test.
 
-Only after successful probe enable **Health condition management (alpha)**. No retroactive sweep of untouched actors: actor/Item/effect changes and explicitly requested reconciliation calculate current conditions. Actors carrying managed sources/records are restored on ready. Do not run competing automation of HP states. Before disabling PF1AE or re-enabling Improved Conditions, turn the health setting OFF while an elected GM is active so owned carriers and exception records can be removed.
+Only after successful probe enable **Health condition management (alpha)**. No retroactive sweep of untouched actors: actor/Item/effect changes and explicitly requested reconciliation calculate current conditions. Actors carrying managed sources/records are restored on ready, after the new runtime proof. On migration, first disable the old health setting, update, rerun the probe and re-enable. Do not run competing automation of HP states. Before disabling PF1AE or re-enabling Improved Conditions, turn the health setting OFF while an elected GM is active so owned native effects, verified legacy carriers and exception records can be removed.
 
-## Native presentation (1.46.1)
+## Native direct provider (1.46.3)
 
-PF1's TokenHUDPF adds a separate buff-ID choice for every buff, including technical carriers. The engine filters only verified managed health carrier choices; native condition choices and all other buffs remain. Carrier names use the native localized condition label and old names are normalized in place on reconciliation. PF1's native ActiveEffectPF.isTemporary decision is preserved; only duplicate visible managed icons of the same primary condition and image are suppressed. Independent effects, overlays, source ownership, statuses and mechanical application are unchanged. The carrier Items remain on the Actor for provenance. Repeat the runtime probe after upgrading, then validate actual HUD and token display on linked/unlinked Actors. Do not edit the technical carriers.
-
-### Side panel (1.46.2)
-
-The reported separate panel has `.buff-list.buffs` and `.buff-list.conditions` rows outside the native Token HUD. A client-side observer marks only a verified managed buff row whose exact actor UUID, effect UUID (relative or absolute), and primary condition ID are also present in a native condition row. CSS hides that redundant row; no documents or panel handlers are modified. Ordinary buffs, secondary conditions and unmatched rows remain visible. Refreshes are coalesced, and the marker is removed when the matching row disappears. This is a compatibility adapter for the observed markup, not an assertion about all third-party panels. Repeat the provenance probe and visually check linked/unlinked actors after upgrading.
+No new technical Buff Items. Source flags identify direct native ActiveEffects by actor UUID, primary status and causes. One effect represents each automatic primary condition. Only exact, structurally verified owned effects are changed/deleted. The native setConditions lookup in PF1 11.11 would otherwise coalesce independent and automatic sources. The collision branch excludes owned direct effects from lookup, keeps native track expansion and immunities, and reports actual status transitions. Normal calls delegate to the native implementation. The provider is unavailable if the router is not installed; the runtime probe must succeed. The previous HUD/side-panel filters are removed; the sole presentation wrapper suppresses an identical duplicate managed token icon. Native condition notifications are emitted for actual creation/removal transitions, allowing external panels to refresh. Existing v1 Buff carriers are migrated on reconciliation or removed when disabled, only if verified. Unmarked direct conditions are never silently removed; if an older module created stale direct conditions, review them manually. Prone remains after healing until the creature stands. Actual third-party panel rendering and multiplayer require live validation.
 
 ## API
 
@@ -63,7 +59,7 @@ Allowed status IDs: disabled, dying, unconscious, prone, staggered. Dead is not 
 
 Normal living HP zero: disabled. Negative: dying (unless native stable is present), unconscious, prone. Nonlethal >0: equal HP gives staggered, greater HP gives separate unconscious and prone. Death: at or below -Constitution, Constitution <=0 or ability damage >= score; undead and constructs at <=0. Native Dead is applied directly, never removed automatically. PF1AE deathDefeated reconciles tracker. On health recovery a managed fall is converted to ordinary prone, never automatically stands the creature up. Existing direct effects and other Item effects are not deleted. Native stable is respected but not automatically created or removed.
 
-Actor without normal health, wounds/vigor rules, invalid HP, free-text regeneration (enabled/suppressed state unknown), and actors flagged healthConditionsManual=true remain manual. Existing direct conditions created by another provider have unknown provenance; never silently adopted or deleted. Repurposed carrier with changes, actions, scripts, extra ActiveEffects or additional statuses fails closed during cleanup. Do not edit managed carriers.
+Actor without normal health, wounds/vigor rules, invalid HP, free-text regeneration (enabled/suppressed state unknown), and actors flagged healthConditionsManual=true remain manual. Existing direct conditions created by another provider have unknown provenance; never silently adopted or deleted. Modified native source or legacy carrier fails closed during cleanup. Do not edit the engine-owned source documents or their flags.
 
 ## Limitations and next milestone
 

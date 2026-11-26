@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.46.2
+# PF1 Automation Engine v1.46.3
+
+## Conditions de santé natives sans objets Buff (v1.46.3)
+
+Le fournisseur expérimental utilise désormais des ActiveEffects directement attachés à l'acteur, construits comme les conditions PF1 natives et identifiés par des flags internes. Un seul effet automatique par condition primaire, même avec des causes létales/non létales simultanées. Les anciens Buffs techniques vérifiés sont migrés/nettoyés ; les filtres du HUD et du panneau DOM sont retirés. Une adaptation strictement ciblée de `ActorPF.setConditions` protège les contributions automatiques des appels indépendants en cas de collision ; les autres appels restent natifs. Les notifications `pf1ToggleActorCondition` reflètent les transitions réelles, notamment après guérison. Le nouveau diagnostic natif est obligatoire avant activation ; ne pas effacer d'états anciens d'origine inconnue.
 
 ## Panneau latéral : doublons d'états (v1.46.2)
 
