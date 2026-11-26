@@ -11,6 +11,7 @@ const HC_RECORDS="healthExceptions";
 const HC_SOURCE="healthConditionSource";
 const HC_AGONY="healthAgonyEnabled",HC_STRAIN="healthStrenuousEnabled";
 const HC_AGONY_TURNS="healthAgonyTurns",HC_ACTION_COSTS="healthActionCosts";
+const HC_AGONY_CARD="healthAgonyCard",HC_AGONY_REQUEST="healthAgonyRequest";
 const HC_INTERNAL="pf1aeHealthConditionsInternal";
 const HC_ALLOWED=new Set(["disabled","dying","unconscious","prone","staggered"]);
 const HC_WORK=new Map();
@@ -485,54 +486,210 @@ async function hcReport(actor,message){
   await ChatMessage.create({speaker:ChatMessage.getSpeaker({actor}),content:message});
  }catch(e){console.warn("[PF1AE][HealthConditions] Chat display failed",e)}
 }
-// Use an actor-scoped high-water receipt per combatant. Claim before the
-// native roll. Never retry a pending claim after failure/reload/rewind.
+// Authoritative, single-use stabilization cards. Player requests contain
+// only a message ID. Foundry's authenticated updateActor userId determines
+// permission, and the elected GM claims the receipt before the native roll.
 const hcTurnKey=(combatId,combatantId)=>hcRecordId(combatId,combatantId);
 const hcTurnCurrent=(combat,entry)=>Boolean(combat?.started&&combat.round===entry.round&&
  combat.combatant?.id===entry.combatantId&&combat.combatant?.actor?.uuid===entry.actorUuid);
+const hcAgonyPath=key=>"flags."+HC_NS+"."+HC_AGONY_TURNS+"."+key;
+const hcAgonyReceipt=(actor,key)=>hcFlag(actor,HC_AGONY_TURNS)?.[key];
+const hcAgonyPermission=(actor,user)=>Boolean(user?.active&&(user.isGM===true||
+ actor.testUserPermission?.(user,"OWNER")===true));
+const hcAgonyRecipients=actor=>hcArray(game.users).filter(u=>u.isGM||
+ actor.testUserPermission?.(u,"OWNER")===true).map(u=>u.id);
+const hcAgonyCardData=m=>hcFlag(m,HC_AGONY_CARD);
+const hcAgonyMessage=id=>game.messages?.get?.(id);
+const hcEscape=value=>String(value??"").replace(/[&<>"']/g,ch=>
+ ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+function hcAgonySummary(actor,r){
+ let detail;
+ switch(r.state){
+  case "waiting":detail=hcLang("Test de Constitution DD 10. Le malus de PV négatifs est calculé au moment du jet.",
+   "DC 10 Constitution check. The negative HP penalty is calculated when rolling.");break;
+  case "preparing":case "rolling":detail=hcLang("En cours…","In progress…");break;
+  case "applied":detail=r.ongoing?hcLang("Échec automatique (dégâts continus) : −1 PV.","Automatic failure (ongoing damage): −1 HP."):
+   hcEscape(hcLang("Résultat : ","Result: ")+r.total+" (d20 : "+r.natural+") — "+
+    (r.success?hcLang("Réussite, stabilisé.","Success, stabilized."):hcLang("Échec, −1 PV.","Failure, −1 HP.")));break;
+  case "expired":detail=hcLang("Test expiré : tour terminé ou état de santé modifié. Arbitrage du MJ si nécessaire.",
+   "Check expired: turn ended or health state changed. GM adjudication if necessary.");break;
+  default:detail=hcLang("Vérification manuelle du MJ nécessaire. Aucun nouveau jet automatique.",
+   "GM review required. No automatic retry.");
+ }
+ return "<div class=\"pf1ae-health-agony\"><h3>"+hcLang("Test de stabilisation","Stabilization check")+
+  "</h3><p><strong>"+hcEscape(actor.name??"Actor")+"</strong> — Round "+Number(r.round)+"</p><p>"+detail+"</p></div>";
+}
+function hcAgonyIdentity(r){
+ return {version:1,actorUuid:r.actorUuid,combatId:r.combatId,combatantId:r.combatantId,
+  round:r.round,receiptId:r.receiptId,state:r.state};
+}
+function hcAgonyMatches(card,r){
+ return Boolean(card?.version===1&&r?.receiptId&&card.receiptId===r.receiptId&&
+  card.actorUuid===r.actorUuid&&card.combatId===r.combatId&&card.combatantId===r.combatantId&&card.round===r.round);
+}
+async function hcPublishAgony(actor,r){
+ const message=hcAgonyMessage(r.messageId);
+ if(!message||!hcAgonyMatches(hcAgonyCardData(message),r))return;
+ try{await message.update({content:hcAgonySummary(actor,r),
+  ["flags."+HC_NS+"."+HC_AGONY_CARD]:hcAgonyIdentity(r)})}
+ catch(error){console.warn("[PF1AE][HealthConditions] Agony card display failed",error)}
+}
+async function hcSetAgony(actor,key,r,state,extra={}){
+ const next={...r,...extra,state};
+ await actor.update({[hcAgonyPath(key)]:next},hcInternal());
+ await hcPublishAgony(actor,next);
+ return next;
+}
+async function hcExpireAgony(actor,key,receiptId){
+ const r=hcAgonyReceipt(actor,key);
+ if(r?.receiptId!==receiptId||r.state!=="waiting")return;
+ return hcSetAgony(actor,key,r,"expired");
+}
+async function hcExpireInvalidAgony(actor){
+ if(!hcLeader())return;
+ for(const [key,r] of Object.entries(hcFlag(actor,HC_AGONY_TURNS)??{})){
+  if(r?.state==="waiting"&&(!hcAgonyEnabled()||!hcDying(actor)||
+    !hcTurnCurrent(game.combats?.get?.(r.combatId),r)))await hcExpireAgony(actor,key,r.receiptId);
+ }
+}
+// Capture turn departure before queueing, so rewinding the tracker does
+// not revive an expired card.
+function hcExpireDeparted(combat,deleted=false){
+ if(!hcLeader()||!hcAvailability().available)return;
+ for(const actor of hcActors())for(const [key,r] of Object.entries(hcFlag(actor,HC_AGONY_TURNS)??{})){
+  if(r?.state!=="waiting"||r.combatId!==combat.id||(!deleted&&hcTurnCurrent(combat,r)))continue;
+  void hcEnqueue(actor,current=>hcExpireAgony(current,key,r.receiptId));
+ }
+}
+async function hcResolveAgony(actor,key,r,combat,ongoing){
+ const initial=hcSnapshot(actor);
+ if(!hcAgonyEnabled()||!hcLeader()||!hcDying(actor)||!hcTurnCurrent(combat,r))return {skipped:"invalid-turn"};
+ const claimed=await hcSetAgony(actor,key,r,"rolling");
+ try{
+  if(!hcAgonyEnabled()||!hcLeader()||!hcTurnCurrent(combat,r)||!hcDying(actor)||
+     hcSnapshot(actor).hp!==initial.hp){
+   if(hcLeader())await hcSetAgony(actor,key,claimed,"review");return {pending:true};
+  }
+  let natural=null,total=null;
+  if(!ongoing){
+   // PF1 11.11 builds the Constitution check with its native modifiers.
+   const playerOwned=hcArray(game.users).some(u=>!u.isGM&&actor.testUserPermission?.(u,"OWNER")===true);
+   const rollMode=playerOwned&&combat.combatant?.token?.hidden!==true?"publicroll":"gmroll";
+   const message=await actor.rollAbilityTest("con",{skipDialog:true,dc:10,rollMode,
+    bonus:String(initial.hp)+"["+hcLang("PV négatifs","Negative HP")+"]"});
+   const roll=message?.rolls?.[0];natural=roll?.natural;total=roll?.total;
+   if(!Number.isFinite(natural)||!Number.isFinite(total)||natural<1||natural>20||roll?.isStatic===true)
+    throw Error("Native Constitution roll not verified.");
+  }
+  const current=hcSnapshot(actor),live=hcAgonyReceipt(actor,key);
+  if(!hcAgonyEnabled()||!hcLeader()||!hcTurnCurrent(combat,r)||!hcDying(actor)||
+     current.hp!==initial.hp||live?.receiptId!==r.receiptId||live.state!=="rolling"){
+   if(hcLeader()&&live?.receiptId===r.receiptId&&live.state==="rolling")await hcSetAgony(actor,key,live,"review");
+   return {pending:true};
+  }
+  const success=!ongoing&&(natural===20||total>=10);
+  const done={...live,state:"applied",success,ongoing,natural,total};
+  let healthEvent=null;
+  if(success){
+   await hcStabilize(actor);
+   await actor.update({[hcAgonyPath(key)]:done},hcInternal());
+  }else{
+   await actor.update({[hcAgonyPath(key)]:done,"system.attributes.hp.value":current.hp-1},hcInternal());
+   healthEvent=await hcProcessHealthEvent(actor,current.hp,actor.system.attributes.hp.value,"agony",game.user.id,{transition:false});
+  }
+  await hcReconcileInternal(actor);hcNotifyHealthEvent(actor,healthEvent);
+  if(done.messageId)await hcPublishAgony(actor,done);
+  else if(typeof globalThis.ChatMessage?.create==="function"){
+   try{await ChatMessage.create({speaker:ChatMessage.getSpeaker({actor}),content:hcAgonySummary(actor,done),
+    whisper:hcAgonyRecipients(actor)})}catch(error){console.warn("[PF1AE][HealthConditions] Agony report failed",error)}
+  }
+  return done;
+ }catch(error){
+  const live=hcAgonyReceipt(actor,key);
+  if(hcLeader()&&live?.receiptId===r.receiptId&&live.state==="rolling")
+   await hcSetAgony(actor,key,live,"review");
+  throw error;
+ }
+}
 async function hcAgonyTurn(actor,entry,combat,bleedInfo=null){
  if(!hcAgonyEnabled()||!hcLeader()||!hcTurnCurrent(combat,entry)||!hcDying(actor))return {skipped:"not-dying-or-turn-changed"};
- const key=hcTurnKey(entry.combatId,entry.combatantId),path="flags."+HC_NS+"."+HC_AGONY_TURNS+"."+key;
- const old=hcFlag(actor,HC_AGONY_TURNS)?.[key];
+ const key=hcTurnKey(entry.combatId,entry.combatantId),path=hcAgonyPath(key),old=hcAgonyReceipt(actor,key);
  if(Number.isInteger(old?.round)&&old.round>=entry.round)return {skipped:"already-claimed"};
- const receipt={...entry,state:"pending"};
- await actor.update({[path]:receipt},hcInternal());
- const initial=hcSnapshot(actor);
+ const r={...entry,state:"preparing",receiptId:foundry.utils.randomID(),bleedInfo};
+ await actor.update({[path]:r},hcInternal());
  if(!hcAgonyEnabled()||!hcDying(actor)||!hcTurnCurrent(combat,entry)||!hcLeader())return {pending:true};
- let success=false,natural=null,total=null;
- const ongoing=hcOngoingDamage(actor,bleedInfo);
- if(!ongoing){
-  // rollAbilityTest builds the native Constitution check, including typed
-  // modifiers. The v11.11 d20Roll bonus option is consumed before evaluation.
-  const message=await actor.rollAbilityTest("con",{skipDialog:true,dc:10,
-   bonus:String(initial.hp)+"["+hcLang("PV négatifs","Negative HP")+"]"});
-  const roll=message?.rolls?.[0];
-  natural=roll?.natural;total=roll?.total;
-  if(!Number.isFinite(natural)||!Number.isFinite(total)||natural<1||natural>20||roll?.isStatic===true)
-   throw Error("Native Constitution roll not verified; pending agony receipt requires GM review.");
-  success=natural===20||total>=10;
+ if(hcOngoingDamage(actor,bleedInfo))return hcResolveAgony(actor,key,r,combat,true);
+ // The initial message cannot be clicked before its ID has been recorded.
+ let waiting;
+ try{
+  const message=await ChatMessage.create({speaker:ChatMessage.getSpeaker({actor}),content:hcAgonySummary(actor,r),
+   whisper:hcAgonyRecipients(actor),flags:{[HC_NS]:{[HC_AGONY_CARD]:hcAgonyIdentity(r)}}});
+  if(!message?.id)throw Error("Agony chat card could not be created.");
+  waiting={...r,messageId:message.id,state:"waiting"};
+  await actor.update({[path]:waiting},hcInternal());
+  if(!hcAgonyEnabled()||!hcLeader()||!hcTurnCurrent(combat,entry)||!hcDying(actor)){
+   if(hcLeader())await hcExpireAgony(actor,key,r.receiptId);return {skipped:"expired"};
+  }
+  await hcPublishAgony(actor,waiting);return waiting;
+ }catch(error){
+  if(hcLeader())await hcSetAgony(actor,key,waiting??r,"review");
+  throw error;
  }
- // No late mutation after turn advance, healing, death, GM handover or
- // unrelated damage during an asynchronous roll. Pending receipt is manual.
- const current=hcSnapshot(actor);
- if(!hcAgonyEnabled()||!hcLeader()||!hcTurnCurrent(combat,entry)||!hcDying(actor)||
-    current.hp!==initial.hp)return {pending:true};
- const done={...receipt,state:"applied",success,ongoing,natural,total};
- let healthEvent=null;
- if(success){
-  await hcStabilize(actor);
-  await actor.update({[path]:done},hcInternal());
- }else{
-  // Atomic Actor update: receipt and -1 real HP in the same mutation.
-  await actor.update({[path]:done,"system.attributes.hp.value":current.hp-1},hcInternal());
-  healthEvent=await hcProcessHealthEvent(actor,current.hp,actor.system.attributes.hp.value,"agony",game.user.id,{transition:false});
+}
+async function hcRollAgony(actor,messageId,requester){
+ if(!hcAgonyEnabled()||!hcLeader()||!hcAgonyPermission(actor,requester))return {skipped:"not-authorized"};
+ const card=hcAgonyCardData(hcAgonyMessage(messageId));
+ if(!card||card.actorUuid!==actor.uuid||!hcValidText(card.combatId,100)||!hcValidText(card.combatantId,100))return {skipped:"invalid-card"};
+ const key=hcTurnKey(card.combatId,card.combatantId),r=hcAgonyReceipt(actor,key);
+ if(!hcAgonyMatches(card,r)||r.messageId!==messageId||card.state!=="waiting"||r.state!=="waiting")return {skipped:"already-resolved"};
+ const combat=game.combats?.get?.(r.combatId);
+ if(!hcTurnCurrent(combat,r)||!hcDying(actor)){
+  await hcExpireAgony(actor,key,r.receiptId);return {skipped:"expired"};
  }
- await hcReconcileInternal(actor);
- hcNotifyHealthEvent(actor,healthEvent);
- await hcReport(actor,success?hcLang("Agonie : état stabilisé.","Dying: stabilized."):
-  ongoing?hcLang("Agonie : échec automatique (dégâts continus), −1 PV.","Dying: automatic failure (ongoing damage), −1 HP."):
-  hcLang("Agonie : échec, −1 PV.","Dying: failed check, −1 HP."));
- return done;
+ return hcResolveAgony(actor,key,{...r,clickedBy:requester.id},combat,hcOngoingDamage(actor,r.bleedInfo));
+}
+async function hcClickAgony(messageId){
+ if(!hcAgonyEnabled())throw Error(hcLang("Gestion de l'agonie indisponible.","Agony management unavailable."));
+ const card=hcAgonyCardData(hcAgonyMessage(messageId));
+ if(card?.state!=="waiting")throw Error(hcLang("Ce test n'est plus disponible.","This check is no longer available."));
+ const actor=await fromUuid(card.actorUuid);
+ if(!actor||!hcAgonyPermission(actor,game.user))throw Error(hcLang("Vous ne contrôlez pas cet acteur.","You do not own this Actor."));
+ if(!hcTurnCurrent(game.combats?.get?.(card.combatId),card)||!hcDying(actor))throw Error(hcLang("Ce test a expiré.","This check has expired."));
+ if(hcLeader())return hcEnqueue(actor,current=>hcRollAgony(current,messageId,game.user));
+ if(!hcArray(game.users).some(u=>u.isGM&&u.active))throw Error(hcLang("Aucun MJ connecté.","No active GM."));
+ await actor.update({["flags."+HC_NS+"."+HC_AGONY_REQUEST]:{messageId,requestId:foundry.utils.randomID()}});
+ return {queued:true};
+}
+function hcHandleAgonyRequest(actor,changed,userId){
+ const request=changed?.flags?.[HC_NS]?.[HC_AGONY_REQUEST]??changed?.["flags."+HC_NS+"."+HC_AGONY_REQUEST];
+ if(!request||!hcAgonyEnabled()||!hcLeader()||!hcValidText(request.messageId,100)||!hcValidText(request.requestId,100))return;
+ const requester=game.users?.get?.(userId)??hcArray(game.users).find(u=>u.id===userId);
+ if(!hcAgonyPermission(actor,requester))return;
+ void hcEnqueue(actor,current=>hcRollAgony(current,request.messageId,requester));
+}
+function hcRenderAgony(message,html){
+ const card=hcAgonyCardData(message),root=html?.[0]??html;
+ if(card?.version!==1||card.state!=="waiting"||!root?.querySelector)return;
+ const parent=root.querySelector(".message-content")??root;
+ if(parent.querySelector("[data-pf1ae-stabilization]"))return;
+ const button=document.createElement("button");
+ button.type="button";button.dataset.pf1aeStabilization="true";button.disabled=true;
+ button.textContent=hcLang("Lancer le test de Constitution (DD 10)","Roll Constitution check (DC 10)");
+ button.addEventListener("click",async ev=>{
+  ev.preventDefault();ev.stopPropagation();button.disabled=true;
+  try{
+   const result=await hcClickAgony(message.id);
+   if(result?.queued)globalThis.ui?.notifications?.info?.(hcLang("Demande de jet transmise au MJ.","Roll request sent to GM."));
+   else if(result?.skipped)hcWarn(hcLang("Ce test n'est plus disponible.","This check is no longer available."));
+  }catch(error){hcWarn(error.message)}
+  finally{button.disabled=hcAgonyCardData(hcAgonyMessage(message.id))?.state!=="waiting"}
+ });
+ parent.append(button);
+ void (async()=>{
+  const actor=await fromUuid(card.actorUuid);
+  if(!actor||!hcAgonyPermission(actor,game.user)){button.remove();return}
+  button.disabled=!hcAgonyEnabled()||!hcTurnCurrent(game.combats?.get?.(card.combatId),card)||!hcDying(actor);
+ })().catch(()=>button.remove());
 }
 let HC_TURN_TAIL=Promise.resolve();
 function hcScheduleAgony(combat){
@@ -629,6 +786,7 @@ async function hcConsumeActionCosts(actor){
 async function hcReconcileInternal(actor){
  if(!hcLeader()||!hcAvailability().available)return {skipped:"unavailable"};
  if(!actor||hcFlag(actor,"healthProbe"))return {skipped:"no-actor"};
+ await hcExpireInvalidAgony(actor);
  if(hcAgonyEnabled()){
   const s=hcSnapshot(actor);
   if(s.supported&&!s.nonliving&&!s.dead&&s.hp>=0)await hcClearStable(actor);
@@ -760,7 +918,8 @@ function hcActors(){
  return [...actors.values()];
 }
 function hcTracked(actor){
- return hcSourceEffects(actor).length>0||hcSourceItems(actor).length>0||Object.keys(hcFlag(actor,HC_RECORDS)??{}).length>0;
+ return hcSourceEffects(actor).length>0||hcSourceItems(actor).length>0||Object.keys(hcFlag(actor,HC_RECORDS)??{}).length>0||
+  Object.values(hcFlag(actor,HC_AGONY_TURNS)??{}).some(r=>r?.state==="waiting");
 }
 async function hcRestore(){
  if(!hcLeader()||!hcAvailability().available)return;
@@ -771,6 +930,7 @@ async function hcDisable(){
  for(const actor of hcActors()){
   await HC_WORK.get(actor.uuid)?.catch(()=>{});
   if(hcSetting(HC_ENABLED,false)===true)return;
+  await hcExpireInvalidAgony(actor);
   for(const effect of hcSourceEffects(actor))if(!hcDirectSource(effect,actor).causes.includes("probe"))
    await hcDeleteSource(effect,actor).catch(e=>console.warn("[PF1AE][HealthConditions] Cleanup needs GM review",e));
   for(const item of hcSourceItems(actor))if(hcSource(item,actor).cause!=="probe")
@@ -874,6 +1034,7 @@ async function hcProbe(){
 }
 const hcOnActor=(actor,changed,options,userId)=>{
  if(options?.[HC_INTERNAL]||hcFlag(actor,"healthProbe"))return;
+ hcHandleAgonyRequest(actor,changed,userId);
  const delta=options?.pf1?.deltas?.hp?.offset,expected=actor.system?.attributes?.hp?.value;
  const real=Number.isFinite(delta)&&delta!==0&&Number.isFinite(expected);
  if(real&&options&&typeof options==="object"&&hcLeader()&&hcAvailability().available){
@@ -909,7 +1070,7 @@ Hooks.once("init",()=>{
   onChange:value=>{if(value)void hcRestore();else void hcDisable()}});
  game.settings.register(HC_NS,HC_PROOF,{scope:"world",config:false,type:String,default:""});
  game.settings.register(HC_NS,HC_AGONY,{scope:"world",config:true,type:Boolean,default:false,
-  name:"PF1AE.Settings.HealthAgony.Name",hint:"PF1AE.Settings.HealthAgony.Hint"});
+  name:"PF1AE.Settings.HealthAgony.Name",hint:"PF1AE.Settings.HealthAgony.Hint",onChange:()=>{void hcRestore()}});
  game.settings.register(HC_NS,HC_STRAIN,{scope:"world",config:true,type:Boolean,default:false,
   name:"PF1AE.Settings.HealthStrenuous.Name",hint:"PF1AE.Settings.HealthStrenuous.Hint"});
 });
@@ -919,7 +1080,7 @@ Hooks.once("ready",()=>{
  mod.api??={};
  mod.api.healthConditions=Object.freeze({
   isAvailable:()=>hcAvailability().available,diagnostics:hcDiagnostics,
-  eventHook:HC_EVENT_HOOK,subscriptionName:HC_EVENT_CALL,
+  eventHook:HC_EVENT_HOOK,subscriptionName:HC_EVENT_CALL,rollStabilization:hcClickAgony,
   list:actor=>hcRecords(actor).valid.map(r=>({...r,suppress:[...r.suppress],apply:[...r.apply]})),
   register:hcRegister,unregister:hcUnregister,reconcile:hcRequestReconcile,probe:hcProbe
  });
@@ -930,15 +1091,16 @@ Hooks.once("ready",()=>{
  Hooks.on("updateActiveEffect",hcOnEffect);
  Hooks.on("createActiveEffect",(effect,options)=>{hcNotifyOwnedEffect(effect,true,options);hcOnEffect(effect,null,options)});
  Hooks.on("deleteActiveEffect",(effect,options)=>{hcNotifyOwnedEffect(effect,false,options);hcOnEffect(effect,null,options)});
- Hooks.on("updateCombat",(combat,changes)=>{void hcRestore();
+ Hooks.on("updateCombat",(combat,changes)=>{hcExpireDeparted(combat);void hcRestore();
   if(Object.hasOwn(changes??{},"round")||Object.hasOwn(changes??{},"turn"))hcScheduleAgony(combat);
  });
  Hooks.on("combatTurnChange",(combat,prior,current)=>{
-  if(prior?.round!==current?.round||prior?.combatantId!==current?.combatantId)hcScheduleAgony(combat);
+  if(prior?.round!==current?.round||prior?.combatantId!==current?.combatantId){hcExpireDeparted(combat);hcScheduleAgony(combat)}
  });
  Hooks.on("pf1PreActionUse",hcBeforeAction);
  Hooks.on("pf1PostActionUse",use=>{void hcAfterAction(use).catch(e=>console.warn("[PF1AE][HealthConditions] Action cost requires review",e))});
- Hooks.on("deleteCombat",()=>{void hcRestore()});
+ Hooks.on("deleteCombat",combat=>{hcExpireDeparted(combat,true);void hcRestore()});
+ Hooks.on("renderChatMessageHTML",hcRenderAgony);
  Hooks.on("canvasReady",()=>{void hcRestore()});
  Hooks.on("updateUser",(_u,c)=>{if(Object.hasOwn(c??{},"active"))void hcRestore()});
  void hcRestore();

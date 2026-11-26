@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.48.0
+# PF1 Automation Engine v1.48.1
+
+## Test de stabilisation sur clic (v1.48.1)
+
+Le début du tour d'un acteur mourant crée une carte de chat de test de Constitution DD 10, visible du MJ et des propriétaires. Le jet natif n'est lancé qu'après clic autorisé, par le MJ élu, avec le malus de PV négatifs au moment du clic. Reçu persistant par acteur/combattant/round, carte à usage unique ; fin du tour, stabilisation ou mort rendent le bouton périmé. Aucun jet manqué n'est automatiquement rejoué ; arbitrage MJ si le tour est passé. Les dégâts continus identifiés conservent leur échec automatique sans jet. Aucun paramètre supplémentaire.
 
 ## Événement générique de santé (v1.48.0)
 
