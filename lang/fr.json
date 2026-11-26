@@ -58,6 +58,10 @@
         "Hint": "2D (par défaut) utilise le plan de la carte et ignore les élévations, hauteurs des murs et toitures. Le mode 3D nécessite des versions vérifiées de Levels et Wall Height ; Better Roofs est facultatif. Si les données 3D ne sont pas fiables, aucun bonus d'abri n'est supposé.",
         "TwoD": "2D — carte tactique (par défaut)",
         "ThreeD": "3D — Levels et Wall Height (facultatif)"
+      },
+      "HealthConditions": {
+        "Name": "Gestion des états de santé (alpha)",
+        "Hint": "Désactivez Improved Conditions, puis réussissez le diagnostic natif sur des acteurs temporaires avant d'activer. Les actions éprouvantes et la stabilisation automatique ne sont pas encore gérées."
       }
     },
     "Range": {

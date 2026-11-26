@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.45.0
+# PF1 Automation Engine v1.46.0
+
+## Health Conditions — socle expérimental (1.46.0)
+
+Nouveau service **`api.healthConditions`** : exceptions persistantes par UUID d'acteur, UUID d'objet et clé, séparation des contributions de PV létaux/non létaux, états natifs portés par des buffs dédiés, et mort officielle non neutralisable. Désactivé par défaut ; exige PF1 11.11, Foundry 13, Improved Conditions désactivé et un diagnostic de provenance réussi sur des acteurs temporaires liés/non liés. Ne retire jamais les états directs d'origine inconnue. Les actions éprouvantes, la stabilisation automatique et les scripts complets Férocité orque restent hors de ce premier jalon. Voir [documentation API, procédure de diagnostic et limites](docs/HEALTH-CONDITIONS.md).
 
 ## État natif Mort ⇄ combattant Vaincu (v1.45.0)
 
