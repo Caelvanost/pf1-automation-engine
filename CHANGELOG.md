@@ -1,3 +1,10 @@
+# 1.47.0 — Agonie, stabilisation et actions éprouvantes (alpha)
+
+- Options séparées, désactivées par défaut, dépendantes du diagnostic de santé natif. Règles PF1 : Constitution DD 10 avec malus de PV négatifs, réussite naturelle 20, perte de 1 PV en cas d'échec, échec automatique pour dégâts continus identifiés. Exécution par MJ élu au début du tour, reçu persistant par acteur/combatant/round, sans rejeu après échec ou retour en arrière.
+- Soins réels (delta HP natif) stabilisent sous 0 PV ; nouvelle perte de PV relance l'agonie. À 0 ou plus, retrait du seul état Stable natif direct ordinaire, préservation des sources externes complexes. Aucun changement de règle de mort.
+- Coût direct de 1 PV après `pf1PostActionUse` pour les actions éprouvantes identifiables entreprises hors de combat mais conscient. Demande native sur acteur, MJ élu, reçu et perte de PV atomiques, aucun coût pour mouvement ou action annulée. Les soins via carte différée, types ambigus, récupération hors combat et restrictions complètes restent manuels.
+- Aucun remplacement d'Automate Damage dans cette version : les pertes de PV ne passent pas par son intercepteur. Les futures étapes de remplacement sont documentées séparément.
+
 # 1.46.3 — Conditions natives de santé sans Buff technique
 
 - Remplace les objets Buff techniques par des ActiveEffects natifs directs identifiés par une provenance persistante, un par condition primaire ; causes létales/non létales séparées dans les flags. Migration des anciens porteurs vérifiés, sans effacer les effets indépendants.
