@@ -65,7 +65,7 @@
       },
       "HealthAgony": {
         "Name": "Dying checks and stabilization",
-        "Hint": "Start-of-turn Constitution check, stabilization by healing and HP loss on failure. Requires validated health conditions."
+        "Hint": "At the start of a dying creature's turn, posts a Constitution check button in chat. Identified ongoing damage causes automatic failure. Also handles stabilization by healing."
       },
       "HealthStrenuous": {
         "Name": "Strenuous actions at nonpositive HP",

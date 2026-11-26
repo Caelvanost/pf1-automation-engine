@@ -12,9 +12,10 @@ conditions.trackedConditions=()=>[["dead","disabled","dying","stable"]];
 let seq=0,deadSync=0;
 const notifications=[];
 const addon={version:manifest.version,api:{generic:{isLeader:()=>game.user===gm},deathDefeated:{reconcileActor:async()=>{deadSync++}}}};
-const improved={active:false},actors=new Map(),scenes=new Map(),documents=new Map(),combats=new Map();
+const improved={active:false},actors=new Map(),scenes=new Map(),documents=new Map(),combats=new Map(),messages=new Map();
+const other={id:"other",isGM:false,active:true};
 const game={version:"13.351",release:{generation:13},system:{id:"pf1",version:"11.11"},
- user:gm,users:[gm,player],modules:new Map([[NS,addon],["pf1-improved-conditions",improved]]),
+ user:gm,users:[gm,player,other],messages,modules:new Map([[NS,addon],["pf1-improved-conditions",improved]]),
  actors,scenes,combats,time:{worldTime:0},i18n:{localize:k=>k},
  settings:{register(ns,k,c){registered.set(k,c);settings.set(k,c.default)},
  get(ns,k){if(ns==="pf1"){if(k==="unchainedActionEconomy")return false;return {getActorConfig:()=>({rules:{useWoundsAndVigor:false}})}};return settings.get(k)},
@@ -60,7 +61,7 @@ const contextPf1={registry:{conditions},documents:{actor:{ActorPF:TestActor}}};
 function makeActor(uuid,{type="npc",hp=5,con=14,nonlethal=0,flags={},traits={living:true},owner=true}={}){
  const actor={uuid,id:uuid.split(".").at(-1),documentName:"Actor",type,flags:clone(flags),items:new Map(),effects:[],
  system:{attributes:{hp:{value:hp,max:20,nonlethal}},abilities:{con:{total:con,damage:0}},traits},
- getFlag(ns,key){return this.flags?.[ns]?.[key]},testUserPermission(){return owner},
+ getFlag(ns,key){return this.flags?.[ns]?.[key]},testUserPermission(user){return owner&&user?.id!=="other"},
  get statuses(){return new Set([...this.allApplicableEffects()].flatMap(e=>e.disabled?[]:[...e.statuses]))},
  *allApplicableEffects(){yield* this.effects;for(const item of this.items.values())if(item.isActive!==false)yield* item.effects??[]},
  async update(changed,options={}){const prev=this.system.attributes.hp.value;for(const [k,v] of Object.entries(changed))put(this,k,v);const delta=this.system.attributes.hp.value-prev;if(delta){options={...options,pf1:{...options.pf1,deltas:{hp:{offset:delta}}}}}fire("updateActor",this,changed,options,game.user.id);return this},
@@ -117,6 +118,13 @@ class TestHud{
 class TestEffect{get isTemporary(){return this.visible!==false}}
 const CONFIG={Token:{hudClass:TestHud},ActiveEffect:{documentClass:TestEffect}};
 const context={game,CONFIG,pf1:contextPf1,Hooks:{on,once:on,callAll:fire},console,ui:{notifications:{warn:()=>{}}},
+ ChatMessage:{getSpeaker:({actor})=>({actor:actor.uuid}),async create(data){
+  const id="msg"+ ++seq;
+  const message={...clone(data),id,getFlag(ns,k){return this.flags?.[ns]?.[k]},
+   async update(changed){for(const [k,v] of Object.entries(changed))put(this,k,v);return this}};
+  messages.set(id,message);return message;
+ }},
+
  fromUuid:async uuid=>documents.get(uuid),foundry:{utils:{randomID:()=>"request"+ ++seq,deepClone:clone,mergeObject:merge}},
  Actor:{implementation:{create:async data=>makeActor("Actor.probe"+ ++seq,{flags:data.flags})}},
  Scene:{implementation:{create:async()=>{
@@ -137,6 +145,9 @@ vm.runInNewContext(src,context);fire("init");fire("ready");
 const api=addon.api.healthConditions;
 const tick=async()=>{for(let i=0;i<30;i++)await new Promise(r=>setTimeout(r,0))};
 const has=(actor,status)=>actor.statuses.has(status);
+const cards=(actor)=>[...messages.values()].filter(m=>m.getFlag(NS,"healthAgonyCard")?.actorUuid===actor.uuid);
+const lastCard=actor=>cards(actor).at(-1);
+const cardState=m=>m.getFlag(NS,"healthAgonyCard").state;
 const owned=actor=>actor.effects.filter(e=>e.flags?.[NS]?.healthConditionSource?.version===2);
 const legacy=actor=>[...actor.items.values()].filter(i=>i.flags?.[NS]?.healthConditionSource);
 on("pf1ToggleActorCondition",(actor,id,value)=>notifications.push([actor.uuid,id,value]));
@@ -312,11 +323,23 @@ on("pf1ToggleActorCondition",(actor,id,value)=>notifications.push([actor.uuid,id
  combats.set(ac.id,ac);
  fire("updateCombat",ac,{turn:0});fire("combatTurnChange",ac,{round:0,combatantId:null},{round:1,combatantId:"ac"});
  await tick();
+ assert.equal(rolls,0);assert.equal(agon.system.attributes.hp.value,-4);assert.equal(cards(agon).length,1);
+ const first=lastCard(agon);assert.equal(cardState(first),"waiting");
+ fire("updateActor",agon,{["flags."+NS+".healthAgonyRequest"]:{messageId:first.id,requestId:"forged"}},{},"other");await tick();
+ assert.equal(rolls,0);
+ game.user=player;assert.equal((await api.rollStabilization(first.id)).queued,true);
+ assert.equal(rolls,0);
+ const request=agon.flags[NS].healthAgonyRequest;
+ game.user=gm;
+ fire("updateActor",agon,{["flags."+NS+".healthAgonyRequest"]:request},{},player.id);
+ fire("updateActor",agon,{["flags."+NS+".healthAgonyRequest"]:request},{},player.id);
+ await tick();assert.equal(cardState(first),"applied");
  assert.equal(rolls,1);assert.equal(lastOptions.dc,10);assert.equal(lastOptions.bonus.startsWith("-4["),true);
  assert.equal(agon.system.attributes.hp.value,-5);
  fire("updateCombat",ac,{turn:0});await tick();assert.equal(rolls,1);assert.equal(agon.system.attributes.hp.value,-5);
  ac.round=2;rollNatural=20;rollTotal=4;fire("updateCombat",ac,{round:2});await tick();
- assert.equal(rolls,2);assert.equal(has(agon,"stable"),true);assert.equal(has(agon,"dying"),false);assert.equal(agon.system.attributes.hp.value,-5);
+ assert.equal(rolls,1);assert.equal(cardState(lastCard(agon)),"waiting");
+ await api.rollStabilization(lastCard(agon).id);await tick();assert.equal(rolls,2);assert.equal(has(agon,"stable"),true);assert.equal(has(agon,"dying"),false);assert.equal(agon.system.attributes.hp.value,-5);
  await agon.update({"system.attributes.hp.value":-6});await tick();
  const ongoing=trait(agon,"ongoing");ongoing.flags={[NS]:{ongoingDamage:true}};
  ongoing.getFlag=(ns,k)=>ongoing.flags?.[ns]?.[k];
@@ -360,12 +383,39 @@ on("pf1ToggleActorCondition",(actor,id,value)=>notifications.push([actor.uuid,id
  let amount=0;
  addon.api.bleed={list:actor=>actor===wounded?[bleedSource]:[],process:async()=>({applied:true,amount}),
   receipts:()=>[{combatId:bc.id,combatantId:"bc",round:bc.round,actorUuid:wounded.uuid,status:"applied",appliedAmount:amount}]};
- fire("updateCombat",bc,{turn:0});await tick();assert.equal(syntheticRolls,1);assert.equal(has(wounded,"stable"),true);
+ fire("updateCombat",bc,{turn:0});await tick();assert.equal(syntheticRolls,0);
+ await api.rollStabilization(lastCard(wounded).id);await tick();assert.equal(syntheticRolls,1);assert.equal(has(wounded,"stable"),true);
  await wounded.update({"system.attributes.hp.value":-3});await tick();
  amount=2;bc.round=2;fire("updateCombat",bc,{round:2});await tick();
  assert.equal(syntheticRolls,1);assert.equal(wounded.system.attributes.hp.value,-4);assert.equal(has(wounded,"dying"),true);
  delete addon.api.bleed;
-
+ const waiting=makeActor("Actor.waiting",{hp:-2});
+ let pendingRolls=0,penalty="";
+ waiting.rollAbilityTest=async(_id,o)=>{pendingRolls++;penalty=o.bonus;return {rolls:[{natural:12,total:9}]}};
+ const wc={id:"waiting-combat",started:true,round:1,turn:0,combatant:{id:"wc",actor:waiting}};
+ combats.set(wc.id,wc);
+ fire("updateCombat",wc,{round:1});await tick();
+ const w1=lastCard(waiting);assert.equal(cardState(w1),"waiting");assert.equal(pendingRolls,0);
+ await waiting.update({"system.attributes.hp.value":-4});await tick();
+ await api.rollStabilization(w1.id);await tick();
+ assert.equal(pendingRolls,1);assert.equal(penalty.startsWith("-4["),true);assert.equal(waiting.system.attributes.hp.value,-5);
+ wc.round=2;fire("updateCombat",wc,{round:2});await tick();const w2=lastCard(waiting);
+ await waiting.update({"system.attributes.hp.value":-3});await tick();assert.equal(cardState(w2),"expired");
+ await assert.rejects(api.rollStabilization(w2.id));assert.equal(pendingRolls,1);
+ await waiting.update({"system.attributes.hp.value":-4});await tick();
+ wc.round=3;fire("updateCombat",wc,{round:3});await tick();const w3=lastCard(waiting);
+ wc.turn=1;wc.combatant={id:"other-c",actor:a};fire("updateCombat",wc,{turn:1});await tick();
+ assert.equal(cardState(w3),"expired");
+ wc.turn=0;wc.combatant={id:"wc",actor:waiting};fire("updateCombat",wc,{turn:0});await tick();
+ assert.equal(lastCard(waiting),w3);await assert.rejects(api.rollStabilization(w3.id));assert.equal(pendingRolls,1);
+ wc.round=4;fire("updateCombat",wc,{round:4});await tick();const w4=lastCard(waiting);
+ fire("updateActor",a,{["flags."+NS+".healthAgonyRequest"]:{messageId:w4.id,requestId:"cross"}},{},player.id);
+ await tick();assert.equal(pendingRolls,1);assert.equal(cardState(w4),"waiting");
+ await Promise.all([api.rollStabilization(w4.id),api.rollStabilization(w4.id)]);await tick();
+ assert.equal(pendingRolls,2);assert.equal(cardState(w4),"applied");
+ wc.round=5;waiting.rollAbilityTest=async()=>undefined;fire("updateCombat",wc,{round:5});await tick();
+ const w5=lastCard(waiting);await assert.rejects(api.rollStabilization(w5.id));assert.equal(cardState(w5),"review");
+ await assert.rejects(api.rollStabilization(w5.id));
  await game.settings.set(NS,"healthAgonyEnabled",false);
  await game.settings.set(NS,"healthStrenuousEnabled",false);
 

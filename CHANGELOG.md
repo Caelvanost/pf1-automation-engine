@@ -1,3 +1,10 @@
+# 1.48.1 — Test de stabilisation sur clic dans le chat
+
+- Au début du tour, carte de Constitution DD 10 à destination des propriétaires et MJ, sans lancer le dé. Le clic autorisé déclenche le jet PF1 natif par le MJ élu (malus de PV négatifs actuel, 20 naturel).
+- Reçus persistants, identité exacte de l'acteur/combattant/round/message, requêtes joueur authentifiées par updateActor, réservation avant le jet, protection contre double clic et rechargement. Fin du tour, récupération ou mort périment la carte. Pas de blocage du passage de tour, pas de rejeu automatique : arbitrage MJ en cas de test ignoré ou de jet non vérifié.
+- Dégâts continus identifiés : échec automatique sans bouton ni jet ; perte réelle de PV. Aucun nouveau paramètre ni aptitude spécifique.
+- Tests simulés, validation Foundry multijoueur requise.
+
 # 1.48.0 — Événement générique de santé et libellés de paramètres
 
 - Retire `(alpha)` de tous les libellés de paramètres FR/EN ; le statut expérimental reste au niveau de la release.

@@ -65,7 +65,7 @@
       },
       "HealthAgony": {
         "Name": "Agonie et stabilisation",
-        "Hint": "Test de Constitution au début du tour, stabilisation par soins et perte de PV en cas d'échec. Exige la gestion des états de santé validée."
+        "Hint": "Au début du tour d'une créature mourante, affiche un bouton de test de Constitution dans le chat. Les dégâts continus identifiés provoquent un échec automatique. Gère aussi la stabilisation par les soins."
       },
       "HealthStrenuous": {
         "Name": "Actions éprouvantes à 0 PV ou moins",
