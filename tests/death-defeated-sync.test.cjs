@@ -11,15 +11,15 @@ const hooks=new Map(),writes=[],users=[
 ];
 const on=(name,fn)=>hooks.set(name,[...(hooks.get(name)??[]),fn]);
 const fire=(name,...args)=>{for(const fn of hooks.get(name)??[])fn(...args)};
-const module={active:true,api:{}};
-const game={user:users[0],users,modules:new Map([['pf1-automation-engine',module]]),
+const addon={active:true,api:{}};
+const game={user:users[0],users,modules:new Map([['pf1-automation-engine',addon]]),
  combats:new Map()};
 const context={game,CONFIG:{statusEffects:[{id:'dead',name:'Mort'},{id:'unconscious'}]},
  Hooks:{on,once:on},console};
 context.globalThis=context;
 vm.runInNewContext(src,context,{filename:'death-defeated-sync.js'});
 fire('ready');
-const api=module.api.deathDefeated;
+const api=addon.api.deathDefeated;
 assert.equal(api.statusId(),'dead');
 assert.equal(api.isAvailable(),true);
 assert.equal(hooks.get('updateCombatant').length,1);
