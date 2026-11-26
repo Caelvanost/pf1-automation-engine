@@ -9,7 +9,8 @@ const fire=(n,...args)=>{for(const fn of hooks.get(n)??[])fn(...args)};
 const gm={id:"gm",isGM:true,active:true},player={id:"player",isGM:false,active:true};
 const conditions=new Map(["dead","stable","disabled","dying","unconscious","prone","staggered","sleep","helpless"].map(id=>[id,{name:id,texture:id+".svg",statuses:new Set(id==="disabled"?["staggered"]:id==="unconscious"?["helpless"]:id==="sleep"?["helpless","unconscious"]:[])}]));
 conditions.trackedConditions=()=>[["dead","disabled","dying","stable"]];
-let seq=0,deadSync=0;
+let seq=0,deadSync=0,probeCreates=0,probeFailure=false;
+const warnings=[];
 const notifications=[];
 const addon={version:manifest.version,api:{generic:{isLeader:()=>game.user===gm},deathDefeated:{reconcileActor:async()=>{deadSync++}}}};
 const improved={active:false},actors=new Map(),scenes=new Map(),documents=new Map(),combats=new Map(),messages=new Map();
@@ -117,7 +118,7 @@ class TestHud{
 }
 class TestEffect{get isTemporary(){return this.visible!==false}}
 const CONFIG={Token:{hudClass:TestHud},ActiveEffect:{documentClass:TestEffect}};
-const context={game,CONFIG,pf1:contextPf1,Hooks:{on,once:on,callAll:fire},console,ui:{notifications:{warn:()=>{}}},
+const context={game,CONFIG,pf1:contextPf1,Hooks:{on,once:on,callAll:fire},console,ui:{notifications:{warn:(message)=>warnings.push(message)}},
  ChatMessage:{getSpeaker:({actor})=>({actor:actor.uuid}),async create(data){
   const id="msg"+ ++seq;
   const message={...clone(data),id,getFlag(ns,k){return this.flags?.[ns]?.[k]},
@@ -126,7 +127,7 @@ const context={game,CONFIG,pf1:contextPf1,Hooks:{on,once:on,callAll:fire},consol
  }},
 
  fromUuid:async uuid=>documents.get(uuid),foundry:{utils:{randomID:()=>"request"+ ++seq,deepClone:clone,mergeObject:merge}},
- Actor:{implementation:{create:async data=>makeActor("Actor.probe"+ ++seq,{flags:data.flags})}},
+ Actor:{implementation:{create:async data=>{probeCreates++;if(probeFailure)throw Error("fixture probe failure");return makeActor("Actor.probe"+ ++seq,{flags:data.flags})}}},
  Scene:{implementation:{create:async()=>{
   const id="scene"+ ++seq;
   const scene={id,tokens:new Map(),async createEmbeddedDocuments(kind,rows){
@@ -144,6 +145,7 @@ context.globalThis=context;
 vm.runInNewContext(src,context);fire("init");fire("ready");
 const api=addon.api.healthConditions;
 const tick=async()=>{for(let i=0;i<30;i++)await new Promise(r=>setTimeout(r,0))};
+const waitValidation=async()=>{for(let i=0;i<30;i++){await tick();if(!api.diagnostics().validation.running){await tick();return}}throw Error("Validation did not settle")};
 const has=(actor,status)=>actor.statuses.has(status);
 const cards=(actor)=>[...messages.values()].filter(m=>m.getFlag(NS,"healthAgonyCard")?.actorUuid===actor.uuid);
 const lastCard=actor=>cards(actor).at(-1);
@@ -154,6 +156,41 @@ on("pf1ToggleActorCondition",(actor,id,value)=>notifications.push([actor.uuid,id
 (async()=>{
  assert.equal(api.isAvailable(),false);
  assert.equal(registered.get("healthConditionsEnabled").default,false);
+ // First enable, absent proof: automatic probe; concurrent activation
+ // signals share one probe. Catch up the Actor changed during validation.
+ const pre=makeActor("Actor.pre");
+ await game.settings.set(NS,"healthConditionsEnabled",true);
+ fire("canvasReady");fire("updateUser",gm,{active:true});
+ await pre.update({"system.attributes.hp.value":0});
+ await waitValidation();
+ assert.equal(api.isAvailable(),true,"automatic first enable");assert.equal(probeCreates,1);
+ assert.equal(has(pre,"disabled"),true,"catch-up");assert.equal(scenes.size,0);
+ const proofKey=api.diagnostics().fingerprint;
+ assert.equal(proofKey.endsWith("|native-conditions-1"),true);
+ assert.equal(settings.get("healthConditionsProof"),proofKey);
+ const version=addon.version;addon.version="99.99.99";
+ assert.equal(api.isAvailable(),true);fire("canvasReady");await waitValidation();assert.equal(probeCreates,1);
+ addon.version=version;
+ await game.settings.set(NS,"healthConditionsProof",game.version+"|pf1|11.11|1.48.1");
+ fire("canvasReady");await waitValidation();
+ assert.equal(api.isAvailable(),true);assert.equal(probeCreates,1);
+ assert.equal(settings.get("healthConditionsProof"),proofKey);
+ game.version="13.352";assert.equal(api.isAvailable(),false);
+ fire("canvasReady");fire("canvasReady");await waitValidation();
+ assert.equal(api.isAvailable(),true);assert.equal(probeCreates,2);
+ const warningStart=warnings.length;
+ game.system.version="11.12";fire("canvasReady");fire("canvasReady");await waitValidation();
+ assert.equal(api.isAvailable(),false);assert.equal(probeCreates,2);assert.equal(warnings.length,warningStart+1);
+ game.system.version="11.11";
+ game.version="13.353";probeFailure=true;
+ fire("canvasReady");await waitValidation();assert.equal(api.isAvailable(),false);
+ assert.equal(api.diagnostics().reason,"validation-failed");assert.equal(probeCreates,3);
+ fire("canvasReady");await waitValidation();assert.equal(probeCreates,3);
+ probeFailure=false;
+ await api.probe();await waitValidation();assert.equal(api.isAvailable(),true);assert.equal(probeCreates,4);
+ await game.settings.set(NS,"healthConditionsEnabled",false);await tick();await pre.delete();
+ game.version="13.351";
+ await game.settings.set(NS,"healthConditionsProof","");
  const a=makeActor("Actor.a");
  await a.update({"system.attributes.hp.value":0});await tick();assert.equal(owned(a).length,0);
  improved.active=true;await assert.rejects(api.probe());improved.active=false;

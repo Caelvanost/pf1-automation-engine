@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.48.1
+# PF1 Automation Engine v1.48.2
+
+## Validation automatique du moteur de santé (v1.48.2)
+
+La macro de diagnostic n'est plus un prérequis manuel. Le MJ élu vérifie automatiquement la provenance native au démarrage ou à l'activation si aucune preuve compatible n'est enregistrée. Les preuves valides de la v1.46.3, 1.47.0, 1.48.0 et 1.48.1 sont migrées pour le même environnement. La preuve dépend désormais du build Foundry, du système/version PF1 et de la révision du contrat natif, pas de la version générale du module. Un changement de build compatible déclenche un nouveau test automatique. Les versions non prises en charge (PF1 autre que 11.11 ou Foundry hors v13) et Improved Conditions actif restent bloquants, avec avertissement MJ. Aucun changement de règles de santé ; macro de diagnostic conservée, exécutable lorsque le moteur est inactif ou au repos. Voir la documentation.
 
 ## Test de stabilisation sur clic (v1.48.1)
 

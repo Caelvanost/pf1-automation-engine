@@ -7,6 +7,11 @@
 const HC_NS="pf1-automation-engine";
 const HC_ENABLED="healthConditionsEnabled";
 const HC_PROOF="healthConditionsProof";
+// Bump only when the native provenance contract changes, not for unrelated releases.
+const HC_PROOF_SCHEMA="native-conditions-1";
+const HC_LEGACY_PROOFS=new Set(["1.46.3","1.47.0","1.48.0","1.48.1"]);
+let HC_PROBING=false,HC_VALIDATION=null,HC_VALIDATION_FAILURE=null,HC_VALIDATION_WARNED=null;
+const HC_PENDING_ACTORS=new Set();
 const HC_RECORDS="healthExceptions";
 const HC_SOURCE="healthConditionSource";
 const HC_AGONY="healthAgonyEnabled",HC_STRAIN="healthStrenuousEnabled";
@@ -23,7 +28,13 @@ const hcLeader=()=>hcModule()?.api?.generic?.isLeader?.()===true&&game.user?.isG
 const hcInternal=()=>({[HC_INTERNAL]:true,pf1:{updateConditionTracks:false}});
 const hcFlag=(d,k)=>d?.getFlag?.(HC_NS,k)??d?.flags?.[HC_NS]?.[k];
 const hcSetting=(k,d)=>{try{return game.settings.get(HC_NS,k)??d}catch(_){return d}};
-const hcFingerprint=()=>[game.version??game.release?.version??"",game.system?.id,game.system?.version,hcModule()?.version??""].join("|");
+const hcEnvironment=()=>[game.version??game.release?.version??"",game.system?.id,game.system?.version].join("|");
+const hcFingerprint=()=>hcEnvironment()+"|"+HC_PROOF_SCHEMA;
+function hcLegacyProof(value){
+ if(typeof value!=="string")return false;
+ const prefix=hcEnvironment()+"|";
+ return value.startsWith(prefix)&&HC_LEGACY_PROOFS.has(value.slice(prefix.length));
+}
 function hcProvider(){
  if(game.release?.generation!==13||game.system?.id!=="pf1"||game.system?.version!=="11.11")
   return {available:false,reason:"unsupported-system"};
@@ -36,6 +47,8 @@ function hcProvider(){
 function hcAvailability(){
  const p=hcProvider();if(!p.available)return p;
  if(hcSetting(HC_ENABLED,false)!==true)return {available:false,reason:"disabled"};
+ if(HC_PROBING)return {available:false,reason:"validation-running"};
+ if(HC_VALIDATION_FAILURE?.fingerprint===hcFingerprint())return {available:false,reason:"validation-failed"};
  if(hcSetting(HC_PROOF,"")!==hcFingerprint())return {available:false,reason:"runtime-probe-required"};
  return p;
 }
@@ -842,7 +855,13 @@ async function hcReconcileInternal(actor){
  return {reconciled:true,plan};
 }
 function hcEnqueue(actor,task){
- if(!actor?.uuid||!hcLeader()||!hcAvailability().available)return Promise.resolve({skipped:"unavailable"});
+ if(!actor?.uuid||!hcLeader())return Promise.resolve({skipped:"unavailable"});
+ if(!hcAvailability().available){
+  // Reconcile current document state after validation, not missed events/turns.
+  if(hcSetting(HC_ENABLED,false)===true&&hcProvider().available&&!hcFlag(actor,"healthProbe"))
+   HC_PENDING_ACTORS.add(actor.uuid);
+  return Promise.resolve({skipped:"unavailable"});
+ }
  const key=actor.uuid,prior=HC_WORK.get(key)??Promise.resolve();
  const next=prior.catch(()=>{}).then(async()=>{
   const current=await fromUuid(key);
@@ -927,6 +946,7 @@ async function hcRestore(){
 }
 async function hcDisable(){
  if(!hcLeader())return;
+ HC_PENDING_ACTORS.clear();
  for(const actor of hcActors()){
   await HC_WORK.get(actor.uuid)?.catch(()=>{});
   if(hcSetting(HC_ENABLED,false)===true)return;
@@ -941,7 +961,8 @@ async function hcDisable(){
 function hcDiagnostics(actor){
  const availability=hcAvailability();
  return {...availability,provider:hcProvider(),proof:hcSetting(HC_PROOF,""),
-  fingerprint:hcFingerprint(),...(actor?{actorUuid:actor.uuid,plan:hcPlan(actor),
+  fingerprint:hcFingerprint(),validation:{running:HC_PROBING,failure:HC_VALIDATION_FAILURE,
+   proofSchema:HC_PROOF_SCHEMA,legacyProofRecognized:hcLegacyProof(hcSetting(HC_PROOF,""))},...(actor?{actorUuid:actor.uuid,plan:hcPlan(actor),
    records:hcRecords(actor).valid,owned:hcSourceEffects(actor).map(e=>({uuid:e.uuid,...hcDirectSource(e,actor)})),
    legacy:hcSourceItems(actor).map(i=>({uuid:i.uuid,...hcSource(i,actor)})),
    actualStatuses:[...actor.statuses],
@@ -1002,12 +1023,8 @@ async function hcProbeOne(actor,baseActor=null){
  checkIsolation();
  return checks;
 }
-let HC_PROBING=false;
-async function hcProbe(){
- if(!hcLeader()||!hcProvider().available)throw Error("Probe requires elected GM, exact PF1 and no Improved Conditions.");
- if(hcSetting(HC_ENABLED,false)===true)throw Error("Disable Health Conditions before running the probe.");
- if(HC_PROBING)throw Error("Health Conditions probe already running.");
- HC_PROBING=true;
+// Shared isolated runtime probe for automatic and manual validation.
+async function hcRunProbe(fingerprint){
  let actor,scene,result;
  try{
   await game.settings.set(HC_NS,HC_PROOF,"");
@@ -1025,13 +1042,92 @@ async function hcProbe(){
   if(!token?.actor||token.actor.uuid===actor.uuid)throw Error("Synthetic Actor creation failed.");
   const unlinked=await hcProbeOne(token.actor,actor);
   if(actor.statuses?.has?.("unconscious")||actor.statuses?.has?.("prone"))throw Error("Synthetic Actor leaked to world Actor.");
-  result={passed:true,linked,unlinked,fingerprint:hcFingerprint()};
+  result={passed:true,linked,unlinked,fingerprint};
  }finally{
-  try{if(scene)await scene.delete();}finally{try{if(actor)await actor.delete();}finally{HC_PROBING=false;}}
+  try{if(scene)await scene.delete();}finally{if(actor)await actor.delete();}
  }
- await game.settings.set(HC_NS,HC_PROOF,hcFingerprint());
+ if(!hcLeader()||!hcProvider().available||fingerprint!==hcFingerprint())throw Error("Health validation environment or GM changed during probe.");
+ await game.settings.set(HC_NS,HC_PROOF,fingerprint);
  return result;
 }
+function hcValidationWarning(reason,detail){
+ const key=hcFingerprint()+"|"+reason;
+ if(HC_VALIDATION_WARNED===key)return;
+ HC_VALIDATION_WARNED=key;
+ const msg=reason==="unsupported-system"?
+  hcLang("PF1AE : gestion de santé suspendue, version Foundry/PF1 non prise en charge.",
+   "PF1AE: health management suspended, unsupported Foundry/PF1 version."):
+  reason==="improved-conditions-conflict"?
+   hcLang("PF1AE : gestion de santé suspendue, Improved Conditions est actif.",
+    "PF1AE: health management suspended, Improved Conditions is active."):
+   hcLang("PF1AE : validation du moteur de santé impossible. Consultez la console (F12).",
+    "PF1AE: health engine validation failed. See the console (F12).");
+ console.warn("[PF1AE][HealthConditions] "+reason,detail);
+ globalThis.ui?.notifications?.warn?.(msg,{permanent:true});
+}
+function hcValidate({force=false}={}){
+ if(!hcLeader())return Promise.reject(Error("Health validation requires the elected GM."));
+ const p=hcProvider();
+ if(!p.available){
+  hcValidationWarning(p.reason);
+  return Promise.reject(Error("Health validation unavailable: "+p.reason));
+ }
+ if(HC_VALIDATION){
+  if(force)return Promise.reject(Error("Health validation already running."));
+  return HC_VALIDATION;
+ }
+ const fingerprint=hcFingerprint(),proof=hcSetting(HC_PROOF,"");
+ if(!force&&HC_VALIDATION_FAILURE?.fingerprint===fingerprint)
+  return Promise.reject(Error(HC_VALIDATION_FAILURE.message));
+ if(!force&&proof===fingerprint)return Promise.resolve({passed:true,cached:true,fingerprint});
+ if(force&&hcSetting(HC_ENABLED,false)===true&&HC_WORK.size)
+  return Promise.reject(Error("Health processing is active; retry the diagnostic when idle."));
+ HC_PROBING=true;
+ const task=(async()=>{
+  try{
+   let result;
+   // Import only direct-native proofs, never old buff-carrier probes.
+   if(!force&&hcLegacyProof(proof)){
+    await game.settings.set(HC_NS,HC_PROOF,fingerprint);
+    if(!hcLeader()||!hcProvider().available||fingerprint!==hcFingerprint())
+     throw Error("Health validation environment or GM changed during migration.");
+    result={passed:true,migrated:true,fingerprint};
+   }else result=await hcRunProbe(fingerprint);
+   HC_VALIDATION_FAILURE=null;HC_VALIDATION_WARNED=null;
+   return result;
+  }catch(error){
+   HC_VALIDATION_FAILURE={fingerprint,message:String(error?.message??error)};
+   if(hcLeader()&&hcSetting(HC_PROOF,"")!=="")try{await game.settings.set(HC_NS,HC_PROOF,"")}catch(e){console.warn("[PF1AE][HealthConditions] Could not clear failed proof",e)}
+   hcValidationWarning("validation-failed",error);
+   throw error;
+  }finally{HC_PROBING=false}
+ })();
+ HC_VALIDATION=task;
+ const clear=()=>{if(HC_VALIDATION===task)HC_VALIDATION=null};
+ task.then(clear,clear);
+ return task;
+}
+async function hcRestoreAfterValidation(){
+ if(!hcLeader()||!hcAvailability().available)return;
+ await hcRestore();
+ const pending=[...HC_PENDING_ACTORS];HC_PENDING_ACTORS.clear();
+ for(const uuid of pending){
+  const actor=await fromUuid(uuid);
+  if(actor)await hcQueue(actor).catch(()=>{});
+ }
+}
+async function hcActivate({retry=false}={}){
+ if(!hcLeader()||hcSetting(HC_ENABLED,false)!==true)return;
+ if(retry){HC_VALIDATION_FAILURE=null;HC_VALIDATION_WARNED=null}
+ try{await hcValidate();await hcRestoreAfterValidation()}
+ catch(error){/* hcValidate already logged/notified; fail closed. */}
+}
+async function hcProbe(){
+ const result=await hcValidate({force:true});
+ if(hcSetting(HC_ENABLED,false)===true)await hcRestoreAfterValidation();
+ return result;
+}
+
 const hcOnActor=(actor,changed,options,userId)=>{
  if(options?.[HC_INTERNAL]||hcFlag(actor,"healthProbe"))return;
  hcHandleAgonyRequest(actor,changed,userId);
@@ -1067,7 +1163,7 @@ const hcOnEffect=(effect,change,options)=>{
 Hooks.once("init",()=>{
  game.settings.register(HC_NS,HC_ENABLED,{scope:"world",config:true,type:Boolean,default:false,
   name:"PF1AE.Settings.HealthConditions.Name",hint:"PF1AE.Settings.HealthConditions.Hint",
-  onChange:value=>{if(value)void hcRestore();else void hcDisable()}});
+  onChange:value=>{if(value)void hcActivate({retry:true});else void hcDisable()}});
  game.settings.register(HC_NS,HC_PROOF,{scope:"world",config:false,type:String,default:""});
  game.settings.register(HC_NS,HC_AGONY,{scope:"world",config:true,type:Boolean,default:false,
   name:"PF1AE.Settings.HealthAgony.Name",hint:"PF1AE.Settings.HealthAgony.Hint",onChange:()=>{void hcRestore()}});
@@ -1101,7 +1197,7 @@ Hooks.once("ready",()=>{
  Hooks.on("pf1PostActionUse",use=>{void hcAfterAction(use).catch(e=>console.warn("[PF1AE][HealthConditions] Action cost requires review",e))});
  Hooks.on("deleteCombat",combat=>{hcExpireDeparted(combat,true);void hcRestore()});
  Hooks.on("renderChatMessageHTML",hcRenderAgony);
- Hooks.on("canvasReady",()=>{void hcRestore()});
- Hooks.on("updateUser",(_u,c)=>{if(Object.hasOwn(c??{},"active"))void hcRestore()});
- void hcRestore();
+ Hooks.on("canvasReady",()=>{void hcActivate()});
+ Hooks.on("updateUser",(_u,c)=>{if(Object.hasOwn(c??{},"active"))void hcActivate()});
+ void hcActivate();
 });

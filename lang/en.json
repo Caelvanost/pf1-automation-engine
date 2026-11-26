@@ -61,7 +61,7 @@
       },
       "HealthConditions": {
         "Name": "Health condition management",
-        "Hint": "Disable Improved Conditions, then pass the native probe on temporary actors before enabling. Dying checks and strenuous actions have separate settings."
+        "Hint": "Disable Improved Conditions. Health engine compatibility is validated automatically when enabled and at startup if needed. Dying checks and strenuous actions have separate settings."
       },
       "HealthAgony": {
         "Name": "Dying checks and stabilization",

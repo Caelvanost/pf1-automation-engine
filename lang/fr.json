@@ -61,7 +61,7 @@
       },
       "HealthConditions": {
         "Name": "Gestion des états de santé",
-        "Hint": "Désactivez Improved Conditions, puis réussissez le diagnostic natif sur des acteurs temporaires avant d'activer. Agonie et actions éprouvantes disposent de paramètres séparés."
+        "Hint": "Désactivez Improved Conditions. La compatibilité du moteur de santé est vérifiée automatiquement à l'activation et au démarrage si nécessaire. Agonie et actions éprouvantes disposent de paramètres séparés."
       },
       "HealthAgony": {
         "Name": "Agonie et stabilisation",
