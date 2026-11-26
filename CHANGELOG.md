@@ -1,3 +1,11 @@
+# 1.45.0 — Synchronisation générique Mort ⇄ Vaincu
+
+- Ajoute la synchronisation bidirectionnelle **état natif PF1 « Mort »** ↔ **combattant « Vaincu »** dans les rencontres Foundry 13.
+- Sur création/suppression/modification de l'état Mort (ActiveEffect ou état d'Actor), met à jour le champ natif `Combatant.defeated`. Sur changement de `Combatant.defeated`, utilise `Actor.toggleStatusEffect()` pour appliquer ou retirer l'état natif Mort.
+- Exécution exclusive sur le MJ élu et protection contre la récursion ; prise en charge des acteurs synthétiques de tokens et combattants liés à un même acteur.
+- Ne déduit pas la mort des PV et ne modifie pas la logique PF1 de mourant, inconscient ou stable.
+- Nouveaux tests de régression des deux directions, permissions du MJ élu, non-récursion, suppression d'effet et absence de condition native. Passage du registre CI à 55 suites.
+
 # 1.44.1 — Correction de l'exécution directe des actions
 
 - Corrige l'option « Ignorer le dialogue » de v1.44.0, qui pouvait laisser apparaître la fenêtre native malgré la case cochée.
