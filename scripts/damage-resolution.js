@@ -697,6 +697,112 @@ function drPreviewObject({hardness,hp,maxHp,components,ratio=1,sourceKind=null,d
  return {...result,objectHealth:{before:hp,max:maxHp,remaining,
   destroyed:remaining===0,broken:remaining>0&&remaining*2<=maxHp}};
 }
+// Ability score operations use only PF1's stored fields. They never enter
+// HP application, damage reduction, energy resistance or hardness.
+// Source-specific saves, poison, conditions, duration and stacking remain
+// with the caller; penalty is a resolved absolute manual total, not a delta.
+const AB_KEYS=new Set(["str","dex","con","int","wis","cha"]);
+const AB_FIELDS=Object.freeze({damage:"damage",drain:"drain",penalty:"userPenalty"});
+const AB_TYPES=new Set(["aberration","animal","construct","dragon","fey","humanoid","magicalBeast",
+ "monstrousHumanoid","ooze","outsider","plant","undead","vermin"]);
+const AB_RECEIPTS="abilityDamageReceipts",AB_BUSY=new Set();
+const abInt=n=>Number.isSafeInteger(n)&&n>=0;
+function abOperations(operations){
+ if(!Array.isArray(operations)||!operations.length||operations.length>18)return null;
+ const seen=new Set(),out=[];
+ for(const op of operations){
+  if(!op||!AB_KEYS.has(op.ability)||!Object.hasOwn(AB_FIELDS,op.kind)||!abInt(op.amount)||
+     !["inflict","restore","set"].includes(op.operation)||
+     (op.kind==="penalty")!==(op.operation==="set"))return null;
+  const key=op.ability+"."+op.kind;
+  if(seen.has(key))return null; // no implicit ordering or stacking
+  seen.add(key);out.push({ability:op.ability,kind:op.kind,operation:op.operation,amount:op.amount});
+ }
+ return out.sort((a,b)=>(a.ability+"."+a.kind).localeCompare(b.ability+"."+b.kind));
+}
+function abSource(actor){
+ try{return actor.toObject?.()??null;}catch(_){return null;}
+}
+function abImmunity(actor,op){
+ const traits=actor.system?.traits,type=traits?.type;
+ const standard=drArray(traits?.di?.standard??traits?.di?.value);
+ // Native ability-wide standard IDs, if present; never match translations.
+ const immuneId={damage:"abilityDamage",drain:"abilityDrain",penalty:"abilityPenalty"}[op.kind];
+ if(standard?.includes(immuneId))return {immune:true,reason:"native-ability-immunity"};
+ if(type==="construct"&&(op.kind==="damage"||op.kind==="drain"))
+  return {immune:true,reason:"construct-traits"};
+ if(type==="undead"&&(op.kind==="drain"||["str","dex","con"].includes(op.ability)))
+  return {immune:true,reason:"undead-traits"};
+ if(!AB_TYPES.has(type)||!standard||standard.some(x=>typeof x!=="string")||
+    drCustom(traits?.di?.custom)||drCustom(traits?.ci?.custom))
+  return {immune:null,reason:"unverified-ability-immunity"};
+ return {immune:false};
+}
+function abPreview({actor,operations,confirmUnknownImmunity=false}={}){
+ const ops=abOperations(operations),raw=abSource(actor);
+ if(!ops)return drFail("invalid-ability-operations");
+ if(!["character","npc"].includes(actor?.type)||!raw?.system?.abilities||
+    drTargetKind(actor)!=="creature")return drFail("unsupported-ability-target");
+ const rows=[],updates={};
+ for(const op of ops){
+  const field=AB_FIELDS[op.kind],ability=raw.system.abilities[op.ability];
+  const before=ability?.[field];
+  if(!abInt(before))return drFail("unverified-native-ability-field");
+  const increasing=op.operation==="inflict"&&op.amount>0||op.operation==="set"&&op.amount>before;
+  const defense=increasing?abImmunity(actor,op):{immune:false};
+  if(defense.immune===null&&confirmUnknownImmunity!==true)return drFail(defense.reason);
+  // A nonability cannot receive a newly inflicted loss. Do not equate
+  // a derived total of zero from an existing drain with a missing base score.
+  if(increasing&&defense.immune!==true&&(!Number.isSafeInteger(ability.value)||ability.value<=0))
+   return drFail("unverified-or-absent-ability");
+  let after=before;
+  if(defense.immune!==true){
+   after=op.operation==="inflict"?before+op.amount:op.operation==="restore"?Math.max(0,before-op.amount):op.amount;
+   if(!abInt(after))return drFail("invalid-ability-result");
+  }
+  const path="system.abilities."+op.ability+"."+field;
+  if(after!==before)updates[path]=after;
+  rows.push({...op,field,before,after,delta:after-before,immune:defense.immune===true,
+   immunityReason:defense.reason??null,immunityManuallyConfirmed:defense.immune===null});
+ }
+ return {supported:true,rows,updates};
+}
+function abFingerprint(ops,confirm){return JSON.stringify({operations:ops,confirmUnknownImmunity:confirm===true});}
+function abReceipts(actor){
+ const value=actor.getFlag?.(DR_NS,AB_RECEIPTS)??actor.flags?.[DR_NS]?.[AB_RECEIPTS];
+ return value==null?[]:Array.isArray(value)&&value.length<=32&&value.every(x=>x&&drShortId(x.id)&&typeof x.fingerprint==="string")?value:null;
+}
+async function abApply({actor,operations,requestId,confirmUnknownImmunity=false}={}){
+ if(!drAvailable())return drFail("ability-engine-disabled");
+ if(!actor?.uuid||typeof actor.update!=="function"||
+    !(game.user?.isGM||actor.testUserPermission?.(game.user,"OWNER")===true))
+  return drFail("ability-owner-required");
+ if(confirmUnknownImmunity===true&&!game.user?.isGM)return drFail("ability-gm-confirmation-required");
+ const ops=abOperations(operations);
+ if(!ops||!drShortId(requestId)||requestId.length>128)return drFail("invalid-ability-request");
+ if(AB_BUSY.has(actor.uuid))return drFail("ability-update-busy");
+ AB_BUSY.add(actor.uuid);
+ try{
+  const fingerprint=abFingerprint(ops,confirmUnknownImmunity),receipts=abReceipts(actor);
+  if(!receipts)return drFail("invalid-ability-receipts");
+  const prior=receipts.find(x=>x.id===requestId);
+  if(prior)return prior.fingerprint===fingerprint?
+   {supported:true,applied:false,duplicate:true,requestId}:drFail("ability-request-conflict");
+  const result=abPreview({actor,operations:ops,confirmUnknownImmunity});
+  if(!result.supported)return result;
+  // Same Actor document update for fields and receipt. No second update
+  // of HP, conditions, base ability, or rest. One local writer at a time.
+  const path="flags."+DR_NS+"."+AB_RECEIPTS;
+  const next=[...receipts,{id:requestId,fingerprint}].slice(-32);
+  try{await actor.update({...result.updates,[path]:next});}
+  catch(error){return {...drFail("ability-update-unconfirmed"),requestId,detail:String(error?.message??error)};}
+  const stored=abReceipts(actor),raw=abSource(actor);
+  if(!stored?.some(x=>x.id===requestId&&x.fingerprint===fingerprint)||
+     result.rows.some(row=>raw?.system?.abilities?.[row.ability]?.[row.field]!==row.after))
+   return {...drFail("ability-update-unconfirmed"),requestId};
+  return {...result,applied:Object.keys(result.updates).length>0,duplicate:false,requestId};
+ }finally{AB_BUSY.delete(actor.uuid);}
+}
 Hooks.once("init",()=>{
  game.settings.register(DR_NS,DR_SETTING,{scope:"world",config:true,restricted:true,type:Boolean,default:false,
   name:"PF1AE.Settings.AutomaticDamageDefenses.Name",hint:"PF1AE.Settings.AutomaticDamageDefenses.Hint"});
@@ -709,6 +815,7 @@ Hooks.once("init",()=>{
 });
 Hooks.once("ready",()=>{
  const mod=game.modules.get(DR_NS);if(!mod)return;mod.api??={};
+ mod.api.abilityDamage=Object.freeze({isAvailable:drAvailable,preview:abPreview,apply:abApply});
  mod.api.damageResolution=Object.freeze({
   isAvailable:drAvailable,preview:drPreview,previewObject:drPreviewObject,
   sourceSnapshot:message=>drNormalizeSnapshot(message?.getFlag?.(DR_NS,DR_SOURCE_FLAG)??message?.flags?.[DR_NS]?.[DR_SOURCE_FLAG]),

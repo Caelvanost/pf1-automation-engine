@@ -500,4 +500,86 @@ projected=api.previewObject({...objectArgs,components:[c(30,'slashing')]});
 assert.equal(projected.objectHealth.remaining,0);assert.equal(projected.objectHealth.destroyed,true);
 assert.equal(api.previewObject({...objectArgs,hp:21}).reason,'invalid-object-health');
 assert.equal(api.previewObject({...objectArgs,components:[c(15,'slashing')]}).objectHealth.broken,true,'half HP threshold');
+// Ability operations: native field updates, not HP or derived statistics.
+const ab=mod.api.abilityDamage;
+const mkAbility=(type='humanoid')=>{
+ const clone=x=>JSON.parse(JSON.stringify(x));
+ const a={uuid:'Actor.ability',type:'npc',system:{traits:{type,di:{standard:[],custom:[]},ci:{custom:[]}},
+  abilities:Object.fromEntries(['str','dex','con','int','wis','cha'].map(k=>[k,{value:12,damage:0,drain:0,userPenalty:0,total:12}])),
+  attributes:{hp:{value:40,max:40}}},flags:{},writes:0,
+  toObject(){return clone({system:this.system,flags:this.flags})},
+  getFlag(ns,key){return this.flags[ns]?.[key]},
+  testUserPermission(){return true},
+  async update(fields){this.writes++;for(const [path,value] of Object.entries(fields)){
+   const keys=path.split('.');let o=this;
+   for(const k of keys.slice(0,-1))o=o[k]??={};
+   o[keys.at(-1)]=clone(value);
+  }return this;}
+ };
+ return a;
+};
+const op=(ability,kind,amount,operation='inflict')=>({ability,kind,amount,operation});
+const abp=(a,operations,extra={})=>ab.preview({actor:a,operations,...extra});
+(async()=>{
+ game.user={isGM:true};
+ const a=mkAbility();
+ let p=abp(a,[op('str','damage',3),op('con','drain',2),op('wis','penalty',4,'set')]);
+ assert.equal(p.supported,true);assert.equal(p.updates['system.abilities.str.damage'],3);
+ assert.equal(p.updates['system.abilities.con.drain'],2);
+ assert.equal(p.updates['system.abilities.wis.userPenalty'],4);assert.equal(a.writes,0);
+ const loss=[op('str','damage',3),op('con','drain',2),op('wis','penalty',4,'set')];
+ const applyAbility=(actor,operations,requestId,extra={})=>ab.apply({actor,operations,requestId,...extra});
+ let q=await applyAbility(a,loss,'one');assert.equal(q.applied,true);assert.equal(a.writes,1);
+ assert.equal(a.system.abilities.str.damage,3);assert.equal(a.system.abilities.con.drain,2);
+ assert.equal(a.system.abilities.wis.userPenalty,4);assert.equal(a.system.attributes.hp.value,40);
+ assert.equal(a.system.abilities.con.value,12);assert.equal(a.system.abilities.con.total,12);
+ assert.equal((await applyAbility(a,loss.slice().reverse(),'one')).duplicate,true);assert.equal(a.writes,1);
+ assert.equal((await applyAbility(a,[op('str','damage',2)],'one')).reason,'ability-request-conflict');
+ q=await applyAbility(a,[op('str','damage',9,'restore'),op('con','drain',1,'restore'),op('wis','penalty',0,'set')],'two');
+ assert.equal(q.applied,true);assert.equal(a.system.abilities.str.damage,0);
+ assert.equal(a.system.abilities.con.drain,1);assert.equal(a.system.abilities.wis.userPenalty,0);
+ assert.equal(abp(a,[op('str','penalty',2)]).reason,'invalid-ability-operations');
+ assert.equal(abp(a,[op('str','damage',2),op('str','damage',1)]).reason,'invalid-ability-operations');
+ assert.equal(abp(a,[op('str','damage',-1)]).reason,'invalid-ability-operations');
+ assert.equal(abp(a,[op('constructor','damage',2)]).reason,'invalid-ability-operations');
+ const dead=mkAbility('undead');
+ p=abp(dead,[op('str','damage',3),op('wis','damage',3),op('cha','drain',2),op('dex','penalty',2,'set')]);
+ assert.equal(p.rows.find(x=>x.ability==='str').immune,true);
+ assert.equal(p.rows.find(x=>x.ability==='cha').immune,true);
+ assert.equal(p.rows.find(x=>x.ability==='dex').immune,true);
+ assert.equal(p.updates['system.abilities.wis.damage'],3,'undead mental ability damage is possible');
+ const construct=mkAbility('construct');
+ p=abp(construct,[op('str','damage',2),op('wis','drain',2)]);
+ assert.equal(p.rows.every(x=>x.immune),true);assert.equal(Object.keys(p.updates).length,0);
+ const immune=mkAbility();immune.system.traits.di.standard=['abilityDamage'];
+ assert.equal(abp(immune,[op('str','damage',2)]).rows[0].immune,true);
+ assert.equal(abp(immune,[op('str','drain',2)]).updates['system.abilities.str.drain'],2);
+ const custom=mkAbility();custom.system.traits.di.custom=['special'];
+ assert.equal(abp(custom,[op('str','damage',2)]).reason,'unverified-ability-immunity');
+ assert.equal(abp(custom,[op('str','damage',2)],{confirmUnknownImmunity:true}).supported,true);
+ game.user={isGM:false};
+ assert.equal((await applyAbility(custom,[op('str','damage',2)],'confirm',{confirmUnknownImmunity:true})).reason,'ability-gm-confirmation-required');
+ custom.testUserPermission=()=>false;
+ assert.equal((await applyAbility(custom,[op('str','damage',2)],'no-owner')).reason,'ability-owner-required');
+ game.user={isGM:true};
+ const absent=mkAbility();absent.system.abilities.con.value=0;
+ assert.equal(abp(absent,[op('con','damage',2)]).reason,'unverified-or-absent-ability');
+ const unknown=mkAbility();delete unknown.system.traits.type;
+ assert.equal(abp(unknown,[op('str','damage',2)]).reason,'unverified-ability-immunity');
+ const incomplete=mkAbility();delete incomplete.system.abilities.str.damage;
+ assert.equal(abp(incomplete,[op('str','damage',2)]).reason,'unverified-native-ability-field');
+ settings.set('automaticDamageDefenses',false);
+ assert.equal((await applyAbility(a,[op('str','damage',1)],'disabled')).reason,'ability-engine-disabled');
+ settings.set('automaticDamageDefenses',true);
+ ad.active=true;
+ assert.equal((await applyAbility(a,[op('str','damage',1)],'conflict')).reason,'ability-engine-disabled');ad.active=false;
+ const failing=mkAbility();failing.update=async()=>{throw Error('network')};
+ assert.equal((await applyAbility(failing,[op('str','damage',1)],'failed')).reason,'ability-update-unconfirmed');
+ const lock=mkAbility();let resolve;const normal=lock.update.bind(lock);
+ lock.update=fields=>new Promise(r=>{resolve=async()=>r(await normal(fields));});
+ const pending=applyAbility(lock,[op('str','damage',1)],'pending');
+ assert.equal((await applyAbility(lock,[op('str','damage',1)],'busy')).reason,'ability-update-busy');
+ await resolve();assert.equal((await pending).applied,true);
+ console.log('PASS ability damage: native fields, immunities, permission, restoration, receipt and local concurrency');
+})().catch(error=>{console.error(error);process.exitCode=1;});
 console.log('PASS damage resolution: native traits, material DR, per-hit maximum RD/ER, immunity, vulnerability, ratio, conflict, manual fallback');

@@ -1,3 +1,10 @@
+# 1.52.0 — Moteur d'affaiblissement de caractéristiques (premier volet)
+
+- API abilityDamage.preview/apply : opérations explicites sur les six caractéristiques natives (damage, drain, userPenalty). Affaiblissements et diminutions cumulés séparément ; restauration plafonnée à zéro. Pénalité = total manuel résolu, jamais somme implicite ; durée/cumul des effets à la charge de l'appelant. Aucun calcul secondaire des modificateurs, PV, état ou repos.
+- Immunités standard explicites, types natifs morts-vivants/créatures artificielles selon règles PF1, données inconnues ou personnalisées à arbitrer (confirmation MJ explicite possible). Pas de déduction depuis un nom de sort ou une traduction. Effets spécifiques, poison, sauvegardes et exceptions traités avant appel.
+- Application autorisée uniquement au propriétaire/MJ, moteur de défenses actif sans Automate Damage. Mise à jour unique de l'acteur avec reçu (32 derniers identifiants) et verrou local ; pas de garantie atomique interclients. Résultat non confirmé signalé sans réessai automatique.
+- Pas de conversion automatique des cartes de dégâts en pertes de caractéristiques à cette étape : le hook HP synchrone ne peut pas réaliser cette mutation asynchrone de façon fiable. Schéma exact PF1 11.11, seuils critiques et recalcul natif, signes des champs et types natifs à valider en jeu. Tests simulés.
+
 # 1.51.6 — Solidité des créatures et objets
 
 - Solidité native des acteurs character/npc : réduction forfaitaire une fois par événement, sans demi-dégâts automatiques d'objet. Adamantium réel contre solidité strictement inférieure à 20, distinct de l'altération +4 ; les composantes énergétiques restent soumises à la solidité. Résistances/RD traitées avant solidité ; vulnérabilité simultanée et origine incertaine à arbitrer si déterminantes.

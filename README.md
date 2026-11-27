@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.51.6
+# PF1 Automation Engine v1.52.0
+
+## Affaiblissements de caractéristiques (v1.52.0)
+
+Premier volet : API générique de prévisualisation et d'application explicite des affaiblissements, diminutions, pénalités manuelles résolues et restaurations dans les champs natifs PF1. Permissions, immunités et reçus persistants. Les cartes de chat, types personnalisés, durée/cumul des pénalités et effets de seuil restent à traiter. Voir [Damage resolution](docs/DAMAGE-RESOLUTION.md).
 
 ## Solidité (v1.51.6)
 
