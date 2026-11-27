@@ -253,6 +253,19 @@ on("pf1ToggleActorCondition",(actor,id,value)=>notifications.push([actor.uuid,id
  assert.equal(has(a,"unconscious"),false);assert.equal(has(a,"helpless"),false);assert.equal(has(a,"dying"),false);assert.equal(has(a,"prone"),true);assert.equal(owned(a).length,0);assert.equal(legacy(a).length,0);
  assert.ok(notifications.some(([uuid,id,v])=>uuid===a.uuid&&id==="unconscious"&&v===false));
  assert.ok(notifications.some(([uuid,id,v])=>uuid===a.uuid&&id==="dying"&&v===false));
+ // The extended native router must preserve generic source-specific
+ // effects even when health automation has nothing to apply.
+ const general=makeActor("Actor.general",{hp:5});
+ const [managed]=await general.createEmbeddedDocuments("ActiveEffect",[{name:"prone",img:"prone.svg",statuses:["prone"],flags:{}}]);
+ addon.api.conditions={_protectedStatus:(e,target)=>e===managed&&target===general?"prone":null};
+ await general.setCondition("prone",true);
+ assert.equal(general.effects.filter(e=>e.statuses.has("prone")).length,2);
+ assert.equal(getter.call(managed),false);
+ await general.setCondition("prone",false);
+ assert.equal(general.effects.includes(managed),true);assert.equal(has(general,"prone"),true);
+ assert.equal(getter.call(managed),true);
+ await general.deleteEmbeddedDocuments("ActiveEffect",[managed.id]);
+ assert.equal(has(general,"prone"),false);delete addon.api.conditions;
  const b=makeActor("Actor.b",{hp:-3});const sb=trait(b,"ferocity");
  await api.reconcile(b);
  await api.register({actor:b,sourceUuid:sb.uuid,key:"exception",suppress:["dying","unconscious","prone"],apply:["disabled"]});

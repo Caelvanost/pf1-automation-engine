@@ -43,7 +43,7 @@ console.log(conditions.has(actor,"fascinated"));
 console.table(conditions.list());
 ~~~
 
-Optional targets restrict remove/extend; otherwise all tracked Actor documents are searched. Extensions work on timed copies only; multi-target operations are not a distributed transaction. An independent native condition is never removed by source-specific cleanup. A manual native toggle controls only its independent native contribution, not protected managed sources; use the corresponding source removal or GM effect-sheet deletion to end them. Deleted source Items are cleaned on the elected GM and restored scene checks. Timers persist in the existing duration/initiative registries.
+Optional targets restrict remove/extend; otherwise all tracked Actor documents are searched. Extensions work on timed copies only; multi-target operations are not a distributed transaction. An independent native condition is never removed by source-specific cleanup. A manual native toggle controls only its independent native contribution, not protected managed sources; use the corresponding source removal or GM effect-sheet deletion to end them. Deleted source Items are cleaned on the elected GM and restored scene checks. Timers persist in the existing duration/initiative registries; extension and cancellation verify that the timer belongs to the exact ActiveEffect UUID. A mismatch requires GM review.
 
 Custom definitions: elected GM only, persistent world setting, unique pf1ae- prefix, local image, optional bounded numeric untyped PF1 change targets. Definitions are immutable in this release; reload all clients to register the new entry before applying. No arbitrary formulas, macros, or tracks in custom definitions.
 ~~~js

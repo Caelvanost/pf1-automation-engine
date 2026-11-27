@@ -111,8 +111,10 @@ async function revoke(data){
 }
 function owned(e,actor){
  const f=flag(e,SOURCE);
- if(!f||f.version!==1||f.targetUuid!==actor?.uuid||e.parent?.uuid!==actor.uuid||
+ if(!f||f.version!==1||!actor?.uuid||f.targetUuid!==actor.uuid||e.parent?.uuid!==actor.uuid||
     !uuidOk(f.sourceUuid)||!uuidOk(f.sourceActorUuid)||!keyOk(f.key)||!idOk(f.conditionId)||
+    !["manual","duration","turn"].includes(f.timerKind)||
+    (f.timerKind==="manual"?f.timerId!=null:!/^condition:[a-zA-Z0-9_-]{1,80}$/.test(f.timerId??""))||
     e.origin!==f.sourceUuid||e.transfer===true||e.changes?.length||!e.statuses?.size||
     !registry()?.has(f.conditionId)||!exact(e.statuses,statuses(f.conditionId)))return null;
  return f;
@@ -168,12 +170,22 @@ function match(e,a,d){
  return f&&f.sourceUuid===d.sourceUuid&&f.sourceActorUuid===d.sourceActorUuid&&f.key===d.key&&f.conditionId===d.conditionId;
 }
 function timerApi(f){return f.timerKind==="duration"?api()?.duration:api()?.generic}
+function boundTimer(e,f){
+ if(!f.timerId)return null;
+ const service=timerApi(f),timers=service?.listTimers?.();
+ if(!Array.isArray(timers))throw Error("Condition timer service unavailable.");
+ const timer=timers.find(t=>t.id===f.timerId);
+ if(!timer)return null;
+ if(timer.effectUuid!==e.uuid||timer.effectAction!=="delete")throw Error("Condition timer ownership mismatch; GM review required.");
+ return timer;
+}
 async function removeEffect(e,a){
  const f=owned(e,a);if(!f)throw Error("Modified source; GM review required.");
+ const timer=boundTimer(e,f);
  await e.delete();
- // Timer callbacks may be running. Do not wait on their queue in the
- // delete hook; direct removal here can safely cancel the exact timer.
- if(f.timerId)await timerApi(f)?.cancelTimer(f.timerId);
+ // Cancel only the exact, verified effect timer; a copied or malicious
+ // flag must never cancel an unrelated document's timer.
+ if(timer)await timerApi(f).cancelTimer(f.timerId);
 }
 async function run(op,data,requester,authActor=null){
  if(!available()||!leader())throw Error("Conditions engine unavailable.");
@@ -229,7 +241,7 @@ async function run(op,data,requester,authActor=null){
   const f=owned(e,a);
   if(op==="remove"){await removeEffect(e,a);result.push(e.uuid)}
   else{
-   if(!f.timerId)throw Error("Cannot extend an untimed condition.");
+   if(!f.timerId||!boundTimer(e,f))throw Error("Cannot extend an untimed or expired condition.");
    const ext=f.timerKind==="duration"?{duration:{value:data.rounds,unit:"rounds"}}:{rounds:data.rounds};
    await timerApi(f).extendTimer(f.timerId,ext);result.push(e.uuid);
   }
