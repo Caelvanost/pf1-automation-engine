@@ -1,3 +1,10 @@
+# 1.51.3 — Provenance persistante des propriétés de l'attaque
+
+- Capture versionnée des propriétés de contournement actuellement prises en charge (type de source, magie, matériau effectif/add-ons, altération, alignements évalués) dans les flags de la carte native, au hook pf1PreDisplayActionUse après résolution des jets et avant création du message. Pas de nouvelle carte, de stockage global, ni de relecture de l'équipement lors de l'application.
+- Validation de l'identité acteur/objet/action et du nombre d'attaques, données détachées et sérialisables. Capture même si le calcul automatique des défenses est désactivé ; les modifications ultérieures de l'arme ne changent pas le profil enregistré. Les défenses de la cible restent celles du moment de l'application.
+- Anciennes cartes : calcul simple et énergétique conservé ; contournement dépendant de propriétés historiques inconnu, arbitrage manuel si déterminant. Provenance invalide/incohérente : aucun repli sur les propriétés actuelles. API sourceSnapshot(message) en lecture seule et diagnostic sourceSnapshot.
+- Tests simulés : mutation de l'arme, cartes indépendantes, sérialisation, attaques multiples, désactivation/réactivation, propriétés manquantes ou incohérentes, carte ancienne. Contrat du hook repris de save-context.js ; validation réelle du cycle natif requise. Capture en fin de résolution, pas au lancer individuel de chaque dé. Propriétés propres aux munitions et armes naturelles non ajoutées à cette étape.
+
 # 1.51.2 — RD combinées et alignements (mêlée)
 
 - Évalue les critères natifs dans une RD : OU (operator true) / ET (operator false), convention corroborée par Automate Damage ; opérateur absent/inconnu sur une RD multiple : arbitrage manuel. Un seul critère ignore l'opérateur. Conditions à trois valeurs : une preuve décisive suffit ; un critère inconnu ne bloque que s'il peut changer le résultat. Plus forte RD non contournée, jamais de cumul.

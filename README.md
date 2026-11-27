@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.51.2
+# PF1 Automation Engine v1.51.3
+
+## Provenance persistante des propriétés d'attaque (v1.51.3)
+
+Les propriétés de contournement prises en charge sont enregistrées dans la carte PF1 avant création du message et après résolution des jets. Les modifications ultérieures de l'arme ne changent pas le calcul. Une ancienne carte sans snapshot conserve les défenses simples mais nécessite un arbitrage si les propriétés historiques sont déterminantes. Aucun nouveau jet, aucune nouvelle carte. Voir [Damage resolution](docs/DAMAGE-RESOLUTION.md).
 
 ## RD combinées et alignements (v1.51.2)
 

@@ -5,6 +5,7 @@
  */
 const DR_NS="pf1-automation-engine",DR_SETTING="automaticDamageDefenses";
 const DR_AD="pf1-automate-damage";
+const DR_SOURCE_FLAG="damageSourceSnapshot",DR_SOURCE_SCHEMA=1;
 const DR_ENERGY=new Set(["acid","cold","electric","fire","sonic"]);
 const DR_PHYSICAL=new Set(["bludgeoning","piercing","slashing"]);
 const DR_OTHER=new Set(["untyped","force"]);
@@ -209,9 +210,16 @@ function drMeleeAlignment(action,item){
  }
  return {values,enhancement};
 }
-function drSource(options){
+function drSourceKind(options){
  const action=options.action,item=action?.item??options.item,type=action?.actionType;
- if(["mwak","rwak","twak"].includes(type)&&item?.type!=="spell"){
+ if(["mwak","rwak","twak"].includes(type)&&item?.type!=="spell")return "weapon";
+ if(item?.type==="spell"&&!["mwak","rwak","twak"].includes(type)||["msak","rsak"].includes(type))return "other";
+ return null;
+}
+function drSource(options){
+ const action=options.action,item=action?.item??options.item;
+ const sourceKind=drSourceKind(options);
+ if(sourceKind==="weapon"){
   let magic=null;
   if(Number.isFinite(action.enhancementBonus)){
    magic=action.enhancementBonus>0;
@@ -227,9 +235,98 @@ function drSource(options){
   if(magic===null&&material?.enhancement===0)magic=false;
   return {sourceKind:"weapon",magic,material,alignment:drMeleeAlignment(action,item)};
  }
- if(item?.type==="spell"&&!["mwak","rwak","twak"].includes(type)||["msak","rsak"].includes(type))
-  return {sourceKind:"other",magic:null};
- return {sourceKind:null,magic:null};
+ return {sourceKind,magic:null,material:null,alignment:null};
+}
+// Versioned data-only card snapshot. Capture at the native pre-display
+// hook, after rolls are finalized and before the ChatMessage is created.
+// Never reconstruct historical properties from a later item document.
+const drShortId=x=>typeof x==="string"&&x.length>0&&x.length<=500;
+const drBonus=x=>x===null||Number.isSafeInteger(x)&&x>=0;
+const drTri=x=>x===null||typeof x==="boolean";
+function drSourceIdentity(action,item){
+ const actor=action?.actor??item?.actor;
+ const actionId=action?.id??action?._id;
+ if(!drShortId(actor?.uuid)||!drShortId(item?.uuid)||!drShortId(actionId)||
+    !drShortId(item?.id)||item.uuid!==actor.uuid+".Item."+item.id||
+    (item.actor?.uuid&&item.actor.uuid!==actor.uuid))return null;
+ return {actorUuid:actor.uuid,itemUuid:item.uuid,itemId:item.id,actionId};
+}
+function drNormalizeSnapshot(data){
+ if(!data||data.schema!==DR_SOURCE_SCHEMA||!data.source||
+    !Number.isSafeInteger(data.attackCount)||data.attackCount<1||data.attackCount>500)return null;
+ const {actorUuid,itemUuid,itemId,actionId}=data.source;
+ if(![actorUuid,itemUuid,itemId,actionId].every(drShortId)||
+    itemUuid!==actorUuid+".Item."+itemId)return null;
+ const {sourceKind,magic,material,alignment}=data;
+ if(![null,"weapon","other"].includes(sourceKind)||!drTri(magic))return null;
+ if(sourceKind!=="weapon"&&(magic!==null||material!==null||alignment!==null))return null;
+ let mat=null,align=null;
+ if(material!==null){
+  if(!material||!drShortId(material.normal)||!Array.isArray(material.addons)||
+     material.addons.length>100||!material.addons.every(drShortId)||!drBonus(material.enhancement))return null;
+  mat={normal:material.normal,addons:[...material.addons],enhancement:material.enhancement};
+ }
+ if(alignment!==null){
+  if(!alignment||!drBonus(alignment.enhancement)||!alignment.values||
+     ![...DR_ALIGNMENTS].every(id=>drTri(alignment.values[id])))return null;
+  align={enhancement:alignment.enhancement,values:Object.fromEntries([...DR_ALIGNMENTS].map(id=>[id,alignment.values[id]]))};
+ }
+ if(mat&&align&&mat.enhancement!==align.enhancement)return null;
+ return {schema:DR_SOURCE_SCHEMA,source:{actorUuid,itemUuid,itemId,actionId},attackCount:data.attackCount,
+  sourceKind,magic,material:mat,alignment:align};
+}
+function drCapture(use){
+ if(game.release?.generation!==13||game.system?.id!=="pf1"||game.system?.version!=="11.11"||
+    !game.modules.get(DR_NS)?.active||game.settings.get(DR_NS,"genericEnabled")!==true)return;
+ const action=use?.action??use?.shared?.action,item=action?.item??use?.item;
+ const chatData=use?.shared?.chatData,attacks=use?.shared?.chatAttacks;
+ if(!chatData||typeof chatData!=="object"||!Array.isArray(attacks)||!attacks.length)return;
+ const source=drSourceIdentity(action,item);
+ if(!source)return;
+ // If the action and use expose conflicting item/actor identities, do not
+ // bind a snapshot to this card. No global last attack or pending queue.
+ if(use.item?.uuid&&use.item.uuid!==source.itemUuid)return;
+ if(use.actor?.uuid&&use.actor.uuid!==source.actorUuid)return;
+ const profile=drSource({action,item});
+ const snapshot=drNormalizeSnapshot({schema:DR_SOURCE_SCHEMA,source,attackCount:attacks.length,
+  sourceKind:profile.sourceKind,magic:profile.magic,material:profile.material??null,alignment:profile.alignment??null});
+ if(!snapshot)return;
+ chatData.flags??={};chatData.flags[DR_NS]??={};
+ // The native action can render repeatedly. Never overwrite the first
+ // snapshot on the same chat data object with newer mutable properties.
+ if(!Object.hasOwn(chatData.flags[DR_NS],DR_SOURCE_FLAG))
+  chatData.flags[DR_NS][DR_SOURCE_FLAG]=snapshot;
+}
+function drSnapshotForCard(options){
+ const message=options.message;
+ const raw=message?.getFlag?.(DR_NS,DR_SOURCE_FLAG)??message?.flags?.[DR_NS]?.[DR_SOURCE_FLAG];
+ if(raw==null)return {state:"missing",profile:null};
+ const snapshot=drNormalizeSnapshot(raw);
+ if(!snapshot)return {state:"invalid",profile:null};
+ const source=snapshot.source,action=options.action,item=action?.item??options.item;
+ const native=message.system??{};
+ const ids=[
+  [native.item?.id,source.itemId],[native.action?.id,source.actionId],
+  [message.itemSource?.uuid,source.itemUuid],[message.actionSource?.id,source.actionId],
+  [item?.uuid,source.itemUuid],[options.item?.uuid,source.itemUuid],
+  [action?.id??action?._id,source.actionId],[action?.actor?.uuid,source.actorUuid],
+  [item?.actor?.uuid,source.actorUuid]
+ ];
+ // Native actor may be a short ID rather than UUID. Only compare the
+ // UUID-shaped form; short ID cannot certify synthetic actor identity.
+ const nativeActor=typeof native.actor==="string"&&
+  (native.actor.startsWith("Actor.")||native.actor.includes(".Actor."))?native.actor:null;
+ if(nativeActor)ids.push([nativeActor,source.actorUuid]);
+ if(ids.some(([actual,expected])=>actual!=null&&actual!==expected)||
+    snapshot.attackCount!==message.systemRolls?.attacks?.length||
+    !Number.isSafeInteger(options.attackIndex)||options.attackIndex<0||options.attackIndex>=snapshot.attackCount)
+  return {state:"mismatch",profile:null};
+ const liveIdentity=item?.uuid===source.itemUuid&&(action?.id??action?._id)===source.actionId;
+ const cardIdentity=(message.itemSource?.uuid===source.itemUuid&&message.actionSource?.id===source.actionId)||
+  (nativeActor===source.actorUuid&&native.item?.id===source.itemId&&native.action?.id===source.actionId);
+ if(!liveIdentity&&!cardIdentity)return {state:"mismatch",profile:null};
+ return {state:"captured",profile:{sourceKind:snapshot.sourceKind,magic:snapshot.magic,
+  material:snapshot.material,alignment:snapshot.alignment}};
 }
 function drRemember(actor,result){
  if(!actor?.uuid)return;
@@ -237,6 +334,9 @@ function drRemember(actor,result){
 }
 const DR_REASONS={
  "hardness-next-stage":["solidité","hardness"],
+ "damage-source-snapshot-missing":["ancienne carte sans propriétés d’attaque enregistrées","old card without recorded attack properties"],
+ "damage-source-snapshot-invalid":["propriétés d’attaque enregistrées invalides","invalid recorded attack properties"],
+ "damage-source-snapshot-mismatch":["provenance de la carte d’attaque incohérente","inconsistent attack card provenance"],
  "material-alignment-damage-reduction":["RD de matériau ou d’alignement non prise en charge","unsupported material/alignment DR"],
  "unknown-material-bypass":["matériau ou altération de l’arme non vérifié","unverified weapon material or enhancement"],
  "unknown-alignment-bypass":["alignement de l’arme ou sous-type du porteur non vérifié","unverified weapon alignment or wielder subtype"],
@@ -320,8 +420,19 @@ function drOnApply(actor,options){
  if((ratio!==0.5&&ratio!==1)||!Number.isSafeInteger(buttonValue)||
     buttonValue!==options.value||Math.floor(raw*ratio)!==options.value)
   return drBlock(actor,options,drFail("native-card-total-mismatch"));
- const result=drPreview({actor,components,ratio,...drSource(options),asNonlethal:options.asNonlethal===true});
- if(!result.supported)return drBlock(actor,options,result);
+ const saved=drSnapshotForCard(options);
+ // Older cards can still use ordinary physical DR and energy defenses.
+ // Never infer historical weapon magic/material/alignment from today's item.
+ // A malformed or mismatched snapshot also cannot certify source kind.
+ const profile=saved.profile??{sourceKind:saved.state==="missing"?drSourceKind(options):null,
+  magic:null,material:null,alignment:null};
+ const result=drPreview({actor,components,ratio,...profile,asNonlethal:options.asNonlethal===true});
+ result.sourceSnapshot=saved.state;
+ if(!result.supported){
+  if(saved.state!=="captured"&&["unknown-magic-bypass","unknown-material-bypass","unknown-alignment-bypass","unknown-physical-source"].includes(result.reason))
+   result.reason="damage-source-snapshot-"+saved.state;
+  return drBlock(actor,options,result);
+ }
  drRemember(actor,result);
  // Native method applies ratio then reduction. Only pass the final value.
  options.value=result.total;options.ratio=1;options.reduction=0;
@@ -330,12 +441,15 @@ function drOnApply(actor,options){
 Hooks.once("init",()=>{
  game.settings.register(DR_NS,DR_SETTING,{scope:"world",config:true,restricted:true,type:Boolean,default:false,
   name:"PF1AE.Settings.AutomaticDamageDefenses.Name",hint:"PF1AE.Settings.AutomaticDamageDefenses.Hint"});
+ Hooks.on("pf1PreDisplayActionUse",drCapture);
  Hooks.on("pf1ApplyDamage",drOnApply);
 });
 Hooks.once("ready",()=>{
  const mod=game.modules.get(DR_NS);if(!mod)return;mod.api??={};
  mod.api.damageResolution=Object.freeze({
-  isAvailable:drAvailable,preview:drPreview,lastDiagnostic:actor=>DR_LAST.get(typeof actor==="string"?actor:actor?.uuid)??null
+  isAvailable:drAvailable,preview:drPreview,
+  sourceSnapshot:message=>drNormalizeSnapshot(message?.getFlag?.(DR_NS,DR_SOURCE_FLAG)??message?.flags?.[DR_NS]?.[DR_SOURCE_FLAG]),
+  lastDiagnostic:actor=>DR_LAST.get(typeof actor==="string"?actor:actor?.uuid)??null
  });
  if(game.settings.get(DR_NS,DR_SETTING)&&game.modules.get(DR_AD)?.active)
   globalThis.ui?.notifications?.warn?.(drText("PF1AE : moteur de dégâts suspendu car Automate Damage est actif.","PF1AE: damage engine suspended because Automate Damage is active."));

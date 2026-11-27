@@ -26,12 +26,25 @@ const opts=(parts,extra={})=>{
  });
  const attacks=Array.from({length:index+1},()=>({damage:[roll(c(99,'cold'))],critDamage:[]}));
  attacks[index]={damage:parts.map(roll),critDamage:critical.map(roll)};
- return {value,ratio:1,reduction:0,interactive:true,
+ const options={value,ratio:1,reduction:0,interactive:true,
   message:{uuid:'ChatMessage.m',systemRolls:{attacks}},reference:'ChatMessage.m',attackIndex:index,
   isCritical:critical.length>0,instances,
   element:{dataset:{action:'applyDamage',type:critical.length?'critical':'normal',ratio:half?'0.5':'1',value:String(value)},
    closest:()=>({dataset:{index:String(index)}})},
   action:{actionType:'mwak',enhancementBonus:0,item:{type:'weapon'}},...overrides};
+ const action=options.action,item=action?.item;
+ if(item&&action){
+  item.id??='w';item.actor??=action.actor??{uuid:'Actor.source'};
+  item.actor.uuid??='Actor.source';action.actor??=item.actor;
+  action.id??='a';item.uuid??=item.actor.uuid+'.Item.'+item.id;
+  options.item??=item;
+  options.message.system={actor:item.actor.uuid,item:{id:item.id},action:{id:action.id}};
+  const data={flags:{pf1:{native:true},[ns]:{unrelated:'keep'}}};
+  hooks.get('pf1PreDisplayActionUse')({action,item,shared:{chatData:data,chatAttacks:attacks}});
+  // Simulate persistence and subsequent reload, not shared object pointers.
+  options.message.flags=JSON.parse(JSON.stringify(data.flags));
+ }
+ return options;
 };
 const apply=o=>{hooks.get('pf1ApplyDamage')(actor,o);return o};
 assert.equal(settings.get('automaticDamageDefenses'),false);
@@ -234,4 +247,81 @@ assert.equal(hit(),0);assert.equal(api.lastDiagnostic(actor).reason,'complex-dam
 t.dr.value=[{amount:5,types:['good']}];
 assert.equal(preview([c(12,'slashing')],{alignment:{values:{good:true},enhancement:0}}).total,12);
 assert.equal(preview([c(12,'slashing')],{alignment:{values:{good:false},enhancement:0}}).total,7);
+// Native chat source snapshot regression: live source mutation, persistence,
+ // distinct cards and attacks, old cards, unknown values and mismatches.
+const flag='damageSourceSnapshot';
+t.dr.value=[{amount:5,types:['alchemicalSilver']}];
+const original=melee('alchemicalSilver');
+const cardA=opts([c(19,'slashing')],{action:original});
+assert.equal(cardA.message.flags[ns].unrelated,'keep');
+assert.equal(cardA.message.flags.pf1.native,true);
+assert.equal(api.sourceSnapshot(cardA.message).material.normal,'alchemicalSilver');
+original.normalMaterial='steel';original.enhancementBonus=0;
+assert.equal(apply(cardA).value,19,'captured silver survives live mutation');
+assert.equal(api.lastDiagnostic(actor).sourceSnapshot,'captured');
+const cardB=opts([c(19,'slashing')],{action:original});
+assert.equal(apply(cardB).value,14,'subsequent steel card independent');
+const copy=api.sourceSnapshot(cardB.message);copy.material.normal='silver';
+assert.equal(api.sourceSnapshot(cardB.message).material.normal,'steel','read API returns detached data');
+const cardC=opts([c(12,'slashing')],{action:melee('steel',[],3),index:2});
+cardC.action.enhancementBonus=0;
+assert.equal(apply(cardC).value,12,'nonfirst attack preserves enhancement');
+const repeat=opts([c(12,'slashing')],{action:melee('silver')});
+const repeatData={flags:repeat.message.flags};
+repeat.action.normalMaterial='steel';
+hooks.get('pf1PreDisplayActionUse')({action:repeat.action,item:repeat.item,shared:{chatData:repeatData,chatAttacks:[{}]}});
+assert.equal(apply(repeat).value,12,'repeat display does not overwrite');
+const old=opts([c(12,'slashing')],{action:melee('silver')});
+delete old.message.flags[ns][flag];
+assert.equal(apply(old).value,0);assert.equal(api.lastDiagnostic(actor).reason,'damage-source-snapshot-missing');
+t.dr.value=[{amount:5,types:['slashing']}];
+const oldBasic=opts([c(12,'slashing')],{action:melee()});
+delete oldBasic.message.flags[ns][flag];
+assert.equal(apply(oldBasic).value,12,'old card simple physical DR still works');
+t.dr.value=[{amount:5,types:['magic']}];
+const mag=opts([c(12,'slashing')],{action:melee('steel',[],1)});
+mag.action.enhancementBonus=0;
+assert.equal(apply(mag).value,12);
+const oldMag=opts([c(12,'slashing')],{action:melee('steel',[],1)});
+delete oldMag.message.flags[ns][flag];
+assert.equal(apply(oldMag).value,0);assert.equal(api.lastDiagnostic(actor).reason,'damage-source-snapshot-missing');
+t.dr.value=[{amount:5,types:['good']}];
+const holy=opts([c(12,'slashing')],{action:aligned('good',true)});
+holy.action.item.system.alignments.good=false;
+assert.equal(apply(holy).value,12);
+t.dr.value=[{amount:5,types:['silver']}];
+for(const change of [
+ o=>o.message.flags[ns][flag].schema=99,
+ o=>o.message.flags[ns][flag].material.addons={},
+ o=>o.message.flags[ns][flag].magic="true"
+]){
+ const o=opts([c(12,'slashing')],{action:melee('silver')});
+ change(o);assert.equal(apply(o).value,0);
+ assert.equal(api.lastDiagnostic(actor).reason,'damage-source-snapshot-invalid');
+}
+for(const change of [
+ o=>o.message.system.action.id='different',
+ o=>o.message.system.actor='Actor.different',
+ o=>o.action.item.uuid='Actor.other.Item.w',
+ o=>o.message.flags[ns][flag].attackCount=2
+]){
+ const o=opts([c(12,'slashing')],{action:melee('silver')});
+ change(o);assert.equal(apply(o).value,0);
+ assert.equal(api.lastDiagnostic(actor).reason,'damage-source-snapshot-mismatch');
+}
+const noLive=opts([c(12,'slashing')],{action:melee('silver')});
+delete noLive.action;delete noLive.item;
+assert.equal(apply(noLive).value,12,'exact native card IDs suffice after deletion');
+const noIdentity=opts([c(12,'slashing')],{action:melee('silver')});
+delete noIdentity.action;delete noIdentity.item;delete noIdentity.message.system;
+assert.equal(apply(noIdentity).value,0);assert.equal(api.lastDiagnostic(actor).reason,'damage-source-snapshot-mismatch');
+settings.set('automaticDamageDefenses',false);
+const whileOff=opts([c(12,'slashing')],{action:melee('silver')});
+assert.ok(api.sourceSnapshot(whileOff.message),'capture independent of opt-in');
+settings.set('automaticDamageDefenses',true);
+whileOff.action.normalMaterial='steel';
+assert.equal(apply(whileOff).value,12);
+t.dr.value=[];t.eres.value=[{amount:5,types:['fire']}];
+const oldEnergy=opts([c(12,'fire')]);delete oldEnergy.message.flags[ns][flag];
+assert.equal(apply(oldEnergy).value,7);
 console.log('PASS damage resolution: native traits, material DR, per-hit maximum RD/ER, immunity, vulnerability, ratio, conflict, manual fallback');
