@@ -1,12 +1,12 @@
 /**
  * PF1AE — underwater melee and native PF1 damage multipliers.
- * Foundry 13 / PF1 11.11: pf1CreateActionUse, renderApplication,
- * pf1PreDamageRoll. Never patches Actor/Item prototypes or saves data.
+ * Foundry 13 / PF1 11.11: per-ActionUse wrappers on native dialog and
+ * generateChatAttacks. Scale complete evaluated rolls without rerolling.
  *
  * PF1: slashing/bludgeoning melee attacks underwater: -2 attack and
  * half damage. Piercing normally is unaffected. Freedom of movement
  * ignores the water restriction. The generic user multiplier (0.5..10)
- * applies to native damage parts at roll time, including critical parts.
+ * applies after all native damage bonuses, including critical parts.
  */
 const UM_NS="pf1-automation-engine";
 const UM_WATER="pf1-skull-and-shackles";
@@ -17,7 +17,8 @@ const UM_OLD_FIELD="global-bonus_damage-multiplier";
 const UM_APPLIED=new WeakSet();
 const UM_WRAPPED=new WeakSet();
 const UM_ACTION=new WeakMap();
-const UM_SEEN_PARTS=new WeakSet();
+const UM_SCALED_ATTACKS=new WeakSet();
+const UM_DIALOG_VALUES=new WeakMap();
 let UM_LAST=null;
 const umEnabled=key=>{
  try{return game.modules.get(UM_NS)?.active===true&&
@@ -94,87 +95,122 @@ function umApplyAttack(use){
  UM_LAST={status:"attack-penalty",...details};
 }
 function umNumber(value){
- const x=typeof value==="number"?value:Number(String(value??"").trim()
-  .replace(",","."));
+ if(typeof value!=="number"&&typeof value!=="string")return null;
+ const raw=typeof value==="string"?value.trim().replace(",","."):value;
+ if(raw==="")return null; // Number("") would incorrectly yield zero.
+ const x=Number(raw);
  return Number.isFinite(x)&&x>=0&&x<=10?x:null;
 }
 function umSetAction(use){
- const action=use?.action??use?.shared?.action;
- if(!action)return;
- const user=umEnabled(UM_MULT_SETTING)?
-  umNumber(use.formData?.[UM_FIELD]):null;
+ const user=umEnabled(UM_MULT_SETTING)?(umNumber(use.formData?.[UM_FIELD])??1):1;
  const base=umEnabled(UM_SETTING)?umBase(use):null;
- // Preserve the exact individual modifiers for diagnostics. Multiply
- // once, never append an extra damage roll with fresh weapon dice.
- const multiplier=(user===null?1:user)*(base?.multiplier??1);
- UM_ACTION.set(action,{multiplier,user:user??1,base,
-  actorUuid:use.actor?.uuid??null});
- UM_LAST={status:"damage-prepared",multiplier,
-  underwater:!!base,attackPenalty:base?.penalty??0};
+ const info={multiplier:user*(base?.multiplier??1),user,base,actorUuid:use.actor?.uuid??null};
+ UM_ACTION.set(use,info);UM_LAST={...info,status:"damage-prepared"};return info;
 }
-function umWrapDialog(use){
+function umWrapUse(use){
  if(!use||UM_WRAPPED.has(use))return;
- const old=use.createAttackDialog;
- if(typeof old!=="function")return;
+ const dialog=use.createAttackDialog,generate=use.generateChatAttacks;
+ if(typeof dialog!=="function"||typeof generate!=="function")return;
+ // PF1 only assigns this.formData after createAttackDialog resolves.
  const guarded=async function(...args){
-  const value=await old.apply(this,args);
-  if(value!==null&&value!==undefined){
-   // Roll Bonuses may still be active for other bonus families.
-   // Remove only its old multiplier so the two cannot stack.
-   if(this.formData&&Object.hasOwn(this.formData,UM_OLD_FIELD))
-    delete this.formData[UM_OLD_FIELD];
-   umSetAction(this);
+  const form=await dialog.apply(this,args);
+  if(form&&typeof form==="object"&&umEnabled(UM_MULT_SETTING)){
+   const raw=UM_DIALOG_VALUES.has(this)?UM_DIALOG_VALUES.get(this):form[UM_FIELD];
+   form[UM_FIELD]=umNumber(raw)??1;delete form[UM_OLD_FIELD];
   }
-  return value;
+  return form;
+ };
+ const complete=async function(...args){
+  const info=umSetAction(this),result=await generate.apply(this,args);
+  if(info.user!==1||info.base)await umMultiplyAttacks(this,this.shared?.chatAttacks,info);
+  return result;
  };
  try{
-  Object.defineProperty(use,"createAttackDialog",{
-   value:guarded,configurable:true,writable:true,enumerable:false});
+  Object.defineProperties(use,{
+   createAttackDialog:{value:guarded,configurable:true,writable:true,enumerable:false},
+   generateChatAttacks:{value:complete,configurable:true,writable:true,enumerable:false}
+  });
   UM_WRAPPED.add(use);
- }catch(error){console.warn("PF1AE | multiplier dialog wrapper",error);}
+ }catch(error){console.warn("PF1AE | multiplier action-use wrapper",error);}
 }
-function umIsDamagePhysical(part){
- const types=part?.damageType?.values??[];
- const all=Array.isArray(types)?types.map(umNorm):[];
- if(!all.length)return true; // Primary untyped damage follows weapon.
- return !all.some(t=>["fire","cold","acid","electricity","sonic",
-  "force","feu","froid","acide","electricite","son"].includes(t));
+function umIsDamagePhysical(roll,index){
+ const types=roll?.options?.damageType??roll?.damageType?.types??[];
+ const ids=(typeof types==="string"?[types]:[...types]).map(umNorm);
+ return ids.some(t=>["slashing","piercing","bludgeoning","s","p","b"].includes(t))||
+  index===0&&(!ids.length||ids.every(t=>t==="untyped"));
 }
-function umMultiplyParts(action,parts){
- if(!Array.isArray(parts)||UM_SEEN_PARTS.has(parts))return;
- const info=UM_ACTION.get(action);
- if(!info||!Number.isFinite(info.multiplier))return;
- // The manual multiplier applies to every damage part. Water only
- // halves the PHYSICAL part. A user x2 + underwater x0.5 therefore
- // leaves the physical component unchanged but still doubles any
- // separately typed fire, cold or other energy component.
- let count=0;
- for(const part of parts){
-  if(!part||typeof part.base!=="string"||!part.base.trim())continue;
-  const k=info.user*(info.base&&umIsDamagePhysical(part)?0.5:1);
-  if(k===1)continue;
-  // PF1 dice parser supports floor(); PF1e rounds down. This retains
-  // the native roll's dice, critical part and damage type metadata.
-  // Native PF1 puts bonus formulas into the first part's "extra".
-  // Combine these BEFORE flooring, so 1d8 + 4 becomes
-  // floor((1d8 + 4) * 0.5), not floor(1d8 * 0.5) + 4.
-  // Leave separately typed energy damage untouched under water.
-  const extras=Array.isArray(part.extra)?part.extra.filter(v=>
-   typeof v==="string"&&v.trim()):[];
-  const combined=[part.base,...extras].map(v=>`(${v})`).join(" + ");
-  part.base=`floor((${combined}) * ${k})`;
-  if(Array.isArray(part.extra))part.extra=[];
-  count++;
+const umFloor=n=>Math.floor(n+Number.EPSILON*Math.max(1,Math.abs(n))*4);
+const umSum=rolls=>rolls.reduce((sum,r)=>sum+Number(r.total),0);
+function umNativeCorrection(data,rolls,previousRaw=0){
+ const sum=previousRaw+umSum(rolls),diff=Number(data.total)-sum;
+ if(!Number.isFinite(sum)||!Number.isFinite(diff))throw Error("Invalid native damage total.");
+ if(diff===0)return 0;
+ // Normalize native minimum damage (1 nonlethal) before scaling.
+ if(sum<1&&data.total===1)return diff;
+ throw Error("Native damage total differs from evaluated components.");
+}
+function umAllocate(rolls,info,start=0,roundedStart=0,correction=0){
+ let exact=start,rounded=roundedStart;
+ const rows=rolls.map((roll,index)=>{
+  const raw=Number(roll.total);
+  if(!Number.isFinite(raw))throw Error("Invalid native damage roll.");
+  const factor=info.user*(info.base&&umIsDamagePhysical(roll,index)?0.5:1);
+  exact+=(raw+(index===0?correction:0))*factor;
+  const next=umFloor(exact),total=next-rounded;rounded=next;
+  return {roll,total,factor};
+ });
+ return {rows,exact,rounded};
+}
+function umDiceSignature(roll){
+ return JSON.stringify((roll.dice??[]).map(d=>({faces:d.faces,number:d.number,results:d.results})));
+}
+async function umRollWithTotal(roll,total,factor){
+ if(roll.total===total)return roll;
+ // Deterministic adjustment; preserve evaluated dice and damage metadata.
+ const delta=total-roll.total;
+ const {OperatorTerm,NumericTerm}=foundry.dice.terms;
+ const op=await new OperatorTerm({operator:delta<0?"-":"+"}).evaluate();
+ const num=await new NumericTerm({number:Math.abs(delta),options:{flavor:
+  umI18n("Multiplicateur de dégâts","Damage multiplier")+" ×"+factor}}).evaluate();
+ const signature=umDiceSignature(roll);
+ const scaled=roll.constructor.fromTerms([...roll.terms,op,num],{...roll.options});
+ // Never evaluate the reconstructed roll containing dice.
+ if(!(scaled instanceof roll.constructor)||scaled.total!==total||
+    umDiceSignature(scaled)!==signature||umDiceSignature(roll)!==signature||
+    JSON.stringify(scaled.options.damageType)!==JSON.stringify(roll.options.damageType)||
+    scaled.options.type!==roll.options.type)
+  throw Error("PF1AE: evaluated damage roll reconstruction could not be verified.");
+ return scaled;
+}
+async function umMultiplyAttacks(use,attacks,info=UM_ACTION.get(use)){
+ if(!info||!Array.isArray(attacks)||info.user===1&&!info.base)return {scaled:0};
+ const updates=[];
+ // Stage the entire action, never leave only some attacks multiplied.
+ for(const attack of attacks){
+  if(!attack||UM_SCALED_ATTACKS.has(attack))continue;
+  const normal=attack.damage,crit=attack.critDamage;
+  if(!Array.isArray(normal?.rolls)||!normal.rolls.length)continue;
+  const nr=normal.rolls,cr=Array.isArray(crit?.rolls)?crit.rolls:[];
+  const correction=umNativeCorrection(normal,nr);
+  const n=umAllocate(nr,info,0,0,correction);
+  const c=cr.length?umAllocate(cr,info,n.exact,n.rounded,
+   umNativeCorrection(crit,cr,umSum(nr))-correction):null;
+  const normalRolls=await Promise.all(n.rows.map(r=>umRollWithTotal(r.roll,r.total,r.factor)));
+  const critRolls=c?await Promise.all(c.rows.map(r=>umRollWithTotal(r.roll,r.total,r.factor))):null;
+  updates.push({attack,normal,crit,normalRolls,critRolls,normalTotal:n.rounded,critTotal:c?.rounded});
  }
- if(count){
-  UM_SEEN_PARTS.add(parts);
-  UM_LAST={...info,status:"damage-multiplied",parts:count};
+ for(const u of updates){
+  u.normal.rolls=u.normalRolls;u.normal.total=u.normalTotal;
+  if(u.critRolls){u.crit.rolls=u.critRolls;u.crit.total=u.critTotal}
+  UM_SCALED_ATTACKS.add(u.attack);
  }
+ UM_LAST={...info,status:"damage-multiplied",attacks:updates.length};
+ return {scaled:updates.length};
 }
-function umRender(app,[html]){
+function umRender(app,htmlArg){
  const Klass=globalThis.pf1?.applications?.AttackDialog;
  if(!Klass||!(app instanceof Klass)||!umEnabled(UM_MULT_SETTING))return;
- const root=html;
+ const root=htmlArg?.[0]??htmlArg;
  if(!root?.querySelector||root.querySelector(`input[name="${UM_FIELD}"]`))return;
  const old=root.querySelector(`input[name="${UM_OLD_FIELD}"]`);
  if(old){
@@ -185,15 +221,21 @@ function umRender(app,[html]){
  }
  const anchor=root.querySelector('input[name="damage-bonus"]')?.closest(".form-group");
  if(!anchor||!globalThis.document?.createElement)return;
- const group=document.createElement("div");
+ const group=globalThis.document.createElement("div");
  group.className="form-group pf1ae-damage-multiplier";
- const label=document.createElement("label");
+ const label=globalThis.document.createElement("label");
  label.textContent=umI18n("Multiplicateur de dégâts","Damage multiplier");
- const fields=document.createElement("div");
+ const fields=globalThis.document.createElement("div");
  fields.className="form-fields";
- const input=document.createElement("input");
+ const input=globalThis.document.createElement("input");
  input.type="number";input.name=UM_FIELD;input.min="0";
- input.max="10";input.step="0.5";input.value="1";
+ input.max="10";input.step="any";
+ const use=app.actionUse;
+ input.value=String(use&&UM_DIALOG_VALUES.has(use)?UM_DIALOG_VALUES.get(use):1);
+ if(use){
+  const remember=()=>UM_DIALOG_VALUES.set(use,input.value);
+  remember();input.addEventListener("input",remember);input.addEventListener("change",remember);
+ }
  input.title=umI18n("1 = normal ; 0,5 = moitié ; 2 = double",
   "1 = normal; 0.5 = half; 2 = double");
  fields.appendChild(input);group.append(label,fields);anchor.after(group);
@@ -211,12 +253,8 @@ Hooks.once("init",()=>{
   scope:"world",config:true,restricted:true,type:Boolean,default:true
  });
  Hooks.on("pf1CreateActionUse",use=>{
-  try{umApplyAttack(use);umWrapDialog(use);}
+  try{umApplyAttack(use);umWrapUse(use);}
   catch(error){console.warn("PF1AE | underwater melee attack",error);}
- });
- Hooks.on("pf1PreDamageRoll",(action,_data,parts)=>{
-  try{umMultiplyParts(action,parts);}
-  catch(error){console.warn("PF1AE | native damage multiplier",error);}
  });
  Hooks.on("renderApplication",umRender);
 });
@@ -225,6 +263,6 @@ Hooks.once("ready",()=>{
  mod.api??={};
  mod.api.underwaterMelee=Object.freeze({
   preview:umBase,lastDiagnostic:()=>UM_LAST?{...UM_LAST}:null,
-  apply:umApplyAttack,prepare:umSetAction,multiply:umMultiplyParts
+  apply:umApplyAttack,prepare:umSetAction,multiply:umMultiplyAttacks
  });
 });
