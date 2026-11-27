@@ -226,6 +226,7 @@ function umDisplaySummary(d){
  if(d.correction!==0)parts.push(umI18n("Formule initiale : ","Original formula: ")+d.formula);
  return parts.join(" — ");
 }
+const umEscapeTooltip=s=>s.replace(/[&<>"\']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function umInstallDisplay(){
  const proto=globalThis.pf1?.dice?.DamageRoll?.prototype;
  if(!proto||proto[UM_DISPLAY_WRAPPED])return;
@@ -262,7 +263,7 @@ function umInstallDisplay(){
   const a=nativeAnchor.apply(this,args),d=umDisplayData(this);
   if(d&&a?.setAttribute){
    const current=a.getAttribute?.("data-tooltip");
-   if(current==null||current===this.formula)a.setAttribute("data-tooltip",umDisplaySummary(d));
+   if(current==null||current===this.formula)a.setAttribute("data-tooltip",umEscapeTooltip(umDisplaySummary(d)));
    if(a.getAttribute?.("title")===this.formula)a.setAttribute("title",umDisplaySummary(d));
   }
   return a;

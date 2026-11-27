@@ -75,6 +75,9 @@ async function execute(use,{skip=false}={}){
  const restored=DamageRoll.fromTerms(scaled.terms,JSON.parse(JSON.stringify(scaled.options)));
  assert.equal(restored.toAnchor().getAttribute('data-tooltip'),'(1d8 + 4) × 2 = 24');
  assert.equal(restored.total,24);
+ restored.options.pf1aeDamageMultiplierDisplay.formula='<img src=x>';
+ assert.equal(restored.toAnchor().getAttribute('data-tooltip'),'(&lt;img src=x&gt;) × 2 = 24');
+ restored.options.pf1aeDamageMultiplierDisplay.formula='1d8 + 4';
  assert.equal(operatorEvaluations,0);assert.equal(numericEvaluations,0);
  preEvaluatedNumeric=false;
  const other=await execute(base({[FIELD]:'2'}));assert.equal(other.damage.total,24);
