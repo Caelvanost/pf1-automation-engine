@@ -1,3 +1,9 @@
+# 1.50.3 — Présentation multiplicative des dégâts
+
+- Affiche la formule native complète suivie du multiplicateur dans les infobulles de DamageRoll PF1 et leur détail développé, au lieu du bonus technique additif. Conserve les dés et les bonus natifs, et précise l'arrondi global réparti si nécessaire.
+- Aucun changement des totaux, de la formule mécanique sérialisée ou de l'application des dégâts ; métadonnées d'affichage persistantes dans Roll.options. Jet neutre entièrement inchangé. Si la structure d'affichage est inattendue, conserve le détail natif plutôt que de masquer un bonus indépendant.
+- Tests d'affichage simulé, préservation de la sérialisation et des totaux ; validation réelle Foundry nécessaire.
+
 # 1.50.2 — Correction des termes déjà évalués
 
 - Corrige l'interruption des attaques avec multiplicateur non neutre constatée dans Foundry v13 : `OperatorTerm.evaluate()` échouait car le terme statique était déjà évalué et immuable. Évalue uniquement les nouveaux termes déterministes qui ne le sont pas encore ; aucun dé relancé.

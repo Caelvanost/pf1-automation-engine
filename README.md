@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.50.2
+# PF1 Automation Engine v1.50.3
+
+## Présentation du multiplicateur (v1.50.3)
+
+Le calcul validé en 1.50.2 est conservé. Dans l'infobulle des jets de dégâts PF1, le terme d'ajustement est remplacé visuellement par `(formule native) × multiplicateur = résultat`, avec indication séparée de l'arrondi global réparti entre les types. Les dés, bonus natifs, critiques, données du jet sérialisé et application des dégâts restent inchangés. Champ vide ou 1 : aucune modification d'affichage.
 
 ## Correctif des termes de dégâts (v1.50.2)
 

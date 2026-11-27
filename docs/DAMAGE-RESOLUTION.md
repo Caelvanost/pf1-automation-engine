@@ -31,3 +31,7 @@ The input is blank by default with a placeholder of 1. Empty, invalid and explic
 ## Already evaluated adjustment terms (1.50.2)
 
 Foundry 13 initializes static OperatorTerms as evaluated/immutable. Do not call evaluate() again. The same guard covers NumericTerm. Only newly constructed unevaluated deterministic terms are evaluated. Never reroll existing dice. Reconstruction failure now produces an explicit notification, console stack and lastDiagnostic error instead of silent interruption. Tests simulate the actual immutable-term exception reported from Foundry 13. Live verification remains necessary.
+
+## Multiplicative display (1.50.3)
+
+The verified additive adjustment is still the authoritative native DamageRoll representation; presentation only changes. Validated metadata in Roll.options records the pre-multiplier formula, total, factor, native minimum correction and allocated total. The PF1 DamageRoll toAnchor tooltip and expanded getTooltip show `(native formula) × factor = product` and, where needed, a separate global rounding allocation. The exact final adjustment row is visually replaced, never removed from the underlying roll. Original dice, numerical modifiers, typed totals, serialized inline roll and apply-damage buttons are untouched. Unknown layout or unmatched adjustment falls back to native detail. Neutral rolls carry no display metadata. Tested with the PF1 11.11 tooltip structure in a simulated DOM; actual Foundry rendering still needs validation.
