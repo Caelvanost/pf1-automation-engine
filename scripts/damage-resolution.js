@@ -120,7 +120,10 @@ function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material
     const type=physical[0].type;
     for(const entry of reductions){
      if(entry.types.length>1)return drFail("complex-damage-reduction");
-     const bypass=entry.types[0];
+     // PF1 11.11 uses alchemicalSilver for the native DR criterion.
+     // Keep the legacy silver ID compatible without changing native traits.
+     const nativeBypass=entry.types[0];
+     const bypass=nativeBypass==="alchemicalSilver"?"silver":nativeBypass;
      if(DR_MATERIALS.has(bypass)){
       const overcame=drMaterialBypass(bypass,material);
       if(overcame===null)return drFail("unknown-material-bypass");

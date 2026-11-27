@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.51.0
+# PF1 Automation Engine v1.51.1
+
+## Identifiant natif de la RD argent (v1.51.1)
+
+PF1 11.11 utilise `alchemicalSilver` comme critère de RD ; PF1AE le traite désormais comme `silver`, sans modifier les traits natifs. Le diagnostic réel acier / RD 5/alchemicalSilver / 19 dégâts doit donner 14. La v1.50.5 a réussi les 11 scénarios de validation en jeu rapportés ; la correction 1.51.1 reste à valider.
 
 ## RD de matériaux en mêlée (v1.51.0)
 

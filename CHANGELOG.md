@@ -1,3 +1,9 @@
+# 1.51.1 — Identifiant natif de la RD argent
+
+- Corrige le diagnostic réel PF1 11.11 : le critère de RD natif est `alchemicalSilver`, distinct de l'alias `silver` déjà pris en charge. Normalisation locale du critère, sans mutation de l'acteur.
+- Régression exacte : grande hache acier, altération null, RD 5/alchemicalSilver, 19 dégâts tranchants → 14 ; prévisualisation et application native, argent/mithral, +2/+3, critique, demi-dégâts et RD maximale. Cas non pris en charge inchangés.
+- Validation en jeu de la 1.50.5 rapportée par l'utilisateur : 11/11 scénarios réussis. Validation de cette correction et des autres matériaux encore nécessaire.
+
 # 1.51.0 — RD de matériaux : armes de corps à corps (premier volet)
 
 - Reproduit le diagnostic réel PF1 11.11 / Foundry 13.351 : 12 dégâts tranchants, grande hache en acier, RD 5/argent du naga, altération nulle. Résultat attendu 7 dégâts.
