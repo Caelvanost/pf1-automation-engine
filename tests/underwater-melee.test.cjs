@@ -18,10 +18,15 @@ class Num{
  constructor(d){Object.assign(this,d);this._evaluated=preEvaluatedNumeric}
  evaluate(){numericEvaluations++;if(this._evaluated)throw Error("The NumericTerm has already been evaluated and is now immutable");this._evaluated=true;return this}
 }
+function makeAnchor(fields,obfuscated=false){
+ const attrs=new Map(Object.entries(fields));
+ return {getAttribute:k=>attrs.get(k)??null,setAttribute:(k,v)=>attrs.set(k,v),
+  classList:{contains:k=>obfuscated&&k==='obfuscated'}};
+}
 class DamageRoll{
  constructor(total,types,kind='normal',dice=[]){this.total=total;this.options={damageType:types,type:kind};this.dice=dice;this.terms=[{number:total,dice}];this.formula='1d8 + 4'}
  async getTooltip(){return '<native-tooltip>'}
- toAnchor(){const attrs=new Map([['data-tooltip',this.formula],['data-roll','serialized-native-roll']]);return {getAttribute:k=>attrs.get(k)??null,setAttribute:(k,v)=>attrs.set(k,v)}}
+ toAnchor(){return makeAnchor({'data-tooltip-text':this.formula,'data-roll':'serialized-native-roll'})}
  static fromTerms(terms,options){
   for(const term of terms)if(term instanceof Op||term instanceof Num)assert.equal(term._evaluated,true,"adjustment must already be evaluated");
   const r=new DamageRoll(0,options.damageType,options.type);
@@ -59,7 +64,7 @@ async function execute(use,{skip=false}={}){
  assert.equal(a.damage.rolls[0].dice[0].results[0].result,5);assert.equal(Object.hasOwn(use.formData,OLD),false);
  const scaled=a.damage.rolls[0],meta=scaled.options.pf1aeDamageMultiplierDisplay;
  assert.equal(meta.formula,'1d8 + 4');assert.equal(meta.factor,2);assert.equal(meta.originalTotal,12);
- assert.equal(scaled.toAnchor().getAttribute('data-tooltip'),'(1d8 + 4) × 2 = 24');
+ assert.equal(scaled.toAnchor().getAttribute('data-tooltip-text'),'(1d8 + 4) × 2 = 24');
  assert.equal(scaled.toAnchor().getAttribute('data-roll'),'serialized-native-roll');
  let tooltipRemoved=0,appended=null,expectedFlavor=scaled.terms.at(-1).options.flavor;
  const row={querySelector:q=>q==='.part-flavor'?{textContent:expectedFlavor}:null,remove(){tooltipRemoved++}};
@@ -73,11 +78,38 @@ async function execute(use,{skip=false}={}){
  assert.equal(await scaled.getTooltip(),'<native-tooltip>');assert.equal(tooltipRemoved,0);assert.equal(appended,null);
  expectedFlavor=scaled.terms.at(-1).options.flavor;
  const restored=DamageRoll.fromTerms(scaled.terms,JSON.parse(JSON.stringify(scaled.options)));
- assert.equal(restored.toAnchor().getAttribute('data-tooltip'),'(1d8 + 4) × 2 = 24');
+ assert.equal(restored.toAnchor().getAttribute('data-tooltip-text'),'(1d8 + 4) × 2 = 24');
  assert.equal(restored.total,24);
  restored.options.pf1aeDamageMultiplierDisplay.formula='<img src=x>';
- assert.equal(restored.toAnchor().getAttribute('data-tooltip'),'(&lt;img src=x&gt;) × 2 = 24');
+ assert.equal(restored.toAnchor().getAttribute('data-tooltip-text'),'(<img src=x>) × 2 = 24','v13 plain text must not be HTML escaped');
  restored.options.pf1aeDamageMultiplierDisplay.formula='1d8 + 4';
+ assert.equal(scaled.toAnchor().getAttribute('data-tooltip'),null,'no legacy attribute injected');
+ // Reproduce PF1's real finalization: anchor comes from a different
+ // toAnchor wrapper and is assigned to the exact damage row.
+ const originalText=scaled.formula;
+ const nativeAnchor=makeAnchor({'data-tooltip-text':originalText,'data-roll':'exact-serialized-damage'});
+ const criticalAnchor=makeAnchor({'data-tooltip-text':originalText,'data-roll':'exact-critical'});
+ const masked=makeAnchor({'data-tooltip-text':'24','data-roll':'masked'},true);
+ const custom=makeAnchor({'data-tooltip-text':'Private/custom','data-roll':'private'});
+ const html=makeAnchor({'data-tooltip-html':'private-html','data-tooltip-text':originalText});
+ const noTooltip=makeAnchor({'data-roll':'serialized'});
+ const legacy=makeAnchor({'data-tooltip':originalText});
+ const records=[nativeAnchor,criticalAnchor,masked,custom,html,noTooltip,legacy].map(inlineRoll=>Object.assign(
+  DamageRoll.fromTerms(scaled.terms,JSON.parse(JSON.stringify(scaled.options))),{inlineRoll}));
+ const attackRoll=makeAnchor({'data-tooltip-text':'1d20+9'});
+ handlers.get('pf1PreDisplayActionUse')({shared:{chatAttacks:[{
+  attack:{inlineRoll:attackRoll},damageRows:records.map((normal,i)=>i===1?{crit:normal}:{normal})
+ }]}});
+ assert.equal(nativeAnchor.getAttribute('data-tooltip-text'),'(1d8 + 4) × 2 = 24');
+ assert.equal(criticalAnchor.getAttribute('data-tooltip-text'),'(1d8 + 4) × 2 = 24');
+ assert.equal(nativeAnchor.getAttribute('data-roll'),'exact-serialized-damage');
+ assert.equal(nativeAnchor.getAttribute('data-tooltip'),null);
+ assert.equal(masked.getAttribute('data-tooltip-text'),'24');
+ assert.equal(custom.getAttribute('data-tooltip-text'),'Private/custom');
+ assert.equal(html.getAttribute('data-tooltip-text'),originalText);
+ assert.equal(noTooltip.getAttribute('data-tooltip-text'),null);
+ assert.equal(legacy.getAttribute('data-tooltip'),'(1d8 + 4) × 2 = 24');
+ assert.equal(attackRoll.getAttribute('data-tooltip-text'),'1d20+9');
  assert.equal(operatorEvaluations,0);assert.equal(numericEvaluations,0);
  preEvaluatedNumeric=false;
  const other=await execute(base({[FIELD]:'2'}));assert.equal(other.damage.total,24);
@@ -100,7 +132,7 @@ async function execute(use,{skip=false}={}){
   assert.equal(a.critDamage.rolls,critical);assert.equal(a.damage.rolls[0].terms,terms);
   assert.equal(a.damage.total,12);assert.equal(a.critDamage.total,19);
   assert.equal(Object.hasOwn(a.damage.rolls[0].options,'pf1aeDamageMultiplierDisplay'),false);
-  assert.equal(a.damage.rolls[0].toAnchor().getAttribute('data-tooltip'),'1d8 + 4');
+  assert.equal(a.damage.rolls[0].toAnchor().getAttribute('data-tooltip-text'),'1d8 + 4');
   assert.equal(api.lastDiagnostic().status,'native-unmodified');
   assert.equal((await api.multiply(use,[native])).scaled,0,'no retained scaling state');
  }
@@ -115,8 +147,8 @@ async function execute(use,{skip=false}={}){
  a=await execute(base({[FIELD]:'0,5'},[makeAttack([roll(3),roll(3,'fire')],[roll(3,'slashing','crit')])]));
  assert.equal(a.damage.total,3,'floor whole damage, not each component');
  assert.equal(a.damage.rolls.reduce((s,r)=>s+r.total,0),3);
- assert.match(a.damage.rolls[0].toAnchor().getAttribute('data-tooltip'),/× 0\.5 = 1\.5 — Arrondi global \(répartition\) : 1/);
- assert.match(a.damage.rolls[1].toAnchor().getAttribute('data-tooltip'),/× 0\.5 = 1\.5 — Arrondi global \(répartition\) : 2/);
+ assert.match(a.damage.rolls[0].toAnchor().getAttribute('data-tooltip-text'),/× 0\.5 = 1\.5 — Arrondi global \(répartition\) : 1/);
+ assert.match(a.damage.rolls[1].toAnchor().getAttribute('data-tooltip-text'),/× 0\.5 = 1\.5 — Arrondi global \(répartition\) : 2/);
  assert.equal(a.critDamage.total,4,'critical includes normal damage and rounds once');
  assert.equal(a.critDamage.rolls[0].options.type,'crit');
  a=await execute(base({[FIELD]:'2'},[makeAttack([roll(12)],[roll(11,'slashing','crit')])]));

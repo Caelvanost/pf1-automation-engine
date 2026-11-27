@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.50.3
+# PF1 Automation Engine v1.50.4
+
+## Infobulle Foundry v13 (v1.50.4)
+
+Corrige l'attribut natif `data-tooltip-text` utilisé par les jets intégrés dans les cartes PF1 v11.11. Le correctif précédent ciblait l'ancien `data-tooltip`, qui ne remplaçait pas le texte visible au survol dans Foundry v13. Vérification complémentaire sur les ancres de dégâts finalisées avant le rendu de la carte. Aucun changement de calcul, de sérialisation, de bouton ou de visibilité des jets. Les nouvelles cartes bénéficient du correctif.
 
 ## Présentation du multiplicateur (v1.50.3)
 
