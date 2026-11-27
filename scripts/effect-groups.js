@@ -583,7 +583,6 @@ function effectOfficialStatus(statusId){
   const official=typeof registry?.has==='function'?registry.has(statusId):
     Object.prototype.hasOwnProperty.call(registry??{},statusId);
   if(!official){
-    if(statusId==='fascinated')return null;
     throw Error('PF1 condition not registered: '+statusId);
   }
   return statusId;
@@ -591,7 +590,6 @@ function effectOfficialStatus(statusId){
 function effectCheckStatusImmunity(target,statusId){
   if(!statusId)return {allowed:true};
   if(typeof target.getConditionImmunities!=='function'){
-    if(statusId==='fascinated')return {allowed:true};
     return {allowed:false,reason:'PF1 immunity API unavailable; GM adjudication required'};
   }
   try{
@@ -636,7 +634,7 @@ async function effectCreateLinkedOutcome(data) {
     if(!raw || typeof raw.label!=='string' || raw.label.length>120 ||
        typeof raw.img!=='string' || raw.img.length>500)throw Error('Invalid outcome effect.');
     // PF1 v13 ActiveEffect is actor-embedded; avoid toggling the global
-    // 'fascinated' status because unrelated sources may supply it too.
+    // condition status because unrelated sources may supply it too.
     const flags={[EFFECT_NS]:{
       effectGroupId:group.id,sourceUuid:group.sourceUuid,key:group.key,
       outcomeId:data.outcomeId,outcomeRuleId:data.ruleId,sourceItemUuid:data.sourceItemUuid,
@@ -651,7 +649,7 @@ async function effectCreateLinkedOutcome(data) {
       console.warn('[PF1AE][SaveOutcome] Condition not applied:',permission.reason,target.name);
       return {applied:false,reason:permission.reason,requiresGM:true};
     }
-    const requestedStatus=status?[status]:[];
+    const requestedStatus=status?[...new Set([status,...(globalThis.pf1?.registry?.conditions?.get?.(status)?.statuses??[])])]:[];
     const created=(await target.createEmbeddedDocuments('ActiveEffect',[{
       name:raw.label,img:raw.img,icon:raw.img,disabled:false,
       origin:data.sourceItemUuid,changes:[],statuses:requestedStatus,flags
@@ -716,7 +714,7 @@ async function effectCreateTimedOutcome(data){
     }};
     const created=(await target.createEmbeddedDocuments('ActiveEffect',[{
       name:raw.label,img:raw.img,icon:raw.img,disabled:false,
-      origin:data.sourceItemUuid,changes:[],statuses:status?[status]:[],flags
+      origin:data.sourceItemUuid,changes:[],statuses:status?[...new Set([status,...(globalThis.pf1?.registry?.conditions?.get?.(status)?.statuses??[])])]:[],flags
     }],{[EFFECT_NS]:{skip:true}}))?.[0];
     if(!created)throw Error('Timed outcome AE creation failed.');
     try{

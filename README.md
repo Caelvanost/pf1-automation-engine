@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.48.2
+# PF1 Automation Engine v1.49.0
+
+## Conditions génériques (v1.49.0)
+
+Le registre PF1 reçoit six états supplémentaires compatibles avec les identifiants Improved Conditions. Fasciné applique −4 à Perception via le registre natif ; les cinq autres états sont des marqueurs dans ce jalon, sans automatisation de dégâts, niveaux négatifs ou déplacement. `api.conditions` déclare des conditions personnalisées persistantes (MJ, rechargement requis), applique/retire des ActiveEffects par source d'objet, prolonge leurs minuteries et expose leurs sources. Les états appartenant aux pistes natives restent hors de l'API d'application pour préserver leurs règles. Approbation MJ par objet/état pour application sur un acteur non possédé, sans code distant. Les Script Calls restent responsables des aptitudes. Voir [Conditions](docs/CONDITIONS.md).
 
 ## Validation automatique du moteur de santé (v1.48.2)
 

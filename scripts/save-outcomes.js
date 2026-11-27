@@ -105,13 +105,12 @@ async function outValidate(payload,requester,remote=false){
   }
   if(data.onSuccess!==undefined)throw Error('onSuccess is not implemented in this version.');
   const status=effectType==='linkedBuff' ? data.onFailure.statusId : null;
-  if(status!=null && (!outStr(status,80) || !/^[a-z][a-z0-9_-]*$/.test(status)))
+  if(status!=null && (!outStr(status,80) || !/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(status)))
     throw Error('Invalid statusId.');
   const official=globalThis.pf1?.registry?.conditions;
   const known=status==null || (typeof official?.has==='function' ? official.has(status) :
     Object.prototype.hasOwnProperty.call(official??{},status));
-  // Legacy Fascination: preserve the source-specific AE even without a native status.
-  if(!known && status!=='fascinated')throw Error('Not an official PF1 condition: '+status);
+  if(!known)throw Error('Not an official PF1 condition: '+status);
   const rawDuration=data.onFailure.duration;
   let duration=null;
   if(rawDuration!=null){

@@ -226,6 +226,14 @@
     "ActionOptions": {
       "SkipDialog": "Ignorer le dialogue",
       "Hint": "Exécute directement cette action avec ses paramètres par défaut, sans afficher le dialogue natif d'utilisation."
+    },
+    "Conditions": {
+      "fascinated": "Fasciné",
+      "burning": "En feu",
+      "energyDrained": "Absorption d'énergie",
+      "anchored": "Ancré",
+      "immobilized": "Immobilisé",
+      "slowed": "Ralenti"
     }
   }
 }
