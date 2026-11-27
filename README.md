@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.50.5
+# PF1 Automation Engine v1.51.0
+
+## RD de matériaux en mêlée (v1.51.0)
+
+Premier volet : RD simples d'argent, fer froid et adamantium sur les armes de corps à corps sans munition ; matériau effectif natif et bonus d'altération +3/+4. Le cas acier / RD 5/argent / 12 dégâts doit donner 7. Le moteur conserve la plus forte RD non contournée. Les alignements, RD combinées, munitions, armes naturelles, solidité et provenance d'attaque immuable restent à traiter. Les sources ambiguës et personnalisées restent manuelles. Voir [Damage resolution](docs/DAMAGE-RESOLUTION.md).
 
 ## Application native des dégâts (v1.50.5)
 

@@ -1,5 +1,5 @@
 /**
- * PF1AE basic damage resolution — exact PF1 11.11 / Foundry 13.
+ * PF1AE basic damage resolution and melee material DR — PF1 11.11 / Foundry 13.
  * Opt-in; native actor.applyDamage still commits HP, THP and nonlethal.
  * No global chat state, no canvas selection, no ability-specific code.
  */
@@ -8,6 +8,10 @@ const DR_AD="pf1-automate-damage";
 const DR_ENERGY=new Set(["acid","cold","electric","fire","sonic"]);
 const DR_PHYSICAL=new Set(["bludgeoning","piercing","slashing"]);
 const DR_OTHER=new Set(["untyped","force"]);
+// Native PF1 identifiers, not localized labels. Mithral counts as silver for DR.
+const DR_MATERIALS=new Map([["silver",3],["coldIron",3],["adamantine",4]]);
+const DR_SILVER=new Set(["silver","alchemicalSilver","mithral"]);
+const DR_KNOWN_MATERIALS=new Set(["steel","iron","wood","stone","bone","silver","alchemicalSilver","mithral","coldIron","adamantine"]);
 const DR_TAGS=new Set(["precision","nonlethal","areaOfEffect"]);
 const DR_SEEN=new WeakSet(),DR_LAST=new Map();
 const drText=(fr,en)=>String(game.i18n?.lang??"").startsWith("fr")?fr:en;
@@ -49,7 +53,20 @@ function drComponents(input){
   return {type:ids[0],amount,tags};
  });
 }
-function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,asNonlethal=false}={}){
+// A false answer is allowed only with a complete recognized material profile.
+// Enhancement substitutes for material DR only, never for object hardness.
+function drMaterialBypass(bypass,material){
+ if(!material||!DR_MATERIALS.has(bypass))return null;
+ const {normal,addons,enhancement}=material;
+ if(Number.isSafeInteger(enhancement)&&enhancement>=DR_MATERIALS.get(bypass))return true;
+ const extra=drArray(addons);
+ if(typeof normal!=="string"||!extra||extra.some(x=>typeof x!=="string"))return null;
+ const ids=[normal,...extra];
+ if(ids.some(id=>bypass==="silver"?DR_SILVER.has(id):id===bypass))return true;
+ if(!Number.isSafeInteger(enhancement)||enhancement<0||ids.some(id=>!DR_KNOWN_MATERIALS.has(id)))return null;
+ return false;
+}
+function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material=null,asNonlethal=false}={}){
  try{
   if(!actor?.system?.traits)return drFail("missing-native-traits");
   if(ratio!==1&&ratio!==0.5)return drFail("unsupported-ratio");
@@ -104,7 +121,11 @@ function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,asNonlet
     for(const entry of reductions){
      if(entry.types.length>1)return drFail("complex-damage-reduction");
      const bypass=entry.types[0];
-     if(bypass&&bypass!=="magic"&&!DR_PHYSICAL.has(bypass))return drFail("material-alignment-damage-reduction");
+     if(DR_MATERIALS.has(bypass)){
+      const overcame=drMaterialBypass(bypass,material);
+      if(overcame===null)return drFail("unknown-material-bypass");
+      if(overcame)continue;
+     }else if(bypass&&bypass!=="magic"&&!DR_PHYSICAL.has(bypass))return drFail("material-alignment-damage-reduction");
      if(bypass==="magic"&&typeof magic!=="boolean")return drFail("unknown-magic-bypass");
      if(bypass===type||(bypass==="magic"&&magic===true))continue;
      dr=Math.max(dr,entry.amount);
@@ -116,6 +137,22 @@ function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,asNonlet
   return {supported:true,raw:rows.reduce((a,r)=>a+r.amount,0),ratio,incoming:rounded,
    total:result.reduce((a,r)=>a+r.final,0),damageReduction:dr,components:result};
  }catch(e){return drFail(String(e?.message??e))}
+}
+// Initial material adapter: manufactured melee weapons with no ammunition.
+// PF1 11.11 exposes effective normalMaterial/addonMaterial on ItemAction.
+// Do not use the launcher's material, localized labels or base material alone.
+function drMeleeMaterial(action,item){
+ if(action?.actionType!=="mwak"||action.isRanged===true||item?.type!=="weapon"||
+    item.subType==="natural"||item.system?.subType==="natural"||
+    action.ammo?.type!==null)return null;
+ if(action.material?.normal?.custom!==false||
+    item.system?.material?.base?.custom!==false||item.system?.material?.normal?.custom!==false)return null;
+ const normal=action.normalMaterial,addons=drArray(action.addonMaterial);
+ if(typeof normal!=="string"||!addons||addons.some(x=>typeof x!=="string"))return null;
+ const bonus=action.enhancementBonus;
+ const enhancement=Number.isSafeInteger(bonus)&&bonus>=0?bonus:
+    bonus===null&&item.system?.enh===null?0:null;
+ return {normal,addons:[...addons],enhancement};
 }
 function drSource(options){
  const action=options.action,item=action?.item??options.item,type=action?.actionType;
@@ -131,7 +168,9 @@ function drSource(options){
     else if(action.ammo?.type||drCustom(innate?.custom))magic=null;
    }
   }
-  return {sourceKind:"weapon",magic};
+  const material=drMeleeMaterial(action,item);
+  if(magic===null&&material?.enhancement===0)magic=false;
+  return {sourceKind:"weapon",magic,material};
  }
  if(item?.type==="spell"&&!["mwak","rwak","twak"].includes(type)||["msak","rsak"].includes(type))
   return {sourceKind:"other",magic:null};
@@ -143,7 +182,8 @@ function drRemember(actor,result){
 }
 const DR_REASONS={
  "hardness-next-stage":["solidité","hardness"],
- "material-alignment-damage-reduction":["RD de matériau ou d’alignement","material/alignment DR"],
+ "material-alignment-damage-reduction":["RD de matériau ou d’alignement non prise en charge","unsupported material/alignment DR"],
+ "unknown-material-bypass":["matériau ou altération de l’arme non vérifié","unverified weapon material or enhancement"],
  "complex-damage-reduction":["RD complexe","complex DR"],
  "unknown-magic-bypass":["contournement magique non vérifié","unverified magic bypass"],
  "custom-resistance":["résistance personnalisée","custom resistance"],

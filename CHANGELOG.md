@@ -1,3 +1,10 @@
+# 1.51.0 — RD de matériaux : armes de corps à corps (premier volet)
+
+- Reproduit le diagnostic réel PF1 11.11 / Foundry 13.351 : 12 dégâts tranchants, grande hache en acier, RD 5/argent du naga, altération nulle. Résultat attendu 7 dégâts.
+- Utilise les matériaux effectifs natifs de l'action (normalMaterial, addonMaterial) sur une arme de corps à corps sans munition. Argent, argent alchimique et mithral, fer froid et adamantium ; altération +3/+4 pour les RD correspondantes. Null pour une arme non enchantée explicitement vérifiée. RD maximale non contournée, une fois par attaque, y compris critique.
+- Provenance actuelle de l'action native uniquement, pas de capture immuable à l'instant de l'attaque. Si l'arme est modifiée après le jet, utiliser le dialogue manuel. Matériaux inconnus/personnalisés, munitions, armes naturelles, RD combinées, alignements et solidité restent manuels. Les identifiants autres que steel/silver sont testés en simulation et nécessitent une validation réelle.
+- Aucun changement des jets, des PV natifs, des défenses énergétiques, du dialogue manuel ou de l'option désactivée par défaut. Tests simulés ; validation en jeu requise.
+
 # 1.50.5 — Correction des montants de dégâts natifs
 
 - Corrige `invalid-native-total` en application directe : PF1 11.11 recrée les DamagePartModel par cible à partir de leur schéma (formule, types), qui ne contient pas la propriété d'exécution `value`. Récupère les montants évalués depuis `message.systemRolls.attacks[attackIndex]` (normaux et critiques selon le bouton), vérifie les types, les éventuels montants conservés, l'index, le ratio et le total exact. Aucun nouveau jet, aucune lecture de sélection globale.

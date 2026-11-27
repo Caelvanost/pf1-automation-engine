@@ -96,6 +96,55 @@ assert.equal(apply(opts([c(8,'fire')],{dialog:true,reduction:5})).value,8,'nativ
 assert.equal(apply(opts([c(8,'fire')],{reduction:2})).value,8,'manual reduction untouched');
 assert.equal(apply(opts([c(8,'fire')],{value:-8})).value,-8,'healing untouched');
 assert.equal(apply({value:8,ratio:1,reduction:0}).value,8,'raw damage untouched');
+// Native live diagnostic, Foundry 13.351 / PF1 11.11, Water Naga.
+// The action's enhancement is null for this mundane steel weapon.
+const melee=(normal='steel',addons=[],enh=null,extra={})=>({
+ actionType:'mwak',normalMaterial:normal,addonMaterial:addons,
+ material:{normal:{custom:false},addon:[]},enhancementBonus:enh,
+ alignments:{lawful:null,chaotic:null,good:null,evil:null},
+ ammo:{type:null,cost:0,misfire:null},
+ item:{type:'weapon',system:{enh,material:{base:{value:'steel',custom:false},
+   normal:{value:'',custom:false},addon:[]},alignments:{lawful:false,chaotic:false,good:false,evil:false}}},
+ ...extra
+});
+const hit=(action=melee(),extra={})=>apply(opts([c(12,'slashing')],{action,...extra})).value;
+t.eres.value=[];
+t.dr.value=[{amount:5,types:['silver'],operator:true}];
+assert.equal(hit(),7,'live regression: steel vs Water Naga RD 5/silver, null enhancement');
+assert.equal(hit(melee('silver')),12);
+assert.equal(hit(melee('mithral')),12);
+assert.equal(hit(melee('steel',['alchemicalSilver'])),12,'effective addon bypass');
+assert.equal(hit(melee('steel',[],2)),7);
+assert.equal(hit(melee('steel',[],3)),12);
+assert.equal(hit(melee('steel',[],null),{half:true}),1,'half before RD');
+assert.equal(hit(melee(),{critical:[c(12,'slashing')]}),19,'DR once on critical');
+assert.equal(hit(melee(),{index:2}),7);
+t.dr.value.push({amount:3,types:[]});
+assert.equal(hit(melee('silver')),9,'highest remaining RD after bypass');
+assert.equal(hit(),7,'DR never stacks');
+t.dr.value=[{amount:5,types:['coldIron'],operator:true}];
+assert.equal(hit(),7);assert.equal(hit(melee('coldIron')),12);
+assert.equal(hit(melee('steel',[],3)),12);
+t.dr.value=[{amount:5,types:['adamantine'],operator:true}];
+assert.equal(hit(melee('adamantine')),12);assert.equal(hit(melee('steel',[],3)),7);
+assert.equal(hit(melee('steel',[],4)),12);
+t.hardness=5;assert.equal(hit(melee('steel',[],4)),0);
+assert.equal(api.lastDiagnostic(actor).reason,'hardness-next-stage');t.hardness=0;
+t.dr.value=[{amount:5,types:['magic']}];
+assert.equal(hit(),7,'native null enhancement is mundane for verified melee');
+assert.equal(hit(melee('steel',[],1)),12);
 t.dr.value=[{amount:5,types:['silver']}];
-o=apply(opts([c(9,'slashing')]));assert.equal(o.value,0);assert.ok(warnings.length);assert.equal(api.lastDiagnostic(actor).reason,'material-alignment-damage-reduction');
-console.log('PASS basic damage resolution: native traits, per-hit maximum RD/ER, immunity, vulnerability, ratio, conflict, manual fallback');
+assert.equal(hit(melee('unknownCustom')),0);
+assert.equal(api.lastDiagnostic(actor).reason,'unknown-material-bypass');
+assert.equal(hit(melee('steel',['unknownAddon'])),0);
+assert.equal(hit(melee('steel',[],null,{material:{normal:{custom:true}}})),0);
+assert.equal(hit(melee('silver',[],null,{actionType:'rwak'})),0,'do not use launcher material');
+assert.equal(hit(melee('steel',[],5,{actionType:'rwak'})),0,'launcher enhancement does not bypass material DR');
+assert.equal(hit(melee('silver',[],null,{ammo:{type:'arrow'}})),0);
+assert.equal(hit(melee('silver',[],null,{item:{type:'attack',subType:'natural'}})),0);
+o=apply(opts([c(9,'slashing')]));assert.equal(o.value,0);assert.ok(warnings.length);assert.equal(api.lastDiagnostic(actor).reason,'unknown-material-bypass');
+t.dr.value=[{amount:5,types:['silver','magic'],operator:true}];
+assert.equal(hit(),0);assert.equal(api.lastDiagnostic(actor).reason,'complex-damage-reduction');
+t.dr.value=[{amount:5,types:['good']}];
+assert.equal(hit(),0);assert.equal(api.lastDiagnostic(actor).reason,'material-alignment-damage-reduction');
+console.log('PASS damage resolution: native traits, material DR, per-hit maximum RD/ER, immunity, vulnerability, ratio, conflict, manual fallback');
