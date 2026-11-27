@@ -23,3 +23,7 @@ console.log(damage.lastDiagnostic(actor));
 Preview returns supported/reason or incoming, total, per-type immunity, resistance, vulnerabilityBonus and damageReduction. No document mutation. The actual hook changes only options.value/ratio/reduction and supplies a diagnostic field. No automatic chat report of "applied" before native HP update completes.
 
 Live tests: multiplier blank/re-render/skip dialog/x2/x0.5 including Strength and situational bonus; critical and mixed typed components; multiple attacks; PF1 Waters underwater and active Roll Bonuses; native full/half chat buttons; two linked/unlinked targets with different defenses; manual dialog; Automate Damage enabled/disabled. Future phases cover advanced bypasses/hardness, ability damage, custom types and migration.
+
+## Neutral multiplier pass-through (1.50.1)
+
+The input is blank by default with a placeholder of 1. Empty, invalid and explicit 1 values remove the PF1AE multiplier field entirely from the submitted form, rather than injecting a factor of 1. Without an independent underwater rule, no scaling state is retained and generateChatAttacks returns its native result without inspecting or reconstructing any damage rolls. Native normal and critical roll objects, arrays, terms and special corrections remain untouched. Explicit non-neutral values still scale evaluated damage; neutral manual input does not disable underwater rules.

@@ -105,6 +105,12 @@ function umSetAction(use){
  const user=umEnabled(UM_MULT_SETTING)?(umNumber(use.formData?.[UM_FIELD])??1):1;
  const base=umEnabled(UM_SETTING)?umBase(use):null;
  const info={multiplier:user*(base?.multiplier??1),user,base,actorUuid:use.actor?.uuid??null};
+ // Neutral manual input and no aquatic penalty: retain no scaling state.
+ if(user===1&&!base){
+  UM_ACTION.delete(use);
+  UM_LAST={status:"native-unmodified",actorUuid:info.actorUuid};
+  return info;
+ }
  UM_ACTION.set(use,info);UM_LAST={...info,status:"damage-prepared"};return info;
 }
 function umWrapUse(use){
@@ -116,13 +122,22 @@ function umWrapUse(use){
   const form=await dialog.apply(this,args);
   if(form&&typeof form==="object"&&umEnabled(UM_MULT_SETTING)){
    const raw=UM_DIALOG_VALUES.has(this)?UM_DIALOG_VALUES.get(this):form[UM_FIELD];
-   form[UM_FIELD]=umNumber(raw)??1;delete form[UM_OLD_FIELD];
+   const factor=umNumber(raw);
+   // Do not inject a neutral multiplier into PF1's submitted form.
+   // Preserve an explicit zero and all valid non-neutral choices.
+   if(factor===null||factor===1)delete form[UM_FIELD];
+   else form[UM_FIELD]=factor;
+   delete form[UM_OLD_FIELD];
   }
   return form;
  };
  const complete=async function(...args){
-  const info=umSetAction(this),result=await generate.apply(this,args);
-  if(info.user!==1||info.base)await umMultiplyAttacks(this,this.shared?.chatAttacks,info);
+  const info=umSetAction(this);
+  // A true pass-through: no inspection, allocation, or reconstruction of
+  // native rolls, including crits and PF1's minimum damage adjustments.
+  if(info.user===1&&!info.base)return generate.apply(this,args);
+  const result=await generate.apply(this,args);
+  await umMultiplyAttacks(this,this.shared?.chatAttacks,info);
   return result;
  };
  try{
@@ -231,13 +246,14 @@ function umRender(app,htmlArg){
  input.type="number";input.name=UM_FIELD;input.min="0";
  input.max="10";input.step="any";
  const use=app.actionUse;
- input.value=String(use&&UM_DIALOG_VALUES.has(use)?UM_DIALOG_VALUES.get(use):1);
+ input.placeholder="1";
+ input.value=String(use&&UM_DIALOG_VALUES.has(use)?UM_DIALOG_VALUES.get(use):"");
  if(use){
   const remember=()=>UM_DIALOG_VALUES.set(use,input.value);
   remember();input.addEventListener("input",remember);input.addEventListener("change",remember);
  }
- input.title=umI18n("1 = normal ; 0,5 = moitié ; 2 = double",
-  "1 = normal; 0.5 = half; 2 = double");
+ input.title=umI18n("Vide ou 1 = jet natif inchangé ; 0,5 = moitié ; 2 = double",
+  "Empty or 1 = unchanged native roll; 0.5 = half; 2 = double");
  fields.appendChild(input);group.append(label,fields);anchor.after(group);
  app.setPosition?.();
 }
