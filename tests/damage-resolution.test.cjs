@@ -34,6 +34,9 @@ assert.equal(preview([c(3,'fire'),c(3,'cold')],{ratio:.5}).total,3,'whole attack
 assert.equal(preview([c(7,'slashing','piercing')]).supported,false);
 assert.equal(preview([c(7,'fire','nonlethal')]).supported,false);
 assert.equal(preview([c(7,'fire','nonlethal')],{asNonlethal:true}).total,7);
+t.di.standard.add('nonlethal');assert.equal(preview([c(7,'slashing')],{asNonlethal:true}).total,0);t.di.standard.clear();
+t.di.standard.add('precision');assert.equal(preview([c(7,'slashing','precision')]).reason,'modifier-tag-defense');t.di.standard.clear();
+t.dr.value=[{amount:5,types:[]}];assert.equal(preview([c(7,'untyped')]).reason,'untyped-with-damage-reduction');t.dr.value=[];
 assert.equal(preview([c(3,'abilityDamage')]).supported,false);
 t.hardness=5;assert.equal(preview([c(8,'fire')]).supported,false);t.hardness=0;
 t.eres.value=[{amount:5,types:['fire']}];

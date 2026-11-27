@@ -60,8 +60,17 @@ function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,asNonlet
    return drFail("mixed-nonlethal");
   if(Number(traits.hardness??0)>0)return drFail("hardness-next-stage");
   const immunity=new Set(drIds(traits.di)),vulnerability=new Set(drIds(traits.dv));
+  const immuneNonlethal=asNonlethal&&immunity.has("nonlethal");
+  // Modifier-tag defenses may involve only a fraction of a mixed roll.
+  // Until exact provenance is available, require manual review rather
+  // than guessing how much of a physical roll was precision damage.
+  if(!immuneNonlethal&&rows.some(r=>r.amount>0&&r.tags.some(t=>t!=="nonlethal"&&(immunity.has(t)||vulnerability.has(t)))))
+   return drFail("modifier-tag-defense");
+  if(!immuneNonlethal&&asNonlethal&&vulnerability.has("nonlethal"))return drFail("non-energy-vulnerability");
+  if(!immuneNonlethal&&sourceKind!=="other"&&rows.some(r=>r.type==="untyped"&&r.amount>0)&&
+   drEntries(traits.dr).some(r=>r.amount>0))return drFail("untyped-with-damage-reduction");
   const hasEnergy=rows.some(r=>DR_ENERGY.has(r.type));
-  const energy=hasEnergy?drEntries(traits.eres):[];
+  const energy=hasEnergy&&!immuneNonlethal?drEntries(traits.eres):[];
   if(energy.some(r=>r.types.length!==1||!DR_ENERGY.has(r.types[0])))return drFail("complex-energy-resistance");
   // Group same energy type before applying the highest resistance ONCE.
   const groups=new Map();
@@ -71,7 +80,7 @@ function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,asNonlet
   for(const [type,raw] of groups){
    exact+=raw*ratio;
    const next=drFloor(exact),incoming=next-rounded;rounded=next;
-   const immune=immunity.has(type);
+   const immune=immuneNonlethal||immunity.has(type);
    let amount=immune?0:incoming,resistance=0,extra=0;
    if(!immune&&DR_ENERGY.has(type)){
     resistance=Math.min(amount,Math.max(0,...energy.filter(r=>r.types[0]===type).map(r=>r.amount)));
@@ -141,7 +150,9 @@ const DR_REASONS={
  "custom-damage-trait":["défense personnalisée","custom defense"],
  "combined-vulnerability-resistance":["résistance et vulnérabilité simultanées","combined resistance and vulnerability"],
  "mixed-or-unsupported-damage-type":["type de dégâts mixte ou non pris en charge","mixed or unsupported damage type"],
- "native-card-total-mismatch":["total de carte incohérent","inconsistent card total"]
+ "native-card-total-mismatch":["total de carte incohérent","inconsistent card total"],
+ "modifier-tag-defense":["immunité ou vulnérabilité à un modificateur de dégâts","damage modifier immunity or vulnerability"],
+ "untyped-with-damage-reduction":["dégâts non typés avec RD","untyped damage with DR"]
 };
 function drBlock(actor,options,result){
  drRemember(actor,result);
