@@ -27,3 +27,7 @@ Live tests: multiplier blank/re-render/skip dialog/x2/x0.5 including Strength an
 ## Neutral multiplier pass-through (1.50.1)
 
 The input is blank by default with a placeholder of 1. Empty, invalid and explicit 1 values remove the PF1AE multiplier field entirely from the submitted form, rather than injecting a factor of 1. Without an independent underwater rule, no scaling state is retained and generateChatAttacks returns its native result without inspecting or reconstructing any damage rolls. Native normal and critical roll objects, arrays, terms and special corrections remain untouched. Explicit non-neutral values still scale evaluated damage; neutral manual input does not disable underwater rules.
+
+## Already evaluated adjustment terms (1.50.2)
+
+Foundry 13 initializes static OperatorTerms as evaluated/immutable. Do not call evaluate() again. The same guard covers NumericTerm. Only newly constructed unevaluated deterministic terms are evaluated. Never reroll existing dice. Reconstruction failure now produces an explicit notification, console stack and lastDiagnostic error instead of silent interruption. Tests simulate the actual immutable-term exception reported from Foundry 13. Live verification remains necessary.

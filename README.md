@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.50.1
+# PF1 Automation Engine v1.50.2
+
+## Correctif des termes de dégâts (v1.50.2)
+
+Foundry v13 crée les OperatorTerm statiques déjà évalués et immuables. PF1AE ne les évalue plus une seconde fois ; même protection pour NumericTerm. En cas d'autre incompatibilité, journal et notification explicites au lieu d'une interruption silencieuse. Les champs vide et 1 restent natifs.
 
 ## Multiplicateur neutre (v1.50.1)
 

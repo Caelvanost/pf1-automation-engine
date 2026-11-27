@@ -137,7 +137,16 @@ function umWrapUse(use){
   // native rolls, including crits and PF1's minimum damage adjustments.
   if(info.user===1&&!info.base)return generate.apply(this,args);
   const result=await generate.apply(this,args);
-  await umMultiplyAttacks(this,this.shared?.chatAttacks,info);
+  try{
+   await umMultiplyAttacks(this,this.shared?.chatAttacks,info);
+  }catch(error){
+   UM_LAST={...info,status:"damage-multiplier-error",error:String(error?.message??error)};
+   console.error("PF1AE | damage multiplier failed",error);
+   globalThis.ui?.notifications?.error?.(umI18n(
+    "PF1AE : impossible de multiplier les dégâts. Attaque interrompue ; détails dans la console (F12).",
+    "PF1AE: damage multiplier failed. Attack interrupted; see console (F12)."));
+   throw error;
+  }
   return result;
  };
  try{
@@ -184,9 +193,18 @@ async function umRollWithTotal(roll,total,factor){
  // Deterministic adjustment; preserve evaluated dice and damage metadata.
  const delta=total-roll.total;
  const {OperatorTerm,NumericTerm}=foundry.dice.terms;
- const op=await new OperatorTerm({operator:delta<0?"-":"+"}).evaluate();
- const num=await new NumericTerm({number:Math.abs(delta),options:{flavor:
-  umI18n("Multiplicateur de dégâts","Damage multiplier")+" ×"+factor}}).evaluate();
+ const op=new OperatorTerm({operator:delta<0?"-":"+"});
+ const num=new NumericTerm({number:Math.abs(delta),options:{flavor:
+  umI18n("Multiplicateur de dégâts","Damage multiplier")+" ×"+factor}});
+ // Foundry v13 creates static terms such as OperatorTerm already evaluated
+ // and immutable. Evaluating them again throws before the attack card exists.
+ // RollTerm._evaluated is the v13 evaluation flag; only evaluate new,
+ // unevaluated deterministic terms. Never evaluate the original dice.
+ for(const term of [op,num]){
+  if(term._evaluated!==true&&term.isEvaluated!==true)await term.evaluate();
+  if(term._evaluated!==true&&term.isEvaluated!==true)
+   throw Error("PF1AE: deterministic adjustment term is not evaluated.");
+ }
  const signature=umDiceSignature(roll);
  const scaled=roll.constructor.fromTerms([...roll.terms,op,num],{...roll.options});
  // Never evaluate the reconstructed roll containing dice.

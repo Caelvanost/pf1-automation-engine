@@ -1,3 +1,9 @@
+# 1.50.2 — Correction des termes déjà évalués
+
+- Corrige l'interruption des attaques avec multiplicateur non neutre constatée dans Foundry v13 : `OperatorTerm.evaluate()` échouait car le terme statique était déjà évalué et immuable. Évalue uniquement les nouveaux termes déterministes qui ne le sont pas encore ; aucun dé relancé.
+- Notification et trace console explicites en cas d'échec de reconstruction, sans appliquer de dégâts non multipliés silencieusement.
+- Tests avec termes statiques immuables et NumericTerm initialement évalué ou non ; comportement neutre inchangé.
+
 # 1.50.1 — Multiplicateur neutre sans injection
 
 - Champ vide par défaut avec indication 1 ; une valeur vide, invalide ou égale à 1 est supprimée du formulaire natif plutôt que remplacée par un multiplicateur numérique. Aucun état de multiplication ni transformation des jets en l'absence de pénalité aquatique indépendante.
