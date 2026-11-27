@@ -1,3 +1,9 @@
+# 1.50.1 — Multiplicateur neutre sans injection
+
+- Champ vide par défaut avec indication 1 ; une valeur vide, invalide ou égale à 1 est supprimée du formulaire natif plutôt que remplacée par un multiplicateur numérique. Aucun état de multiplication ni transformation des jets en l'absence de pénalité aquatique indépendante.
+- Préserve exactement les jets natifs (dont critiques, tableaux de dés et minimum de dégâts), ainsi que les valeurs explicites non neutres et les règles sous-marines.
+- Tests de non-mutation et de non-reconstruction ; validation Foundry réelle à effectuer.
+
 # 1.50.0 — Multiplicateur natif corrigé et défenses de base
 
 - Corrige le multiplicateur PF1AE (remplacement Roll Bonuses) : le formulaire natif n'était pas encore enregistré dans ActionUse lors de sa lecture ; une valeur absente était convertie en 0. Lecture du résultat de dialogue, valeur par défaut 1, persistance pendant les réaffichages, zéro uniquement explicite, indépendance entre usages.

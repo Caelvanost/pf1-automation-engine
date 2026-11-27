@@ -47,10 +47,31 @@ async function execute(use,{skip=false}={}){
  assert.equal(a.damage.total,24,'all evaluated bonuses included');assert.equal(a.damage.rolls[0].total,24);
  assert.equal(a.damage.rolls[0].dice[0].results[0].result,5);assert.equal(Object.hasOwn(use.formData,OLD),false);
  await use.generateChatAttacks();assert.equal(a.damage.total,24,'no duplicate scaling');
- for(const form of [{},{[FIELD]:''},{[FIELD]:null},{[FIELD]:'abc'},{[FIELD]:false}]){
-  a=await execute(base(form));assert.equal(a.damage.total,12,'blank/invalid never becomes 0');
+ // Neutral choices must not reach PF1's form or touch a single native
+ // roll, even when the native total uses a special damage correction.
+ const fromTerms=DamageRoll.fromTerms;
+ DamageRoll.fromTerms=()=>{throw Error("Neutral action must not reconstruct rolls")};
+ for(const form of [{},{[FIELD]:''},{[FIELD]:null},{[FIELD]:'abc'},{[FIELD]:false},
+                    {[FIELD]:'1'},{[FIELD]:1},{[FIELD]:'1,0'}]){
+  const native=makeAttack([roll(12)],[roll(7,'slashing','crit')]);
+  const normal=native.damage.rolls,critical=native.critDamage.rolls;
+  const terms=normal[0].terms;
+  use=base(form,[native]);
+  a=await execute(use);
+  assert.equal(Object.hasOwn(use.formData,FIELD),false,'neutral field absent');
+  assert.equal(a,native);assert.equal(a.damage.rolls,normal);
+  assert.equal(a.critDamage.rolls,critical);assert.equal(a.damage.rolls[0].terms,terms);
+  assert.equal(a.damage.total,12);assert.equal(a.critDamage.total,19);
+  assert.equal(api.lastDiagnostic().status,'native-unmodified');
+  assert.equal((await api.multiply(use,[native])).scaled,0,'no retained scaling state');
  }
+ const minimum=makeAttack([roll(-2)]);
+ minimum.damage.total=1;minimum.damage.nonlethal=true;
+ use=base({[FIELD]:'1'},[minimum]);a=await execute(use);
+ assert.equal(a,minimum);assert.equal(a.damage.total,1);
+ assert.equal(a.damage.rolls[0].total,-2);assert.equal(a.damage.nonlethal,true);
  a=await execute(base({[FIELD]:'3'}),{skip:true});assert.equal(a.damage.total,12);
+ DamageRoll.fromTerms=fromTerms;
  a=await execute(base({[FIELD]:'0'}));assert.equal(a.damage.total,0,'explicit zero only');
  a=await execute(base({[FIELD]:'0,5'},[makeAttack([roll(3),roll(3,'fire')],[roll(3,'slashing','crit')])]));
  assert.equal(a.damage.total,3,'floor whole damage, not each component');
@@ -63,6 +84,8 @@ async function execute(use,{skip=false}={}){
  use=base({[FIELD]:'1'},[makeAttack([roll(9),roll(5,'electric')])]);a=await execute(use);
  assert.equal(use.shared.attackBonus.length,1);assert.match(use.shared.attackBonus[0],/^-2\[/);
  assert.equal(a.damage.total,9);assert.equal(a.damage.rolls[0].total,4);assert.equal(a.damage.rolls[1].total,5);
+ assert.equal(Object.hasOwn(use.formData,FIELD),false,'neutral manual field absent even underwater');
+ a=await execute(base({[FIELD]:''},[makeAttack([roll(9),roll(5,'electric')])]));assert.equal(a.damage.total,9,'blank preserves independent aquatic rules');
  a=await execute(base({[FIELD]:'2'},[makeAttack([roll(9),roll(5,'fire')])]));
  assert.equal(a.damage.total,19);assert.equal(a.damage.rolls[0].total,9);assert.equal(a.damage.rolls[1].total,10);
  actor.statuses.add('freedomOfMovement');use=base({});a=await execute(use);assert.equal(a.damage.total,12);assert.equal(use.shared.attackBonus.length,0);actor.statuses.clear();
@@ -81,11 +104,11 @@ async function execute(use,{skip=false}={}){
  ctx.document={createElement(tag){return {tag,children:[],listeners:{},appendChild(x){this.children.push(x)},
   append(...xs){this.children.push(...xs)},addEventListener(n,fn){this.listeners[n]=fn}}}};
  handlers.get('renderApplication')(dialog,[root]);assert.equal(removed,1);
- let input=installed.children[1].children[0];assert.equal(input.value,'1');
+ let input=installed.children[1].children[0];assert.equal(input.value,'');assert.equal(input.placeholder,'1');
  input.value='2';input.listeners.input();
  handlers.get('renderApplication')(dialog,[root]);input=installed.children[1].children[0];assert.equal(input.value,'2');
  input.value='';input.listeners.input();
- a=await execute(uiUse);assert.equal(a.damage.total,12,'blank UI overrides coerced numeric zero');
+ a=await execute(uiUse);assert.equal(a.damage.total,12,'blank UI overrides coerced numeric zero');assert.equal(Object.hasOwn(uiUse.formData,FIELD),false);
  settings.set('nativeDamageMultiplier',false);
  use=base({[FIELD]:3,[OLD]:2});a=await execute(use);assert.equal(a.damage.total,12);assert.equal(use.formData[OLD],2,'disabled feature does not remove other module data');
  settings.set('nativeDamageMultiplier',true);

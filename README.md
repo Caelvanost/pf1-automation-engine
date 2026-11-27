@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.50.0
+# PF1 Automation Engine v1.50.1
+
+## Multiplicateur neutre (v1.50.1)
+
+Le champ de multiplicateur est vide par défaut (indication 1). Vide, invalide ou égal à 1 : aucun champ de multiplicateur n'est transmis dans le formulaire natif, aucun état de multiplication n'est conservé et les jets natifs sont laissés intacts, sans reconstruction ni terme ajouté. Les valeurs explicites différentes de 1 restent actives. Les règles indépendantes de combat sous l'eau continuent de s'appliquer.
 
 ## Multiplicateur de dégâts et défenses simples (v1.50.0)
 
