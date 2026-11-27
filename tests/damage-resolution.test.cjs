@@ -18,7 +18,7 @@ class DamagePartModel{
 }
 const roll=r=>({total:r.value,damageType:new DamagePartModel({types:r.types})});
 const opts=(parts,extra={})=>{
- const {critical=[],half=false,index=0,...overrides}=extra;
+ const {critical=[],half=false,index=0,ammoEntries=null,chatAmmoIds=null,afterGenerate=null,...overrides}=extra;
  const all=[...parts,...critical],raw=all.reduce((a,r)=>a+r.value,0),value=Math.floor(raw*(half?.5:1));
  const instances=all.map(r=>{
   const native=new DamagePartModel({types:r.types});native.value=r.value;
@@ -40,7 +40,12 @@ const opts=(parts,extra={})=>{
   options.item??=item;
   options.message.system={actor:item.actor.uuid,item:{id:item.id},action:{id:action.id}};
   const data={flags:{pf1:{native:true},[ns]:{unrelated:'keep'}}};
-  hooks.get('pf1PreDisplayActionUse')({action,item,shared:{chatData:data,chatAttacks:attacks}});
+  const use={action,item,shared:{chatData:data,chatAttacks:attacks,attacks:ammoEntries},generateChatAttacks(){return 'native-result'}};
+  if(chatAmmoIds)attacks.forEach((a,i)=>a.ammo={id:chatAmmoIds[i]});
+  hooks.get('pf1CreateActionUse')(use);
+  assert.equal(use.generateChatAttacks(),'native-result');
+  afterGenerate?.(use);
+  hooks.get('pf1PreDisplayActionUse')(use);
   // Simulate persistence and subsequent reload, not shared object pointers.
   options.message.flags=JSON.parse(JSON.stringify(data.flags));
  }
@@ -394,4 +399,57 @@ t.dr.value=[{amount:5,types:['magic']}];
 assert.equal(apply(magicCard).value,12);
 assert.equal(hit(natural(null,[own('magic')]),{critical:[c(12,'slashing')]}),24);
 assert.equal(hit(natural(),{half:true}),1);
+// Projectiles: source selection on shared.attacks, native document identity,
+ // own enhancement versus launcher, persistence and heterogeneous pairing.
+const ranged=(enh=null,normal='steel')=>melee(normal,[],enh,{actionType:'rwak',isRanged:true,ammo:{type:'arrow',cost:1}});
+const ammo=(action,id,dict={},bool=[],extra={})=>{
+ const actor=action.actor;actor.uuid??='Actor.source';
+ const doc={id,uuid:actor.uuid+'.Item.'+id,actor,type:'ammo',
+  system:{subType:action.ammo.type,flags:{dictionary:dict,boolean:new Set(bool)},...extra}};
+ return {hasAmmo:true,ammo:{id,document:doc}};
+};
+const shoot=(action,entry,extra={})=>apply(opts([c(12,'piercing')],{action,ammoEntries:[entry],...extra})).value;
+t.dr.value=[{amount:5,types:['silver']}];
+let bow=ranged(5,'silver'),arrow=ammo(bow,'a');
+assert.equal(shoot(bow,arrow),7,'launcher silver and +5 do not transfer material bypass');
+assert.equal(shoot(bow,ammo(bow,'a',{Material:'alchemicalSilver'})),12);
+assert.equal(shoot(bow,ammo(bow,'a',{Enhancement:3})),12);
+assert.equal(shoot(bow,ammo(bow,'a',{Enhancement:2})),7);
+t.dr.value=[{amount:5,types:['magic']}];
+assert.equal(shoot(bow,arrow),12,'magic launcher transfers magic');
+bow=ranged();assert.equal(shoot(bow,ammo(bow,'a')),7);
+assert.equal(shoot(bow,ammo(bow,'a',{},['Magic'])),12);
+assert.equal(shoot(bow,ammo(bow,'a',{Enhancement:1})),12);
+t.dr.value=[{amount:5,types:['good']}];
+bow=ranged(5);assert.equal(shoot(bow,ammo(bow,'a')),7,'launcher +5 is not alignment');
+bow.alignments.good=true;assert.equal(shoot(bow,ammo(bow,'a')),12);
+bow.alignments.good=null;assert.equal(shoot(bow,ammo(bow,'a',{Alignment:'good'})),12);
+assert.equal(shoot(bow,ammo(bow,'a',{Enhancement:5})),12);
+t.dr.value=[{amount:5,types:['silver']}];
+bow=ranged();arrow=ammo(bow,'a',{Material:'alchemicalSilver'});
+const ordinary=ammo(bow,'b');
+const mixed=opts([c(12,'piercing')],{action:bow,index:1,ammoEntries:[arrow,ordinary],chatAmmoIds:['b','a']});
+assert.equal(api.sourceSnapshot(mixed.message).perAttack[1].ammoId,'a');
+assert.equal(apply(mixed).value,12,'explicit chat ammo identity, not assumed ordering');
+const ambiguous=opts([c(12,'piercing')],{action:bow,index:1,ammoEntries:[arrow,ordinary]});
+assert.equal(apply(ambiguous).value,0);assert.equal(api.lastDiagnostic(actor).reason,'unknown-material-bypass');
+const uniform=opts([c(12,'piercing')],{action:bow,index:1,ammoEntries:[arrow,arrow],
+ afterGenerate(){arrow.ammo.document.system.flags.dictionary.Material='steel';}});
+assert.equal(apply(uniform).value,12,'capture before generation/consumption');
+assert.equal(api.sourceSnapshot(uniform.message).perAttack[0].material.normal,'alchemicalSilver');
+const badAmmo=ammo(bow,'a',{Material:'alchemicalSilver'});badAmmo.ammo.document.uuid='Actor.other.Item.a';
+assert.equal(shoot(bow,badAmmo),0);
+const missing=opts([c(12,'piercing')],{action:bow});
+assert.equal(apply(missing).value,0);
+const invalid=opts([c(12,'piercing')],{action:bow,ammoEntries:[ordinary]});
+invalid.message.flags[ns][flag].perAttack=[];
+assert.equal(apply(invalid).value,0);assert.equal(api.lastDiagnostic(actor).reason,'damage-source-snapshot-invalid');
+const gun=ranged();gun.ammo.type='gunBullet';gun.item.system.ammo={default:'bullet'};
+const bullet=ammo(gun,'bullet',{Material:'alchemicalSilver'},[],{subType:'ammo'});
+bullet.ammo.document.type='loot';
+assert.equal(shoot(gun,bullet),12,'PF1FR explicitly linked legacy ammo');
+gun.item.system.ammo.default='other';assert.equal(shoot(gun,bullet),0);
+const thrown=melee('steel',[],3,{actionType:'twak',isRanged:true});
+assert.equal(hit(thrown),12,'actual thrown weapon enhancement');
+assert.equal(hit(melee('alchemicalSilver',[],null,{actionType:'twak',isRanged:true})),12);
 console.log('PASS damage resolution: native traits, material DR, per-hit maximum RD/ER, immunity, vulnerability, ratio, conflict, manual fallback');

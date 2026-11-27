@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.51.4
+# PF1 Automation Engine v1.51.5
+
+## Projectiles et armes de jet (v1.51.5)
+
+Capture de la munition sélectionnée avant génération des attaques. Le lanceur transmet magie et alignements, mais pas ses seuils d'altération de contournement ni son matériau. Les propriétés propres du projectile sont enregistrées par attaque ; munitions mixtes sans identité finale explicite restent manuelles. Les armes de jet natives twak sans munition utilisent les propriétés de l'arme. Voir [Damage resolution](docs/DAMAGE-RESOLUTION.md).
 
 ## RD et armes naturelles (v1.51.4)
 

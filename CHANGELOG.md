@@ -1,3 +1,10 @@
+# 1.51.5 — Projectiles et armes de jet
+
+- Capture en lecture seule de la munition sélectionnée dans chaque attaque native (shared.attacks[].ammo), avant generateChatAttacks et avant consommation. Aucune lecture du stock actuel à l'application, aucune consommation supplémentaire ; compatible avec le contrat de sélection PF1FR, y compris loot/ammo explicitement lié. Munitions homogènes ou correspondance explicite avec les IDs des entrées chat ; ambiguïté = arbitrage manuel.
+- FAQ Paizo : le lanceur +1 transmet le caractère magique et les alignements explicites, pas les seuils +3/+4/+5/+6 ni son matériau. Le projectile utilise ses propres propriétés et son altération. Armes de jet explicites twak sans munition : propriétés de l'arme elle-même.
+- Adapte les matériaux/alignements natifs et les flags d'objet PF1 Material, Alignment, Magic ; Enhancement est une convention explicite PF1AE de bonus réel de la munition, sans modifier les jets natifs. Pas d'inférence depuis le bonus de dégâts. Les valeurs inconnues et les bonus externes non exposés restent manuels.
+- Champ optionnel perAttack dans le snapshot schema 1, lecture des anciennes cartes préservée. Tests simulés, mapping natif hétérogène et schéma exact des munitions à valider en jeu. PF1FR non modifié.
+
 # 1.51.4 — RD et armes naturelles
 
 - Reconnaît les attaques naturelles natives (Item attack, sous-type natural, mêlée sans munition), sans nom de capacité. La RD/magie ou RD/épique positive du porteur qualifie ses seules armes naturelles ; aucun bonus d'altération fictif et aucune transmission de RD de matériau ou d'alignement. Les sous-types d'alignement et propriétés explicites de l'action restent distincts.

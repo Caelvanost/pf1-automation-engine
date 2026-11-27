@@ -6,6 +6,7 @@
 const DR_NS="pf1-automation-engine",DR_SETTING="automaticDamageDefenses";
 const DR_AD="pf1-automate-damage";
 const DR_SOURCE_FLAG="damageSourceSnapshot",DR_SOURCE_SCHEMA=1;
+const DR_PROJECTILES=new WeakMap(),DR_PROJECTILE_WRAPPED=new WeakSet();
 const DR_ENERGY=new Set(["acid","cold","electric","fire","sonic"]);
 const DR_PHYSICAL=new Set(["bludgeoning","piercing","slashing"]);
 const DR_OTHER=new Set(["untyped","force"]);
@@ -13,7 +14,7 @@ const DR_OTHER=new Set(["untyped","force"]);
 const DR_MATERIALS=new Map([["silver",3],["coldIron",3],["adamantine",4]]);
 const DR_SILVER=new Set(["silver","alchemicalSilver","mithral"]);
 const DR_ALIGNMENTS=new Set(["lawful","chaotic","good","evil"]);
-const DR_KNOWN_MATERIALS=new Set(["steel","iron","wood","stone","bone","silver","alchemicalSilver","mithral","coldIron","adamantine","natural"]);
+const DR_KNOWN_MATERIALS=new Set(["steel","iron","wood","stone","bone","silver","alchemicalSilver","mithral","coldIron","adamantine","natural","ordinaryAmmo"]);
 const DR_TAGS=new Set(["precision","nonlethal","areaOfEffect"]);
 const DR_SEEN=new WeakSet(),DR_LAST=new Map();
 const drText=(fr,en)=>String(game.i18n?.lang??"").startsWith("fr")?fr:en;
@@ -170,7 +171,7 @@ function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material
 // PF1 11.11 exposes effective normalMaterial/addonMaterial on ItemAction.
 // Do not use the launcher's material, localized labels or base material alone.
 function drManufacturedMelee(action,item){
- return action?.actionType==="mwak"&&action.isRanged!==true&&item?.type==="weapon"&&
+ return (action?.actionType==="mwak"&&action.isRanged!==true||action?.actionType==="twak")&&item?.type==="weapon"&&
     item.subType!=="natural"&&item.system?.subType!=="natural"&&action.ammo?.type===null;
 }
 function drMeleeEnhancement(action,item){
@@ -253,10 +254,113 @@ function drInnateBypasses(actor){
   return {magic:has("magic")||has("epic"),epic:has("epic")};
  }catch(_){return {magic:null,epic:null};}
 }
+const drOr=(...values)=>values.includes(true)?true:values.every(x=>x===false)?false:null;
+function drProjectile(action,item){
+ return action?.actionType==="rwak"&&item?.type==="weapon"&&
+  typeof action.ammo?.type==="string"&&action.ammo.type.length>0;
+}
+function drProjectileUnknown(){return {sourceKind:"weapon",magic:null,epic:null,material:null,alignment:null}}
+function drAmmoProfile(action,item,entry){
+ const selection=entry?.ammo,id=selection?.id;
+ if(entry?.hasAmmo!==true||!drShortId(id))return {ammoId:null,...drProjectileUnknown()};
+ const actor=action.actor??item.actor;
+ // PF1FR's native getAmmo adapter supplies {id, document, data}.
+ // Prefer the exact selected owned document; never use current default,
+ // inventory search by name, or a later ammunition stack.
+ const ammo=selection.document??actor?.items?.get?.(id);
+ if(!ammo||ammo.id!==id||ammo.actor?.uuid!==actor?.uuid||
+    ammo.uuid!==actor?.uuid+".Item."+id||
+    !(ammo.type==="ammo"&&(!ammo.system?.subType||ammo.system.subType===action.ammo.type)||
+      ammo.type==="loot"&&ammo.system?.subType==="ammo"&&item.system?.ammo?.default===id))
+  return {ammoId:id,...drProjectileUnknown()};
+ const sys=ammo.system,dict=sys?.flags?.dictionary,booleans=drArray(sys?.flags?.boolean);
+ const flags=dict&&typeof dict==="object"&&!Array.isArray(dict)?dict:null;
+ // Explicit PF1 item dictionary flags supported for legacy ammunition:
+ // Material, Alignment, Enhancement (real numeric bonus, not total price),
+ // plus Magic boolean. Do not treat arbitrary attack/damage bonuses as enhancement.
+ const lookup=key=>{
+  const matches=Object.entries(flags??{}).filter(([k])=>k.toLowerCase()===key.toLowerCase());
+  return matches.length===1?matches[0][1]:matches.length===0?undefined:null;
+ };
+ const flagMagic=booleans?booleans.some(x=>typeof x==="string"&&x.toLowerCase()==="magic"):null;
+ const rawEnh=lookup("Enhancement"),nativeEnh=sys?.enh;
+ const declared=typeof rawEnh==="string"&&/^\d+$/.test(rawEnh.trim())?Number(rawEnh):rawEnh;
+ const ownEnh=Number.isSafeInteger(nativeEnh)&&nativeEnh>=0?
+  (rawEnh===undefined||declared===nativeEnh?nativeEnh:null):
+  nativeEnh!=null?null:Number.isSafeInteger(declared)&&declared>=0?declared:
+  rawEnh===undefined&&flags&&booleans&&!game.modules.get("ckl-roll-bonuses")?.active?0:null;
+ const launcher=drMeleeEnhancement(action,item);
+ const magic=drOr(launcher===null?null:launcher>0,ownEnh===null?null:ownEnh>0,flagMagic);
+ const rawMat=lookup("Material"),normal=ammo.normalMaterial,addons=drArray(ammo.addonMaterial);
+ let material=null;
+ // Legacy dictionary flag and native getters are separate representations;
+ // explicit conflicts are not silently reconciled.
+ const validMat=typeof rawMat==="string"&&DR_KNOWN_MATERIALS.has(rawMat);
+ if(sys?.material?.normal?.custom!==true&&sys?.material?.base?.custom!==true){
+  if(typeof normal==="string"&&normal&&addons&&addons.every(x=>typeof x==="string")&&
+     (rawMat===undefined||validMat&&(rawMat===normal||addons.includes(rawMat))))
+   material={normal,addons:[...addons],enhancement:ownEnh};
+  else if((normal==null||normal==="")&&(!addons||addons.length===0)&&flags&&
+          (rawMat===undefined||validMat))
+   material={normal:validMat?rawMat:"ordinaryAmmo",addons:[],enhancement:ownEnh};
+ }
+ const subtypes=drAlignmentSubtypes(actor),rawAlign=lookup("Alignment"),values={};
+ for(const align of DR_ALIGNMENTS){
+  const override=action.alignments?.[align],base=item.system?.alignments?.[align];
+  const launch=typeof override==="boolean"?override:override===null&&typeof base==="boolean"?base:null;
+  const ammoFlag=sys?.alignments?.[align];
+  const explicit=DR_ALIGNMENTS.has(rawAlign)?rawAlign===align:rawAlign===undefined&&flags?false:null;
+  const projectile=typeof ammoFlag==="boolean"?drOr(ammoFlag,explicit):explicit;
+  values[align]=drOr(launch,projectile,subtypes===null?null:subtypes.includes(align));
+ }
+ // Only the projectile's own actual enhancement supplies the +3/+4/+5
+ // thresholds. A launcher's +1 or explicit alignment is transmitted.
+ return {ammoId:id,sourceKind:"weapon",magic,
+  epic:ownEnh!==null&&ownEnh>=6?true:null,material,alignment:{values,enhancement:ownEnh}};
+}
+function drWrapProjectile(use){
+ const action=use?.action??use?.shared?.action,item=action?.item??use?.item;
+ if(!drProjectile(action,item)||DR_PROJECTILE_WRAPPED.has(use)||typeof use.generateChatAttacks!=="function")return;
+ const native=use.generateChatAttacks;
+ const wrapped=function(...args){
+  // Selection is finalized at this native boundary (also used by PF1FR).
+  // Capture before generation/consumption; leave native call/result intact.
+  try{
+   const attacks=this.shared?.attacks;
+   DR_PROJECTILES.set(this,Array.isArray(attacks)&&attacks.length>0&&attacks.length<=500?
+    attacks.map(entry=>drAmmoProfile(action,item,entry)):null);
+  }catch(error){DR_PROJECTILES.set(this,null);console.warn("[PF1AE][Damage] Ammo snapshot unavailable",error);}
+  return native.apply(this,args);
+ };
+ try{use.generateChatAttacks=wrapped;DR_PROJECTILE_WRAPPED.add(use);}
+ catch(error){console.warn("[PF1AE][Damage] Ammo capture hook unavailable",error);}
+}
+function drProjectileProfiles(use,chatAttacks){
+ const captured=DR_PROJECTILES.get(use),unknown={ammoId:null,...drProjectileUnknown()};
+ if(!Array.isArray(captured)||captured.length!==chatAttacks.length)return chatAttacks.map(()=>unknown);
+ // Uniform ammo/profile is independent of ordering. Mixed ammunition requires
+ // explicit matching IDs on the final chat entries, never assumed index order.
+ const first=JSON.stringify(captured[0]);
+ if(captured.every(x=>JSON.stringify(x)===first))return captured;
+ const byId=new Map();
+ for(const profile of captured){
+  if(!profile.ammoId)continue;
+  const previous=byId.get(profile.ammoId);
+  if(previous&&JSON.stringify(previous.profile)!==JSON.stringify(profile))previous.conflict=true;
+  else if(!previous)byId.set(profile.ammoId,{profile,count:0,conflict:false});
+  byId.get(profile.ammoId).count++;
+ }
+ const matched=chatAttacks.map(entry=>entry?.ammo?.id);
+ if(matched.some(id=>!id||!byId.has(id)))return chatAttacks.map(()=>unknown);
+ for(const [id,p] of byId)if(p.conflict||matched.filter(x=>x===id).length!==p.count)
+  return chatAttacks.map(()=>unknown);
+ return matched.map(id=>byId.get(id).profile);
+}
 function drSource(options){
  const action=options.action,item=action?.item??options.item;
  const sourceKind=drSourceKind(options);
  if(sourceKind==="weapon"){
+  if(drProjectile(action,item))return drProjectileUnknown();
   if(drNatural(action,item)){
    const enhancement=drNaturalEnhancement(action);
    const innate=drInnateBypasses(action.actor??item.actor);
@@ -298,7 +402,7 @@ function drSourceIdentity(action,item){
     (item.actor?.uuid&&item.actor.uuid!==actor.uuid))return null;
  return {actorUuid:actor.uuid,itemUuid:item.uuid,itemId:item.id,actionId};
 }
-function drNormalizeSnapshot(data){
+function drNormalizeSnapshot(data,allowPerAttack=true){
  if(!data||data.schema!==DR_SOURCE_SCHEMA||!data.source||
     !Number.isSafeInteger(data.attackCount)||data.attackCount<1||data.attackCount>500)return null;
  const {actorUuid,itemUuid,itemId,actionId}=data.source;
@@ -321,8 +425,21 @@ function drNormalizeSnapshot(data){
   align={enhancement:alignment.enhancement,values:Object.fromEntries([...DR_ALIGNMENTS].map(id=>[id,alignment.values[id]]))};
  }
  if(mat&&align&&mat.enhancement!==align.enhancement)return null;
- return {schema:DR_SOURCE_SCHEMA,source:{actorUuid,itemUuid,itemId,actionId},attackCount:data.attackCount,
+ const result={schema:DR_SOURCE_SCHEMA,source:{actorUuid,itemUuid,itemId,actionId},attackCount:data.attackCount,
   sourceKind,magic,epic,material:mat,alignment:align};
+ if(Object.hasOwn(data,"perAttack")){
+  if(!allowPerAttack||sourceKind!=="weapon"||!Array.isArray(data.perAttack)||data.perAttack.length!==data.attackCount)return null;
+  result.perAttack=[];
+  for(const entry of data.perAttack){
+   if(!entry||entry.sourceKind!=="weapon"||!(entry.ammoId===null||drShortId(entry.ammoId)))return null;
+   const profile=drNormalizeSnapshot({schema:DR_SOURCE_SCHEMA,source:data.source,attackCount:1,
+    sourceKind:entry.sourceKind,magic:entry.magic,epic:entry.epic,material:entry.material,alignment:entry.alignment},false);
+   if(!profile)return null;
+   result.perAttack.push({ammoId:entry.ammoId,sourceKind:profile.sourceKind,magic:profile.magic,epic:profile.epic,
+    material:profile.material,alignment:profile.alignment});
+  }
+ }
+ return result;
 }
 function drCapture(use){
  if(game.release?.generation!==13||game.system?.id!=="pf1"||game.system?.version!=="11.11"||
@@ -338,7 +455,8 @@ function drCapture(use){
  if(use.actor?.uuid&&use.actor.uuid!==source.actorUuid)return;
  const profile=drSource({action,item});
  const snapshot=drNormalizeSnapshot({schema:DR_SOURCE_SCHEMA,source,attackCount:attacks.length,
-  sourceKind:profile.sourceKind,magic:profile.magic,epic:profile.epic??null,material:profile.material??null,alignment:profile.alignment??null});
+  sourceKind:profile.sourceKind,magic:profile.magic,epic:profile.epic??null,material:profile.material??null,alignment:profile.alignment??null,
+  ...(drProjectile(action,item)?{perAttack:drProjectileProfiles(use,attacks)}:{})});
  if(!snapshot)return;
  chatData.flags??={};chatData.flags[DR_NS]??={};
  // The native action can render repeatedly. Never overwrite the first
@@ -374,8 +492,9 @@ function drSnapshotForCard(options){
  const cardIdentity=(message.itemSource?.uuid===source.itemUuid&&message.actionSource?.id===source.actionId)||
   (nativeActor===source.actorUuid&&native.item?.id===source.itemId&&native.action?.id===source.actionId);
  if(!liveIdentity&&!cardIdentity)return {state:"mismatch",profile:null};
- return {state:"captured",profile:{sourceKind:snapshot.sourceKind,magic:snapshot.magic,epic:snapshot.epic,
-  material:snapshot.material,alignment:snapshot.alignment}};
+ const p=snapshot.perAttack?.[options.attackIndex]??snapshot;
+ return {state:"captured",profile:{sourceKind:p.sourceKind,magic:p.magic,epic:p.epic,
+  material:p.material,alignment:p.alignment}};
 }
 function drRemember(actor,result){
  if(!actor?.uuid)return;
@@ -491,6 +610,10 @@ function drOnApply(actor,options){
 Hooks.once("init",()=>{
  game.settings.register(DR_NS,DR_SETTING,{scope:"world",config:true,restricted:true,type:Boolean,default:false,
   name:"PF1AE.Settings.AutomaticDamageDefenses.Name",hint:"PF1AE.Settings.AutomaticDamageDefenses.Hint"});
+ Hooks.on("pf1CreateActionUse",use=>{
+  if(game.release?.generation===13&&game.system?.id==="pf1"&&game.system?.version==="11.11"&&
+     game.modules.get(DR_NS)?.active&&game.settings.get(DR_NS,"genericEnabled")===true)drWrapProjectile(use);
+ });
  Hooks.on("pf1PreDisplayActionUse",drCapture);
  Hooks.on("pf1ApplyDamage",drOnApply);
 });
