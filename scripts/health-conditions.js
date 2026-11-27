@@ -8,8 +8,9 @@ const HC_NS="pf1-automation-engine";
 const HC_ENABLED="healthConditionsEnabled";
 const HC_PROOF="healthConditionsProof";
 // Bump only when the native provenance contract changes, not for unrelated releases.
-const HC_PROOF_SCHEMA="native-conditions-1";
-const HC_LEGACY_PROOFS=new Set(["1.46.3","1.47.0","1.48.0","1.48.1"]);
+const HC_PROOF_SCHEMA="native-conditions-2";
+// The router contract changed with generic condition sources. Old proofs are re-probed automatically.
+const HC_LEGACY_PROOFS=new Set();
 let HC_PROBING=false,HC_VALIDATION=null,HC_VALIDATION_FAILURE=null,HC_VALIDATION_WARNED=null;
 const HC_PENDING_ACTORS=new Set();
 const HC_RECORDS="healthExceptions";
@@ -221,7 +222,9 @@ async function hcDeleteLegacy(item,actor){
 let HC_ROUTER_READY=false;
 const HC_ROUTER_MARK=Symbol.for("pf1ae.healthConditionNativeRouter");
 async function hcRouteConditions(actor,original,conditions={},context={}){
- const owned=hcSourceEffects(actor);
+ const health=hcSourceEffects(actor);
+ const other=hcArray(actor.effects).filter(e=>hcModule()?.api?.conditions?._protectedStatus(e,actor));
+ const owned=[...new Set([...health,...other])];
  if(!owned.length)return original(conditions,context);
  const next=foundry.utils.deepClone(conditions);
  for(const track of pf1.registry.conditions.trackedConditions()){
@@ -229,7 +232,7 @@ async function hcRouteConditions(actor,original,conditions={},context={}){
   if(enabled)for(const id of track)if(id!==enabled)next[id]=false;
  }
  if(!Object.keys(next).some(id=>owned.some(e=>e.statuses?.has?.(id))))return original(conditions,context);
- if(owned.some(e=>!hcSafeDirect(e,actor)))throw Error("Modified PF1AE health source: GM review required.");
+ if(health.some(e=>!hcSafeDirect(e,actor)))throw Error("Modified PF1AE health source: GM review required.");
  const autoIds=new Set(owned.map(e=>e.id)),deletes=new Set(),creates=[],result={};
  const before=new Set(actor.statuses);
  const immunities=actor.getConditionImmunities();
@@ -280,12 +283,13 @@ const HC_DISPLAY_MARK=Symbol.for("pf1ae.healthConditionDisplay");
 function hcVisibleDirect(effect,nativeVisible,original){
  if(!nativeVisible)return nativeVisible;
  const actor=effect.actor??effect.parent;
- if(!hcSafeDirect(effect,actor)||effect.disabled===true||effect.isSuppressed===true)return nativeVisible;
- const f=hcDirectSource(effect,actor);
+ const primary=e=>hcSafeDirect(e,actor)?hcDirectSource(e,actor).status:hcModule()?.api?.conditions?._protectedStatus(e,actor);
+ const status=primary(effect);
+ if(!status||effect.disabled===true||effect.isSuppressed===true)return nativeVisible;
  for(const other of actor.allApplicableEffects()){
   if(other===effect||other.uuid===effect.uuid||other.disabled===true||
-     other.isSuppressed===true||other.img!==effect.img||!other.statuses?.has?.(f.status)||!original.call(other))continue;
-  if(!hcSafeDirect(other,actor)||String(other.uuid)<String(effect.uuid))return false;
+     other.isSuppressed===true||other.img!==effect.img||!other.statuses?.has?.(status)||!original.call(other))continue;
+  if(!primary(other)||String(other.uuid)<String(effect.uuid))return false;
  }
  return nativeVisible;
 }
@@ -1175,7 +1179,7 @@ Hooks.once("ready",()=>{
  hcInstallNativeRouter();hcInstallDisplay();
  mod.api??={};
  mod.api.healthConditions=Object.freeze({
-  isAvailable:()=>hcAvailability().available,diagnostics:hcDiagnostics,
+  isAvailable:()=>hcAvailability().available,diagnostics:hcDiagnostics,nativeRouterAvailable:()=>HC_ROUTER_READY,
   eventHook:HC_EVENT_HOOK,subscriptionName:HC_EVENT_CALL,rollStabilization:hcClickAgony,
   list:actor=>hcRecords(actor).valid.map(r=>({...r,suppress:[...r.suppress],apply:[...r.apply]})),
   register:hcRegister,unregister:hcUnregister,reconcile:hcRequestReconcile,probe:hcProbe

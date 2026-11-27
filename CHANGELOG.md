@@ -1,3 +1,10 @@
+# 1.49.0 — Conditions génériques
+
+- Registre natif : fascinated, burning, energyDrained, anchored, immobilized, slowed ; traductions et icônes propres. Aucun écrasement d'un ID existant et aucune inscription concurrente avec Improved Conditions. Fasciné : malus Perception −4 ; autres marqueurs visuels, mécanique à venir.
+- API `conditions.register/apply/remove/extend/has/list/getSources`, approbations explicites objet/état pour cibles non contrôlées. ActiveEffects directs avec UUID de source/cible, indépendance des sources et minuteries existantes. États de pistes exclus de l'application générique.
+- Le routeur natif protège aussi les conditions génériques et les résultats de sauvegarde source-spécifiques ; diagnostic santé automatique renouvelé une fois (révision de provenance). Supprime le traitement de repli particulier à fascinated dans les sauvegardes. Aucun code de classe/race/don.
+- Validation réelle du HUD, modificateurs et multijoueur à effectuer.
+
 # 1.48.2 — Validation automatique du moteur de santé
 
 - Supprime le prérequis de lancement manuel de la macro : validation native automatique par le MJ élu lors de l'activation/démarrage si nécessaire, avec déduplication et échec fermé.

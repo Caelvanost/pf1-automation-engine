@@ -32,7 +32,7 @@ for(const fn of ctxHooks.ready)fn();
 const api=context.game.modules.get(ns).api;
 function makeActor(id,name){
   const actor={documentName:'Actor',uuid:'Actor.'+id,id,name,isOwner:true,
-    effects:new Map(),items:new Map(),testUserPermission:()=>true,
+    effects:new Map(),items:new Map(),testUserPermission:()=>true,getConditionImmunities:()=>new Set(),
     createEmbeddedDocuments:async(type,values)=>{
       assert.equal(type,'ActiveEffect');
       return values.map(v=>{
@@ -192,16 +192,17 @@ const event=(target,save,normal,effective,opts={})=>({
   assert.equal(janis.effects.size,0,'second bard cleanup removes last condition');
   assert.equal(api.saveOutcomes.list().length,0);
   assert.equal(store.get('managedEffectGroups').g1,undefined);
-  // Dynamic registry fallback: no official 'fascinated' condition must
-  // still create an identified, non-global effect.
+  // An unknown condition is never silently converted to a label-only AE.
   context.pf1.registry.conditions=new Map();
   store.set('managedEffectGroups',{g2:{id:'g2',key:'fascinate',sourceUuid:bard.uuid,
     duration:null,timerId:'timer2',copies:[]}});
   const newRule={...rule,groupId:'g2'};
+  await assert.rejects(api.saveOutcomes.register(newRule),/Not an official PF1 condition/);
+  context.pf1.registry.conditions.set('fascinated',{});
   await api.saveOutcomes.register(newRule);
   message('rollFallback',janis);
   await api.saveOutcomes._onResolved(event(janis,'rollFallback',6,6));
-  assert.equal([...janis.effects.values()][0].statuses.length,0,'unknown status never fabricated');
+  assert.equal([...janis.effects.values()][0].statuses[0],'fascinated','registered status is applied');
   const extended=await api.effectGroups.extendGroup({actor:bard,key:'fascinate',rounds:1});
   assert.equal(extended.extended,true,'linked effect shares parent extension');
   assert.equal(janis.effects.size,1,'extend leaves linked effect active');

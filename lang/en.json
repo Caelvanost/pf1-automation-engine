@@ -226,6 +226,14 @@
     "ActionOptions": {
       "SkipDialog": "Skip use dialog",
       "Hint": "Use this action directly with its default parameters, without opening the native use configuration dialog."
+    },
+    "Conditions": {
+      "fascinated": "Fascinated",
+      "burning": "Burning",
+      "energyDrained": "Energy drained",
+      "anchored": "Anchored",
+      "immobilized": "Immobilized",
+      "slowed": "Slowed"
     }
   }
 }

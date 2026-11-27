@@ -110,8 +110,7 @@ async function outValidate(payload,requester,remote=false){
   const official=globalThis.pf1?.registry?.conditions;
   const known=status==null || (typeof official?.has==='function' ? official.has(status) :
     Object.prototype.hasOwnProperty.call(official??{},status));
-  // Legacy Fascination: preserve the source-specific AE even without a native status.
-  if(!known && status!=='fascinated')throw Error('Not an official PF1 condition: '+status);
+  if(!known)throw Error('Not an official PF1 condition: '+status);
   const rawDuration=data.onFailure.duration;
   let duration=null;
   if(rawDuration!=null){
