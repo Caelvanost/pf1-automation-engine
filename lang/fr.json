@@ -70,6 +70,10 @@
       "HealthStrenuous": {
         "Name": "Actions éprouvantes à 0 PV ou moins",
         "Hint": "Perte de 1 PV réel après une action éprouvante résolue, pour une créature consciente hors de combat. Les cartes de soins et cas ambigus restent manuels."
+      },
+      "AutomaticDamageDefenses": {
+        "Name": "Calcul automatique des défenses contre les dégâts",
+        "Hint": "Applique les défenses simples de PF1 aux dégâts des cartes d’attaque. Désactiver Automate Damage. Les défenses complexes nécessitent la fenêtre native."
       }
     },
     "Range": {
