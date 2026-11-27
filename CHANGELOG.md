@@ -1,3 +1,10 @@
+# 1.51.6 — Solidité des créatures et objets
+
+- Solidité native des acteurs character/npc : réduction forfaitaire une fois par événement, sans demi-dégâts automatiques d'objet. Adamantium réel contre solidité strictement inférieure à 20, distinct de l'altération +4 ; les composantes énergétiques restent soumises à la solidité. Résistances/RD traitées avant solidité ; vulnérabilité simultanée et origine incertaine à arbitrer si déterminantes.
+- Acteur représentant un objet ordinaire : flag PF1AE objectDamageMode="standard" explicite, demi-dégâts énergétiques ou physiques à distance avant solidité, immunité non-létale, ignore les jets additionnels de critique. Pas d'inférence depuis le nom, le type construct ou vehicle. Exceptions (matériaux vulnérables, siège, véhicules, précision, types non vérifiés) manuelles.
+- Snapshot optionnel delivery, rétrocompatible ; les anciennes cartes sans mode de livraison ne devinent pas les règles d'objet. API previewObject en lecture seule pour solidité et projection PV/brisé/détruit à partir de valeurs explicitement fournies, y compris calcul de destruction. Aucun jet de manœuvre ni mutation d'Item.
+- Tests simulés sur seuil 19/20, adamantium/+4, mélange, résistance/immunité, critique, demi-dégâts, projectile et état projeté ; validation native 11.11 et interactions réelles reportées. Aucun nouveau paramètre mondial.
+
 # 1.51.5 — Projectiles et armes de jet
 
 - Capture en lecture seule de la munition sélectionnée dans chaque attaque native (shared.attacks[].ammo), avant generateChatAttacks et avant consommation. Aucune lecture du stock actuel à l'application, aucune consommation supplémentaire ; compatible avec le contrat de sélection PF1FR, y compris loot/ammo explicitement lié. Munitions homogènes ou correspondance explicite avec les IDs des entrées chat ; ambiguïté = arbitrage manuel.

@@ -97,7 +97,24 @@ function drEvaluateReduction(entry,context){
  if(uncertain)return uncertain;
  return {value:!any};
 }
-function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material=null,alignment=null,epic=null,asNonlethal=false}={}){
+// Object rules must be explicitly opted into for an actor proxy. A
+// construct, animated object or other NPC with hardness remains a creature.
+// Vehicles have their own siege rules and are not assumed ordinary objects.
+function drTargetKind(actor){
+ const mode=actor?.getFlag?.(DR_NS,"objectDamageMode")??actor?.flags?.[DR_NS]?.objectDamageMode;
+ if(mode==="standard")return "object";
+ if(mode!=null)return null;
+ return ["character","npc"].includes(actor?.type)?"creature":null;
+}
+function drActualAdamantine(material){
+ if(!material)return null;
+ const ids=[material.normal,...(drArray(material.addons)??[])];
+ if(ids.includes("adamantine"))return true;
+ if(!drArray(material.addons)||ids.some(id=>!DR_KNOWN_MATERIALS.has(id)))return null;
+ return false;
+}
+function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material=null,alignment=null,epic=null,
+ delivery=null,targetKind=drTargetKind(actor),asNonlethal=false}={}){
  try{
   if(!actor?.system?.traits)return drFail("missing-native-traits");
   if(ratio!==1&&ratio!==0.5)return drFail("unsupported-ratio");
@@ -106,9 +123,14 @@ function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material
   // PF1 cannot separate lethal and nonlethal components in one HP call.
   if(asNonlethal&&rows.some(r=>r.tags.includes("nonlethal"))&&rows.some(r=>!r.tags.includes("nonlethal")))
    return drFail("mixed-nonlethal");
-  if(Number(traits.hardness??0)>0)return drFail("hardness-next-stage");
+  const hardness=Number(traits.hardness??0),object=targetKind==="object";
+  if(!Number.isSafeInteger(hardness)||hardness<0)return drFail("invalid-hardness");
+  if(hardness>0&&!["creature","object"].includes(targetKind))return drFail("unknown-hardness-target");
+  if(object&&rows.some(r=>r.tags.includes("precision")&&r.amount>0))return drFail("object-precision-damage");
+  if(object&&sourceKind==="weapon"&&!["melee","ranged"].includes(delivery)&&
+     rows.some(r=>DR_PHYSICAL.has(r.type)&&r.amount>0))return drFail("unknown-object-delivery");
   const immunity=new Set(drIds(traits.di)),vulnerability=new Set(drIds(traits.dv));
-  const immuneNonlethal=asNonlethal&&immunity.has("nonlethal");
+  const immuneNonlethal=asNonlethal&&(object||immunity.has("nonlethal"));
   // Modifier-tag defenses may involve only a fraction of a mixed roll.
   // Until exact provenance is available, require manual review rather
   // than guessing how much of a physical roll was precision damage.
@@ -124,12 +146,17 @@ function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material
   const groups=new Map();
   for(const r of rows)groups.set(r.type,(groups.get(r.type)??0)+r.amount);
   const result=[];
-  let exact=0,rounded=0;
+  let exact=0,rounded=0,objectExact=0,objectRounded=0;
   for(const [type,raw] of groups){
    exact+=raw*ratio;
    const next=drFloor(exact),incoming=next-rounded;rounded=next;
+   // Standard object rules: halve energy or physical ranged weapon damage
+   // before hardness. Apply the object adjustment only once per component.
+   const halve=object&&(DR_ENERGY.has(type)||sourceKind==="weapon"&&delivery==="ranged"&&DR_PHYSICAL.has(type));
+   objectExact+=raw*ratio*(halve?0.5:1);
+   const objectNext=drFloor(objectExact),adjusted=objectNext-objectRounded;objectRounded=objectNext;
    const immune=immuneNonlethal||immunity.has(type);
-   let amount=immune?0:incoming,resistance=0,extra=0;
+   let amount=immune?0:adjusted,resistance=0,extra=0;
    if(!immune&&DR_ENERGY.has(type)){
     resistance=Math.min(amount,Math.max(0,...energy.filter(r=>r.types[0]===type).map(r=>r.amount)));
     // No blanket ordering invented for combined vulnerability + resistance:
@@ -138,7 +165,7 @@ function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material
     amount-=resistance;
     if(vulnerability.has(type)){extra=drFloor(amount*1.5)-amount;amount+=extra}
    }else if(!immune&&vulnerability.has(type)&&incoming>0)return drFail("non-energy-vulnerability");
-   result.push({type,raw,incoming,immune,resistance,vulnerabilityBonus:extra,damageReduction:0,final:amount});
+   result.push({type,raw,incoming,objectAdjustment:incoming-adjusted,immune,resistance,vulnerabilityBonus:extra,damageReduction:0,hardnessReduction:0,final:amount});
   }
   // Highest applicable weapon DR, once per hit. No DR on spell damage.
   let dr=0;
@@ -163,8 +190,34 @@ function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material
     row.damageReduction=applied;row.final-=applied;dr=applied;
    }
   }
+  // Hardness is a flat reduction per damage event, not per typed part.
+  // Adamantine is a material property, never an enhancement substitute.
+  // Only physical weapon damage can establish this bypass; energy riders
+  // still face hardness. Ambiguous source is blocked only if consequential.
+  let hardnessReduction=0;
+  if(hardness>0){
+   const physicalLeft=result.filter(r=>DR_PHYSICAL.has(r.type)&&r.final>0);
+   const otherLeft=result.filter(r=>!DR_PHYSICAL.has(r.type)&&r.final>0);
+   const physicalTotal=physicalLeft.reduce((n,r)=>n+r.final,0);
+   const otherTotal=otherLeft.reduce((n,r)=>n+r.final,0);
+   const adamantine=hardness<20&&sourceKind==="weapon"?drActualAdamantine(material):
+     hardness<20&&sourceKind===null?null:false;
+   if(adamantine===null&&physicalTotal&&Math.min(hardness,physicalTotal+otherTotal)>Math.min(hardness,otherTotal))
+    return drFail("unknown-hardness-bypass");
+   // DR and energy resistance have already been applied. Do not guess
+   // a special ordering if vulnerability and hardness coexist.
+   if(result.some(r=>r.vulnerabilityBonus>0)&&physicalTotal+otherTotal>0&&
+      (adamantine!==true||otherTotal>0))return drFail("combined-vulnerability-hardness");
+   let remaining=hardness;
+   for(const row of result){
+    if(adamantine===true&&DR_PHYSICAL.has(row.type))continue;
+    const applied=Math.min(row.final,remaining);
+    row.final-=applied;row.hardnessReduction=applied;remaining-=applied;hardnessReduction+=applied;
+   }
+  }
   return {supported:true,raw:rows.reduce((a,r)=>a+r.amount,0),ratio,incoming:rounded,
-   total:result.reduce((a,r)=>a+r.final,0),damageReduction:dr,components:result};
+   total:result.reduce((a,r)=>a+r.final,0),damageReduction:dr,hardness,hardnessReduction,
+   targetKind,objectAdjusted:objectRounded,components:result};
  }catch(e){return drFail(String(e?.message??e))}
 }
 // Initial material adapter: manufactured melee weapons with no ammunition.
@@ -411,6 +464,8 @@ function drNormalizeSnapshot(data,allowPerAttack=true){
  const {sourceKind,magic,material,alignment}=data;
  // Additive optional field: schema-1 cards from 1.51.3 remain readable.
  const epic=Object.hasOwn(data,"epic")?data.epic:null;
+ const delivery=Object.hasOwn(data,"delivery")?data.delivery:null;
+ if(![null,"melee","ranged","other"].includes(delivery))return null;
  if(![null,"weapon","other"].includes(sourceKind)||!drTri(magic)||!drTri(epic))return null;
  if(sourceKind!=="weapon"&&(magic!==null||epic!==null||material!==null||alignment!==null))return null;
  let mat=null,align=null;
@@ -426,20 +481,27 @@ function drNormalizeSnapshot(data,allowPerAttack=true){
  }
  if(mat&&align&&mat.enhancement!==align.enhancement)return null;
  const result={schema:DR_SOURCE_SCHEMA,source:{actorUuid,itemUuid,itemId,actionId},attackCount:data.attackCount,
-  sourceKind,magic,epic,material:mat,alignment:align};
+  sourceKind,magic,epic,delivery,material:mat,alignment:align};
  if(Object.hasOwn(data,"perAttack")){
   if(!allowPerAttack||sourceKind!=="weapon"||!Array.isArray(data.perAttack)||data.perAttack.length!==data.attackCount)return null;
   result.perAttack=[];
   for(const entry of data.perAttack){
    if(!entry||entry.sourceKind!=="weapon"||!(entry.ammoId===null||drShortId(entry.ammoId)))return null;
    const profile=drNormalizeSnapshot({schema:DR_SOURCE_SCHEMA,source:data.source,attackCount:1,
-    sourceKind:entry.sourceKind,magic:entry.magic,epic:entry.epic,material:entry.material,alignment:entry.alignment},false);
+    sourceKind:entry.sourceKind,magic:entry.magic,epic:entry.epic,delivery:"ranged",material:entry.material,alignment:entry.alignment},false);
    if(!profile)return null;
-   result.perAttack.push({ammoId:entry.ammoId,sourceKind:profile.sourceKind,magic:profile.magic,epic:profile.epic,
+   result.perAttack.push({ammoId:entry.ammoId,sourceKind:profile.sourceKind,magic:profile.magic,epic:profile.epic,delivery:profile.delivery,
     material:profile.material,alignment:profile.alignment});
   }
  }
  return result;
+}
+function drDelivery(action,sourceKind){
+ if(sourceKind==="other")return "other";
+ if(sourceKind!=="weapon")return null;
+ if(["rwak","twak"].includes(action?.actionType))return "ranged";
+ if(action?.actionType==="mwak"&&action.isRanged!==true)return "melee";
+ return null;
 }
 function drCapture(use){
  if(game.release?.generation!==13||game.system?.id!=="pf1"||game.system?.version!=="11.11"||
@@ -455,7 +517,7 @@ function drCapture(use){
  if(use.actor?.uuid&&use.actor.uuid!==source.actorUuid)return;
  const profile=drSource({action,item});
  const snapshot=drNormalizeSnapshot({schema:DR_SOURCE_SCHEMA,source,attackCount:attacks.length,
-  sourceKind:profile.sourceKind,magic:profile.magic,epic:profile.epic??null,material:profile.material??null,alignment:profile.alignment??null,
+  sourceKind:profile.sourceKind,magic:profile.magic,epic:profile.epic??null,delivery:drDelivery(action,profile.sourceKind),material:profile.material??null,alignment:profile.alignment??null,
   ...(drProjectile(action,item)?{perAttack:drProjectileProfiles(use,attacks)}:{})});
  if(!snapshot)return;
  chatData.flags??={};chatData.flags[DR_NS]??={};
@@ -493,7 +555,7 @@ function drSnapshotForCard(options){
   (nativeActor===source.actorUuid&&native.item?.id===source.itemId&&native.action?.id===source.actionId);
  if(!liveIdentity&&!cardIdentity)return {state:"mismatch",profile:null};
  const p=snapshot.perAttack?.[options.attackIndex]??snapshot;
- return {state:"captured",profile:{sourceKind:p.sourceKind,magic:p.magic,epic:p.epic,
+ return {state:"captured",profile:{sourceKind:p.sourceKind,magic:p.magic,epic:p.epic,delivery:p.delivery,
   material:p.material,alignment:p.alignment}};
 }
 function drRemember(actor,result){
@@ -501,7 +563,12 @@ function drRemember(actor,result){
  DR_LAST.set(actor.uuid,result);if(DR_LAST.size>200)DR_LAST.delete(DR_LAST.keys().next().value);
 }
 const DR_REASONS={
- "hardness-next-stage":["solidité","hardness"],
+ "invalid-hardness":["solidité invalide","invalid hardness"],
+ "unknown-hardness-target":["type de cible avec solidité non vérifié","unverified hardness target type"],
+ "unknown-hardness-bypass":["matériau réel de l’arme non vérifié pour la solidité","unverified actual weapon material for hardness"],
+ "combined-vulnerability-hardness":["vulnérabilité et solidité simultanées","combined vulnerability and hardness"],
+ "unknown-object-delivery":["mode d’attaque contre un objet non vérifié","unverified attack delivery against object"],
+ "object-precision-damage":["dégâts de précision contre un objet à arbitrer","precision damage against object requires adjudication"],
  "damage-source-snapshot-missing":["ancienne carte sans propriétés d’attaque enregistrées","old card without recorded attack properties"],
  "damage-source-snapshot-invalid":["propriétés d’attaque enregistrées invalides","invalid recorded attack properties"],
  "damage-source-snapshot-mismatch":["provenance de la carte d’attaque incohérente","inconsistent attack card provenance"],
@@ -595,10 +662,20 @@ function drOnApply(actor,options){
  // A malformed or mismatched snapshot also cannot certify source kind.
  const profile=saved.profile??{sourceKind:saved.state==="missing"?drSourceKind(options):null,
   magic:null,material:null,alignment:null};
- const result=drPreview({actor,components,ratio,...profile,asNonlethal:options.asNonlethal===true});
+ const targetKind=drTargetKind(actor);
+ // Native critical button validation above includes all evaluated rolls.
+ // Objects ignore the additional critical rolls; normal rolls are intact.
+ let criticalIgnored=0;
+ if(targetKind==="object"&&options.isCritical===true){
+  const count=options.message.systemRolls.attacks[options.attackIndex].damage.length;
+  criticalIgnored=components.slice(count).reduce((n,r)=>n+r.value,0);
+  components=components.slice(0,count);
+ }
+ const result=drPreview({actor,components,ratio,...profile,targetKind,asNonlethal:options.asNonlethal===true});
  result.sourceSnapshot=saved.state;
+ result.criticalIgnored=criticalIgnored;
  if(!result.supported){
-  if(saved.state!=="captured"&&["unknown-magic-bypass","unknown-material-bypass","unknown-alignment-bypass","unknown-epic-bypass","unknown-physical-source"].includes(result.reason))
+  if(saved.state!=="captured"&&["unknown-magic-bypass","unknown-material-bypass","unknown-alignment-bypass","unknown-epic-bypass","unknown-physical-source","unknown-hardness-bypass","unknown-object-delivery"].includes(result.reason))
    result.reason="damage-source-snapshot-"+saved.state;
   return drBlock(actor,options,result);
  }
@@ -606,6 +683,19 @@ function drOnApply(actor,options){
  // Native method applies ratio then reduction. Only pass the final value.
  options.value=result.total;options.ratio=1;options.reduction=0;
  options.pf1aeDamageResolution=result;
+}
+// Read-only item/object/sunder calculation. Caller supplies confirmed
+// hardness and current/max HP; no Item update or combat maneuver is rolled.
+function drPreviewObject({hardness,hp,maxHp,components,ratio=1,sourceKind=null,delivery=null,material=null,
+ asNonlethal=false}={}){
+ if(!Number.isSafeInteger(hardness)||hardness<0||!Number.isSafeInteger(hp)||hp<0||
+    !Number.isSafeInteger(maxHp)||maxHp<=0||hp>maxHp)return drFail("invalid-object-health");
+ const actor={system:{traits:{hardness}}};
+ const result=drPreview({actor,components,ratio,sourceKind,delivery,material,asNonlethal,targetKind:"object"});
+ if(!result.supported)return result;
+ const remaining=Math.max(0,hp-result.total);
+ return {...result,objectHealth:{before:hp,max:maxHp,remaining,
+  destroyed:remaining===0,broken:remaining>0&&remaining*2<=maxHp}};
 }
 Hooks.once("init",()=>{
  game.settings.register(DR_NS,DR_SETTING,{scope:"world",config:true,restricted:true,type:Boolean,default:false,
@@ -620,7 +710,7 @@ Hooks.once("init",()=>{
 Hooks.once("ready",()=>{
  const mod=game.modules.get(DR_NS);if(!mod)return;mod.api??={};
  mod.api.damageResolution=Object.freeze({
-  isAvailable:drAvailable,preview:drPreview,
+  isAvailable:drAvailable,preview:drPreview,previewObject:drPreviewObject,
   sourceSnapshot:message=>drNormalizeSnapshot(message?.getFlag?.(DR_NS,DR_SOURCE_FLAG)??message?.flags?.[DR_NS]?.[DR_SOURCE_FLAG]),
   lastDiagnostic:actor=>DR_LAST.get(typeof actor==="string"?actor:actor?.uuid)??null
  });

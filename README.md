@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.51.5
+# PF1 Automation Engine v1.51.6
+
+## Solidité (v1.51.6)
+
+Solidité des créatures, contournement par adamantium réel sous 20, profil explicite d'objet inanimé et API de projection PV/brisé/détruit. Pas d'inférence depuis le type construct, pas de mutation d'Item ou de calcul de siège automatique. Voir [Damage resolution](docs/DAMAGE-RESOLUTION.md).
 
 ## Projectiles et armes de jet (v1.51.5)
 
