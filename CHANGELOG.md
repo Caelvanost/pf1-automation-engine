@@ -1,3 +1,10 @@
+# 1.51.4 — RD et armes naturelles
+
+- Reconnaît les attaques naturelles natives (Item attack, sous-type natural, mêlée sans munition), sans nom de capacité. La RD/magie ou RD/épique positive du porteur qualifie ses seules armes naturelles ; aucun bonus d'altération fictif et aucune transmission de RD de matériau ou d'alignement. Les sous-types d'alignement et propriétés explicites de l'action restent distincts.
+- Altération configurée sur l'action : seuils +1/+3/+4/+5, +6 réel pour épique. Une arme naturelle ordinaire ne reçoit pas de matériau artificiel ; les matériaux explicites natifs peuvent être pris en compte. Les équivalents de bonus des propriétés spéciales et les bonus externes non exposés par le getter natif restent à traiter ; les cas d'origine incertaine requièrent un arbitrage.
+- Capture persistante des qualités naturelles, champ epic optionnel rétrocompatible. Ne relit pas la RD de l'attaquant après le jet ; les anciennes cartes ne sont pas recalculées. Tests simulés sur RD héritée, matériaux, alignements, épique, combinées, critiques, demi-dégâts et mutation de l'attaquant.
+- Documentation publique PF1 : ItemAttackPF et ItemAction (pas le code exact 11.11) ; validation réelle du schéma des sous-types, des matériaux et de l'altération naturelle reportée. Munitions, attaques à distance naturelles, dégâts physiques mixtes et solidité hors périmètre.
+
 # 1.51.3 — Provenance persistante des propriétés de l'attaque
 
 - Capture versionnée des propriétés de contournement actuellement prises en charge (type de source, magie, matériau effectif/add-ons, altération, alignements évalués) dans les flags de la carte native, au hook pf1PreDisplayActionUse après résolution des jets et avant création du message. Pas de nouvelle carte, de stockage global, ni de relecture de l'équipement lors de l'application.

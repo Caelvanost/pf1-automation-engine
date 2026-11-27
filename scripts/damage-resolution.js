@@ -13,7 +13,7 @@ const DR_OTHER=new Set(["untyped","force"]);
 const DR_MATERIALS=new Map([["silver",3],["coldIron",3],["adamantine",4]]);
 const DR_SILVER=new Set(["silver","alchemicalSilver","mithral"]);
 const DR_ALIGNMENTS=new Set(["lawful","chaotic","good","evil"]);
-const DR_KNOWN_MATERIALS=new Set(["steel","iron","wood","stone","bone","silver","alchemicalSilver","mithral","coldIron","adamantine"]);
+const DR_KNOWN_MATERIALS=new Set(["steel","iron","wood","stone","bone","silver","alchemicalSilver","mithral","coldIron","adamantine","natural"]);
 const DR_TAGS=new Set(["precision","nonlethal","areaOfEffect"]);
 const DR_SEEN=new WeakSet(),DR_LAST=new Map();
 const drText=(fr,en)=>String(game.i18n?.lang??"").startsWith("fr")?fr:en;
@@ -70,10 +70,11 @@ function drMaterialBypass(bypass,material){
 }
 // Three-valued predicate: true = bypass, false = reduction applies,
  // null = provenance unavailable. A verified decisive AND/OR branch suffices.
-function drCriterion(id,{type,magic,material,alignment}){
+function drCriterion(id,{type,magic,material,alignment,epic}){
  const bypass=id==="alchemicalSilver"?"silver":id;
  if(DR_PHYSICAL.has(bypass))return {value:bypass===type};
  if(bypass==="magic")return {value:typeof magic==="boolean"?magic:null,reason:"unknown-magic-bypass"};
+ if(bypass==="epic")return {value:typeof epic==="boolean"?epic:null,reason:"unknown-epic-bypass"};
  if(DR_MATERIALS.has(bypass))return {value:drMaterialBypass(bypass,material),reason:"unknown-material-bypass"};
  if(DR_ALIGNMENTS.has(bypass)){
   if(Number.isSafeInteger(alignment?.enhancement)&&alignment.enhancement>=5)return {value:true};
@@ -95,7 +96,7 @@ function drEvaluateReduction(entry,context){
  if(uncertain)return uncertain;
  return {value:!any};
 }
-function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material=null,alignment=null,asNonlethal=false}={}){
+function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material=null,alignment=null,epic=null,asNonlethal=false}={}){
  try{
   if(!actor?.system?.traits)return drFail("missing-native-traits");
   if(ratio!==1&&ratio!==0.5)return drFail("unsupported-ratio");
@@ -151,7 +152,7 @@ function drPreview({actor,components,ratio=1,sourceKind=null,magic=null,material
     // criterion cannot change the result if its amount is already covered.
     const uncertain=[];
     for(const entry of reductions){
-     const result=drEvaluateReduction(entry,{type,magic,material,alignment});
+     const result=drEvaluateReduction(entry,{type,magic,material,alignment,epic});
      if(result.value===false)dr=Math.max(dr,entry.amount);
      else if(result.value===null)uncertain.push({amount:entry.amount,reason:result.reason});
     }
@@ -195,9 +196,9 @@ function drAlignmentSubtypes(actor){
  if(!total||total.some(id=>typeof id!=="string")||drCustom(trait?.custom))return null;
  return total;
 }
-function drMeleeAlignment(action,item){
- if(!drManufacturedMelee(action,item))return null;
- const enhancement=drMeleeEnhancement(action,item);
+function drMeleeAlignment(action,item,natural=false){
+ if(!natural&&!drManufacturedMelee(action,item))return null;
+ const enhancement=natural?drNaturalEnhancement(action):drMeleeEnhancement(action,item);
  const subtypes=drAlignmentSubtypes(action.actor??item.actor);
  const values={};
  for(const id of DR_ALIGNMENTS){
@@ -216,26 +217,72 @@ function drSourceKind(options){
  if(item?.type==="spell"&&!["mwak","rwak","twak"].includes(type)||["msak","rsak"].includes(type))return "other";
  return null;
 }
+// PF1 identifies a natural attack by its native attack item subtype,
+// not its name, damage dice, actor race or attack animation.
+function drNatural(action,item){
+ return action?.actionType==="mwak"&&action.isRanged!==true&&item?.type==="attack"&&
+  (item.subType==="natural"||item.system?.subType==="natural")&&
+  ![item.subType,item.system?.subType].some(x=>x!=null&&x!=="natural")&&
+  (action.ammo?.type===null||action.ammo?.type===undefined&&!item.system?.ammo);
+}
+function drNaturalEnhancement(action){
+ // Native ItemAction getter: null means no configured enhancement.
+ // Do not infer the enhancement of an external buff from its name or total damage.
+ const bonus=action.enhancementBonus;
+ return Number.isSafeInteger(bonus)&&bonus>=0?bonus:bonus===null?0:null;
+}
+function drNaturalMaterial(action,item){
+ // No fabricated material on an unconfigured natural attack. Require
+ // effective native getters and reject custom material definitions.
+ if(!item.system||action.material?.normal?.custom===true||
+    item.system.material?.base?.custom===true||item.system.material?.normal?.custom===true)return null;
+ const normal=action.normalMaterial,addons=drArray(action.addonMaterial);
+ if(!(normal===null||typeof normal==="string"&&normal.length>0)||
+    !addons||addons.some(x=>typeof x!=="string"))return null;
+ return {normal:normal??"natural",addons:[...addons],enhancement:drNaturalEnhancement(action)};
+}
+function drInnateBypasses(actor){
+ // Bestiary: the creature's own DR/magic or DR/epic gives its natural
+ // weapons the corresponding quality, not an actual enhancement bonus.
+ // No inheritance of material DR or alignment DR; subtype is separate.
+ const trait=actor?.system?.traits?.dr;
+ if(!trait)return {magic:null,epic:null};
+ try{
+  const rows=drEntries(trait).filter(row=>row.amount>0);
+  const has=id=>rows.some(row=>row.types.includes(id));
+  return {magic:has("magic")||has("epic"),epic:has("epic")};
+ }catch(_){return {magic:null,epic:null};}
+}
 function drSource(options){
  const action=options.action,item=action?.item??options.item;
  const sourceKind=drSourceKind(options);
  if(sourceKind==="weapon"){
+  if(drNatural(action,item)){
+   const enhancement=drNaturalEnhancement(action);
+   const innate=drInnateBypasses(action.actor??item.actor);
+   // Epic is positive if proven, but an absent innate epic trait alone
+   // cannot exclude all special-ability bonus equivalents.
+   const epic=innate.epic===true||enhancement>=6?true:
+    innate.epic===false&&enhancement===0?false:null;
+   const magic=enhancement>0||innate.magic===true?true:
+    enhancement===0&&innate.magic===false?false:null;
+   return {sourceKind,magic,epic,material:drNaturalMaterial(action,item),
+    alignment:drMeleeAlignment(action,item,true)};
+  }
   let magic=null;
   if(Number.isFinite(action.enhancementBonus)){
    magic=action.enhancementBonus>0;
-   // Ammo and innate magical natural attacks require their exact snapshot.
-   // Do not assume a mundane attack merely because its launcher is +0.
-   if(!magic&&(action.ammo?.type||item?.subType==="natural")){
-    const innate=item?.subType==="natural"?action.actor?.system?.traits?.dr:null;
-    if(innate&&!drCustom(innate.custom)&&drArray(innate.value)?.some(r=>drArray(r.types)?.includes("magic")))magic=true;
-    else if(action.ammo?.type||drCustom(innate?.custom))magic=null;
-   }
+   // Ammo properties are not yet captured per attack.
+   if(!magic&&action.ammo?.type)magic=null;
   }
   const material=drMeleeMaterial(action,item);
   if(magic===null&&material?.enhancement===0)magic=false;
-  return {sourceKind:"weapon",magic,material,alignment:drMeleeAlignment(action,item)};
+  // Actual +6 proves epic for a manufactured melee weapon; equivalent
+  // special ability bonus is not yet resolved, so otherwise unknown.
+  const epic=drManufacturedMelee(action,item)&&drMeleeEnhancement(action,item)>=6?true:null;
+  return {sourceKind:"weapon",magic,epic,material,alignment:drMeleeAlignment(action,item)};
  }
- return {sourceKind,magic:null,material:null,alignment:null};
+ return {sourceKind,magic:null,epic:null,material:null,alignment:null};
 }
 // Versioned data-only card snapshot. Capture at the native pre-display
 // hook, after rolls are finalized and before the ChatMessage is created.
@@ -258,8 +305,10 @@ function drNormalizeSnapshot(data){
  if(![actorUuid,itemUuid,itemId,actionId].every(drShortId)||
     itemUuid!==actorUuid+".Item."+itemId)return null;
  const {sourceKind,magic,material,alignment}=data;
- if(![null,"weapon","other"].includes(sourceKind)||!drTri(magic))return null;
- if(sourceKind!=="weapon"&&(magic!==null||material!==null||alignment!==null))return null;
+ // Additive optional field: schema-1 cards from 1.51.3 remain readable.
+ const epic=Object.hasOwn(data,"epic")?data.epic:null;
+ if(![null,"weapon","other"].includes(sourceKind)||!drTri(magic)||!drTri(epic))return null;
+ if(sourceKind!=="weapon"&&(magic!==null||epic!==null||material!==null||alignment!==null))return null;
  let mat=null,align=null;
  if(material!==null){
   if(!material||!drShortId(material.normal)||!Array.isArray(material.addons)||
@@ -273,7 +322,7 @@ function drNormalizeSnapshot(data){
  }
  if(mat&&align&&mat.enhancement!==align.enhancement)return null;
  return {schema:DR_SOURCE_SCHEMA,source:{actorUuid,itemUuid,itemId,actionId},attackCount:data.attackCount,
-  sourceKind,magic,material:mat,alignment:align};
+  sourceKind,magic,epic,material:mat,alignment:align};
 }
 function drCapture(use){
  if(game.release?.generation!==13||game.system?.id!=="pf1"||game.system?.version!=="11.11"||
@@ -289,7 +338,7 @@ function drCapture(use){
  if(use.actor?.uuid&&use.actor.uuid!==source.actorUuid)return;
  const profile=drSource({action,item});
  const snapshot=drNormalizeSnapshot({schema:DR_SOURCE_SCHEMA,source,attackCount:attacks.length,
-  sourceKind:profile.sourceKind,magic:profile.magic,material:profile.material??null,alignment:profile.alignment??null});
+  sourceKind:profile.sourceKind,magic:profile.magic,epic:profile.epic??null,material:profile.material??null,alignment:profile.alignment??null});
  if(!snapshot)return;
  chatData.flags??={};chatData.flags[DR_NS]??={};
  // The native action can render repeatedly. Never overwrite the first
@@ -325,7 +374,7 @@ function drSnapshotForCard(options){
  const cardIdentity=(message.itemSource?.uuid===source.itemUuid&&message.actionSource?.id===source.actionId)||
   (nativeActor===source.actorUuid&&native.item?.id===source.itemId&&native.action?.id===source.actionId);
  if(!liveIdentity&&!cardIdentity)return {state:"mismatch",profile:null};
- return {state:"captured",profile:{sourceKind:snapshot.sourceKind,magic:snapshot.magic,
+ return {state:"captured",profile:{sourceKind:snapshot.sourceKind,magic:snapshot.magic,epic:snapshot.epic,
   material:snapshot.material,alignment:snapshot.alignment}};
 }
 function drRemember(actor,result){
@@ -342,6 +391,7 @@ const DR_REASONS={
  "unknown-alignment-bypass":["alignement de l’arme ou sous-type du porteur non vérifié","unverified weapon alignment or wielder subtype"],
  "complex-damage-reduction":["RD complexe","complex DR"],
  "unknown-magic-bypass":["contournement magique non vérifié","unverified magic bypass"],
+ "unknown-epic-bypass":["contournement épique non vérifié","unverified epic bypass"],
  "custom-resistance":["résistance personnalisée","custom resistance"],
  "custom-damage-trait":["défense personnalisée","custom defense"],
  "combined-vulnerability-resistance":["résistance et vulnérabilité simultanées","combined resistance and vulnerability"],
@@ -429,7 +479,7 @@ function drOnApply(actor,options){
  const result=drPreview({actor,components,ratio,...profile,asNonlethal:options.asNonlethal===true});
  result.sourceSnapshot=saved.state;
  if(!result.supported){
-  if(saved.state!=="captured"&&["unknown-magic-bypass","unknown-material-bypass","unknown-alignment-bypass","unknown-physical-source"].includes(result.reason))
+  if(saved.state!=="captured"&&["unknown-magic-bypass","unknown-material-bypass","unknown-alignment-bypass","unknown-epic-bypass","unknown-physical-source"].includes(result.reason))
    result.reason="damage-source-snapshot-"+saved.state;
   return drBlock(actor,options,result);
  }

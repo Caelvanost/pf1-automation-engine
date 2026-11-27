@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.51.3
+# PF1 Automation Engine v1.51.4
+
+## RD et armes naturelles (v1.51.4)
+
+Les attaques naturelles natives de mêlée prennent en compte la RD/magie et RD/épique du porteur, sans attribuer un bonus d'altération artificiel. Matériaux et alignements explicites, sous-types et altération configurée sont traités séparément ; les propriétés sont enregistrées avec la carte. Les bonus externes non exposés et les équivalents épiques restent manuels. Voir [Damage resolution](docs/DAMAGE-RESOLUTION.md).
 
 ## Provenance persistante des propriétés d'attaque (v1.51.3)
 
