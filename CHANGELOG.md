@@ -1,3 +1,9 @@
+# 1.50.4 — Infobulle native Foundry v13
+
+- Corrige `data-tooltip-text` (v13) au lieu du seul `data-tooltip` (hérité). Le texte multiplicatif remplace la formule technique au survol des dégâts ; les ancres de dégâts finalisées sont également vérifiées dans `pf1PreDisplayActionUse` avant rendu de la carte. Texte brut pour l'attribut v13, HTML échappé pour l'ancien attribut.
+- Préserve les infobulles masquées/personnalisées, les jets d'attaque, les données sérialisées et les calculs. Aucun changement pour les jets neutres. Les anciennes cartes déjà enregistrées ne sont pas réécrites.
+- Test de régression avec le véritable attribut v13 et les ancres de dégâts normales/critiques finalisées. Validation en jeu nécessaire.
+
 # 1.50.3 — Présentation multiplicative des dégâts
 
 - Affiche la formule native complète suivie du multiplicateur dans les infobulles de DamageRoll PF1 et leur détail développé, au lieu du bonus technique additif. Conserve les dés et les bonus natifs, et précise l'arrondi global réparti si nécessaire.

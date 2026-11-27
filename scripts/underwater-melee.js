@@ -227,6 +227,41 @@ function umDisplaySummary(d){
  return parts.join(" — ");
 }
 const umEscapeTooltip=s=>s.replace(/[&<>"\']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// Foundry 13 uses data-tooltip-text for inline rolls, as confirmed by
+// PF1 11.11's own obscureInlineRolls handling in module/utils/chat.mjs.
+// The plain-text attribute MUST NOT receive HTML-escaped strings.
+function umRewriteAnchor(roll,a){
+ const d=umDisplayData(roll);
+ if(!d||!a?.setAttribute||!a?.getAttribute||
+    a.classList?.contains("obfuscated")||a.getAttribute("data-tooltip-html")!==null)return false;
+ const summary=umDisplaySummary(d);
+ const original=String(roll.formula??"");
+ const same=s=>typeof s==="string"&&original.length>0&&s.replace(/\s+/g,"")===original.replace(/\s+/g,"");
+ let changed=false;
+ // Do not create a tooltip where none exists, or replace a masked/custom
+ // tooltip. Prefer the actual v13 text attribute over the legacy HTML one.
+ const text=a.getAttribute("data-tooltip-text");
+ if(text!==null){
+  if(same(text)){a.setAttribute("data-tooltip-text",summary);changed=true}
+ }else if(same(a.getAttribute("data-tooltip"))){
+  a.setAttribute("data-tooltip",umEscapeTooltip(summary));changed=true;
+ }
+ if(same(a.getAttribute("title"))){a.setAttribute("title",summary);changed=true}
+ return changed;
+}
+// Native ChatAttack.finalize() creates damageRows and inlineRoll anchors
+// before pf1PreDisplayActionUse, which fires before attack-roll.hbs renders.
+// This second path catches the exact anchor even if a third-party wrapper
+// replaces DamageRoll.toAnchor. Never touch attacks or serialized rolls.
+function umPreDisplay(use){
+ try{
+  for(const attack of use?.shared?.chatAttacks??[]){
+   for(const row of attack.damageRows??[]){
+    for(const roll of [row.normal,row.crit])if(roll?.inlineRoll)umRewriteAnchor(roll,roll.inlineRoll);
+   }
+  }
+ }catch(error){console.warn("PF1AE | multiplier chat anchor display",error)}
+}
 function umInstallDisplay(){
  const proto=globalThis.pf1?.dice?.DamageRoll?.prototype;
  if(!proto||proto[UM_DISPLAY_WRAPPED])return;
@@ -260,12 +295,9 @@ function umInstallDisplay(){
   }catch(error){console.warn("PF1AE | multiplier tooltip display",error);return html;}
  };
  const anchor=function(...args){
-  const a=nativeAnchor.apply(this,args),d=umDisplayData(this);
-  if(d&&a?.setAttribute){
-   const current=a.getAttribute?.("data-tooltip");
-   if(current==null||current===this.formula)a.setAttribute("data-tooltip",umEscapeTooltip(umDisplaySummary(d)));
-   if(a.getAttribute?.("title")===this.formula)a.setAttribute("title",umDisplaySummary(d));
-  }
+  const a=nativeAnchor.apply(this,args);
+  try{umRewriteAnchor(this,a)}
+  catch(error){console.warn("PF1AE | multiplier inline tooltip display",error)}
   return a;
  };
  try{
@@ -383,6 +415,7 @@ Hooks.once("init",()=>{
   catch(error){console.warn("PF1AE | underwater melee attack",error);}
  });
  Hooks.on("renderApplication",umRender);
+ Hooks.on("pf1PreDisplayActionUse",umPreDisplay);
 });
 Hooks.once("ready",()=>{
  umInstallDisplay();
