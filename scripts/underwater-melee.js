@@ -19,6 +19,8 @@ const UM_WRAPPED=new WeakSet();
 const UM_ACTION=new WeakMap();
 const UM_SCALED_ATTACKS=new WeakSet();
 const UM_DIALOG_VALUES=new WeakMap();
+const UM_DISPLAY="pf1aeDamageMultiplierDisplay";
+const UM_DISPLAY_WRAPPED=Symbol.for("pf1ae.damageMultiplierDisplay");
 let UM_LAST=null;
 const umEnabled=key=>{
  try{return game.modules.get(UM_NS)?.active===true&&
@@ -179,17 +181,106 @@ function umAllocate(rolls,info,start=0,roundedStart=0,correction=0){
   const raw=Number(roll.total);
   if(!Number.isFinite(raw))throw Error("Invalid native damage roll.");
   const factor=info.user*(info.base&&umIsDamagePhysical(roll,index)?0.5:1);
-  exact+=(raw+(index===0?correction:0))*factor;
+  const nativeCorrection=index===0?correction:0;
+  exact+=(raw+nativeCorrection)*factor;
   const next=umFloor(exact),total=next-rounded;rounded=next;
-  return {roll,total,factor};
+  return {roll,total,factor,nativeCorrection};
  });
  return {rows,exact,rounded};
 }
 function umDiceSignature(roll){
  return JSON.stringify((roll.dice??[]).map(d=>({faces:d.faces,number:d.number,results:d.results})));
 }
-async function umRollWithTotal(roll,total,factor){
- if(roll.total===total)return roll;
+// Persist display metadata in Roll.options, including the native serialized
+// inline-roll data. It never replaces authoritative terms or totals.
+function umDisplayRecord(roll,total,factor,correction,adjusted){
+ return {version:1,formula:String(roll.formula??""),originalTotal:roll.total,total,factor,correction,
+  adjusted,termCount:roll.terms.length};
+}
+function umDisplayData(roll){
+ const d=roll?.options?.[UM_DISPLAY];
+ if(d?.version!==1||typeof d.formula!=="string"||!d.formula||d.formula.length>10000||
+    ![d.originalTotal,d.total,d.factor,d.correction].every(Number.isFinite)||
+    d.factor<0||d.factor>10||d.total!==roll.total||!Number.isSafeInteger(d.termCount)||
+    d.termCount<1||typeof d.adjusted!=="boolean")return null;
+ const terms=roll.terms;
+ if(!Array.isArray(terms)||terms.length!==d.termCount+(d.adjusted?2:0))return null;
+ if(d.adjusted){
+  const op=terms.at(-2),num=terms.at(-1),delta=d.total-d.originalTotal;
+  if(op?.operator!==(delta<0?"-":"+")||num?.number!==Math.abs(delta))return null;
+  const flavor=String(num.flavor??num.options?.flavor??"");
+  if(!["Multiplicateur de dégâts","Damage multiplier"].some(label=>flavor===label+" ×"+d.factor))return null;
+ }else if(d.total!==d.originalTotal)return null;
+ return d;
+}
+function umDisplayFormula(d){
+ const native=d.correction===0?d.formula:
+  umI18n("min. natif : ","native minimum: ")+String(d.originalTotal+d.correction);
+ return "("+native+") × "+String(d.factor);
+}
+function umDisplaySummary(d){
+ const raw=(d.originalTotal+d.correction)*d.factor;
+ const shown=Math.round(raw*1e10)/1e10;
+ const parts=[umDisplayFormula(d)+" = "+shown];
+ if(Math.abs(raw-d.total)>1e-8)parts.push(umI18n("Arrondi global (répartition) : ","Global rounding (allocation): ")+d.total);
+ if(d.correction!==0)parts.push(umI18n("Formule initiale : ","Original formula: ")+d.formula);
+ return parts.join(" — ");
+}
+const umEscapeTooltip=s=>s.replace(/[&<>"\']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function umInstallDisplay(){
+ const proto=globalThis.pf1?.dice?.DamageRoll?.prototype;
+ if(!proto||proto[UM_DISPLAY_WRAPPED])return;
+ const nativeTooltip=proto.getTooltip,nativeAnchor=proto.toAnchor;
+ if(typeof nativeTooltip!=="function"||typeof nativeAnchor!=="function")return;
+ // Only the PF1 DamageRoll class and rolls with verified metadata.
+ const tooltip=async function(...args){
+  const html=await nativeTooltip.apply(this,args),d=umDisplayData(this);
+  if(!d||typeof html!=="string"||!globalThis.document?.createElement)return html;
+  try{
+   const template=globalThis.document.createElement("template");
+   template.innerHTML=html;
+   const wrapper=template.content.querySelector(".dice-tooltip .wrapper");
+   if(!wrapper)return html;
+   if(d.adjusted){
+    const row=wrapper.querySelector("section.tooltip-part:last-child");
+    const flavor=row?.querySelector(".part-flavor")?.textContent?.trim();
+    const expected=String(this.terms.at(-1).flavor??this.terms.at(-1).options?.flavor??"");
+    // Match the exact last native numeric adjustment row; fail visually
+    // closed if the native template or another module changes its layout.
+    if(!row||flavor!==expected)return html;
+    row.remove();
+   }
+   const section=globalThis.document.createElement("section");
+   section.className="tooltip-part pf1ae-damage-multiplier-summary";
+   const header=globalThis.document.createElement("header");
+   header.className="part-header";
+   header.textContent=umDisplaySummary(d);
+   section.append(header);wrapper.append(section);
+   return template.innerHTML;
+  }catch(error){console.warn("PF1AE | multiplier tooltip display",error);return html;}
+ };
+ const anchor=function(...args){
+  const a=nativeAnchor.apply(this,args),d=umDisplayData(this);
+  if(d&&a?.setAttribute){
+   const current=a.getAttribute?.("data-tooltip");
+   if(current==null||current===this.formula)a.setAttribute("data-tooltip",umEscapeTooltip(umDisplaySummary(d)));
+   if(a.getAttribute?.("title")===this.formula)a.setAttribute("title",umDisplaySummary(d));
+  }
+  return a;
+ };
+ try{
+  Object.defineProperties(proto,{
+   getTooltip:{value:tooltip,configurable:true,writable:true},
+   toAnchor:{value:anchor,configurable:true,writable:true},
+   [UM_DISPLAY_WRAPPED]:{value:true,configurable:true}
+  });
+ }catch(error){console.warn("PF1AE | multiplier display integration unavailable",error);}
+}
+async function umRollWithTotal(roll,total,factor,correction=0){
+ if(roll.total===total){
+  if(factor!==1||correction!==0)roll.options[UM_DISPLAY]=umDisplayRecord(roll,total,factor,correction,false);
+  return roll;
+ }
  // Deterministic adjustment; preserve evaluated dice and damage metadata.
  const delta=total-roll.total;
  const {OperatorTerm,NumericTerm}=foundry.dice.terms;
@@ -206,7 +297,8 @@ async function umRollWithTotal(roll,total,factor){
    throw Error("PF1AE: deterministic adjustment term is not evaluated.");
  }
  const signature=umDiceSignature(roll);
- const scaled=roll.constructor.fromTerms([...roll.terms,op,num],{...roll.options});
+ const scaled=roll.constructor.fromTerms([...roll.terms,op,num],{...roll.options,
+  [UM_DISPLAY]:umDisplayRecord(roll,total,factor,correction,true)});
  // Never evaluate the reconstructed roll containing dice.
  if(!(scaled instanceof roll.constructor)||scaled.total!==total||
     umDiceSignature(scaled)!==signature||umDiceSignature(roll)!==signature||
@@ -228,8 +320,8 @@ async function umMultiplyAttacks(use,attacks,info=UM_ACTION.get(use)){
   const n=umAllocate(nr,info,0,0,correction);
   const c=cr.length?umAllocate(cr,info,n.exact,n.rounded,
    umNativeCorrection(crit,cr,umSum(nr))-correction):null;
-  const normalRolls=await Promise.all(n.rows.map(r=>umRollWithTotal(r.roll,r.total,r.factor)));
-  const critRolls=c?await Promise.all(c.rows.map(r=>umRollWithTotal(r.roll,r.total,r.factor))):null;
+  const normalRolls=await Promise.all(n.rows.map(r=>umRollWithTotal(r.roll,r.total,r.factor,r.nativeCorrection)));
+  const critRolls=c?await Promise.all(c.rows.map(r=>umRollWithTotal(r.roll,r.total,r.factor,r.nativeCorrection))):null;
   updates.push({attack,normal,crit,normalRolls,critRolls,normalTotal:n.rounded,critTotal:c?.rounded});
  }
  for(const u of updates){
@@ -293,6 +385,7 @@ Hooks.once("init",()=>{
  Hooks.on("renderApplication",umRender);
 });
 Hooks.once("ready",()=>{
+ umInstallDisplay();
  const mod=game.modules.get(UM_NS);if(!mod)return;
  mod.api??={};
  mod.api.underwaterMelee=Object.freeze({
