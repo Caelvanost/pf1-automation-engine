@@ -8,11 +8,20 @@ const game={modules:new Map([['pf1-automation-engine',mod],['pf1-skull-and-shack
 const actor={uuid:'Actor.swimmer',statuses:new Set(),effects:{contents:[]}};
 const token={id:'t',uuid:'Scene.x.Token.t',parent:{id:'x'},elevation:0,flags:{world:{underwater:true}}};
 const action={actionType:'mwak',hasAttack:true,actor,damage:{parts:[{types:new Set(['slashing'])}]}};
-class Op{constructor(d){Object.assign(this,d)}evaluate(){return this}}
-class Num{constructor(d){Object.assign(this,d)}evaluate(){return this}}
+// Reproduce Foundry v13's immutable static terms, not permissive stubs.
+let operatorEvaluations=0,numericEvaluations=0,preEvaluatedNumeric=true;
+class Op{
+ constructor(d){Object.assign(this,d);this._evaluated=true}
+ evaluate(){operatorEvaluations++;throw Error("The OperatorTerm has already been evaluated and is now immutable")}
+}
+class Num{
+ constructor(d){Object.assign(this,d);this._evaluated=preEvaluatedNumeric}
+ evaluate(){numericEvaluations++;if(this._evaluated)throw Error("The NumericTerm has already been evaluated and is now immutable");this._evaluated=true;return this}
+}
 class DamageRoll{
  constructor(total,types,kind='normal',dice=[]){this.total=total;this.options={damageType:types,type:kind};this.dice=dice;this.terms=[{number:total,dice}]}
  static fromTerms(terms,options){
+  for(const term of terms)if(term instanceof Op||term instanceof Num)assert.equal(term._evaluated,true,"adjustment must already be evaluated");
   const r=new DamageRoll(0,options.damageType,options.type);
   r.options=options;r.terms=terms;r.dice=terms.flatMap(t=>t.dice??[]);
   let total=0,sign=1;for(const t of terms){if(t.operator)sign=t.operator==='-'?-1:1;else total+=sign*t.number}
@@ -46,6 +55,11 @@ async function execute(use,{skip=false}={}){
  let use=base({[FIELD]:'2',[OLD]:'3'}),a=await execute(use);
  assert.equal(a.damage.total,24,'all evaluated bonuses included');assert.equal(a.damage.rolls[0].total,24);
  assert.equal(a.damage.rolls[0].dice[0].results[0].result,5);assert.equal(Object.hasOwn(use.formData,OLD),false);
+ assert.equal(operatorEvaluations,0);assert.equal(numericEvaluations,0);
+ preEvaluatedNumeric=false;
+ const other=await execute(base({[FIELD]:'2'}));assert.equal(other.damage.total,24);
+ assert.equal(operatorEvaluations,0);assert.equal(numericEvaluations,1);
+ preEvaluatedNumeric=true;
  await use.generateChatAttacks();assert.equal(a.damage.total,24,'no duplicate scaling');
  // Neutral choices must not reach PF1's form or touch a single native
  // roll, even when the native total uses a special damage correction.
@@ -114,6 +128,7 @@ async function execute(use,{skip=false}={}){
  settings.set('nativeDamageMultiplier',true);
  const original=DamageRoll.fromTerms;DamageRoll.fromTerms=()=>new DamageRoll(0,['slashing']);
  use=base({[FIELD]:2});await assert.rejects(execute(use),/reconstruction/);assert.equal(use.shared.chatAttacks[0].damage.total,12);
+ assert.equal(api.lastDiagnostic().status,"damage-multiplier-error");assert.match(api.lastDiagnostic().error,/reconstruction/);
  DamageRoll.fromTerms=original;
  console.log('PASS native damage multiplier: form ordering, default one, rerenders, complete bonus totals, typed aggregate rounding, critical, underwater, no rerolls');
 })().catch(error=>{console.error(error);process.exitCode=1;});
