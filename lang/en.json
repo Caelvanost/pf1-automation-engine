@@ -70,6 +70,10 @@
       "HealthStrenuous": {
         "Name": "Strenuous actions at nonpositive HP",
         "Hint": "Lose 1 real HP after a completed strenuous action while conscious and disabled. Deferred healing cards and ambiguous cases remain manual."
+      },
+      "AutomaticDamageDefenses": {
+        "Name": "Automatic damage defenses",
+        "Hint": "Resolve basic PF1 defenses on typed attack cards. Disable Automate Damage. Complex defenses require the native dialog."
       }
     },
     "Range": {

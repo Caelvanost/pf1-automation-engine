@@ -32,7 +32,7 @@ jobs:
             'turn-phases','trusted-table','range-automation','i18n','reload-core',
             'attack-resolution','attack-resolution-integration','item-default-action','chat-actions','chat-action-bootstrap','bleed','bleed-manual','bleed-display','ranged-melee','script-approval-menu','tactical-positioning',
             'defense-modifiers','defense-expiry-events','proximity-auras','passive-save-auras','directional-cover','cover-detection','cover-saves',
-            'cover-3d-diagnostics','cover-pf1-rules','native-cover-provenance','movement-status-sync','death-defeated-sync','health-conditions','conditions','underwater-melee','weapon-properties-ui',
+            'cover-3d-diagnostics','cover-pf1-rules','native-cover-provenance','movement-status-sync','death-defeated-sync','health-conditions','conditions','damage-resolution','underwater-melee','weapon-properties-ui',
             'native-cover-attack-integration','cover-mode','cover-native-bridge'
           )
           foreach ($name in $tests) {

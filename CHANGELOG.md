@@ -1,3 +1,10 @@
+# 1.50.0 — Multiplicateur natif corrigé et défenses de base
+
+- Corrige le multiplicateur PF1AE (remplacement Roll Bonuses) : le formulaire natif n'était pas encore enregistré dans ActionUse lors de sa lecture ; une valeur absente était convertie en 0. Lecture du résultat de dialogue, valeur par défaut 1, persistance pendant les réaffichages, zéro uniquement explicite, indépendance entre usages.
+- Multiplie les jets DamageRoll complets après la génération native des attaques, modificateurs de Force, altération, bonus circonstanciels, critiques inclus. Préserve les dés déjà lancés, les types, les résultats critiques, et l'arrondi du total (répartition par composantes). Pas de nouveau jet ni mutation persistante de l'objet. La reconstruction native est vérifiée avant validation de l'action.
+- Premier moteur de dégâts générique, opt-in : immunités, résistances énergétiques non cumulables, vulnérabilités énergétiques simples, RD simple maximale par attaque (dont magie et type physique), application native des PV. N'intervient ni avec Automate Damage actif, ni sur le dialogue natif, soins ou dégâts bruts. Défenses complexes et cas ambigus bloqués avec message MJ plutôt qu'un calcul erroné. API de prévisualisation et diagnostic.
+- Pas de logique propre à une aptitude. Tests simulés ; vérification réelle Foundry nécessaire.
+
 # 1.49.0 — Conditions génériques
 
 - Registre natif : fascinated, burning, energyDrained, anchored, immobilized, slowed ; traductions et icônes propres. Aucun écrasement d'un ID existant et aucune inscription concurrente avec Improved Conditions. Fasciné : malus Perception −4 ; autres marqueurs visuels, mécanique à venir.

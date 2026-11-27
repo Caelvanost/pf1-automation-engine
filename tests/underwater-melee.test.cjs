@@ -1,134 +1,96 @@
 'use strict';
 const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
 const handlers=new Map(),ready=[],init=[];
-const mod={active:true,api:{}},water={active:true,api:{waterAutomation:{getState(d){
- return {underwater:d.elevation<0};
-}}}};
-const settings=new Map([['genericEnabled',true],
- ['autoUnderwaterMelee',true],['nativeDamageMultiplier',true]]);
-const game={modules:new Map([['pf1-automation-engine',mod],
- ['pf1-skull-and-shackles',water]]),
- settings:{get(_n,k){return settings.get(k)},register(_n,k,o){settings.set(k,o.default)}},
- i18n:{lang:'fr'}};
+const mod={active:true,api:{}},water={active:true,api:{waterAutomation:{getState:d=>({underwater:d.elevation<0})}}};
+const settings=new Map([['genericEnabled',true],['autoUnderwaterMelee',true],['nativeDamageMultiplier',true]]);
+const game={modules:new Map([['pf1-automation-engine',mod],['pf1-skull-and-shackles',water]]),
+ settings:{get(_n,k){return settings.get(k)},register(_n,k,o){settings.set(k,o.default)}},i18n:{lang:'fr'}};
 const actor={uuid:'Actor.swimmer',statuses:new Set(),effects:{contents:[]}};
-const token={id:'t',uuid:'Scene.x.Token.t',parent:{id:'x'},
- x:0,y:0,elevation:-1,flags:{world:{underwater:true}}};
-const action={actionType:'mwak',hasAttack:true,actor,
- damage:{parts:[{types:['slashing'],formula:'1d8+4'}]}};
-const base=()=>({action,actor,token,shared:{attackBonus:[],rollData:{}},
- formData:{'pf1ae-damage-multiplier':'1'},
- async createAttackDialog(){return {ok:true}}});
-const ctx={game,console,Hooks:{once(n,fn){(n==='init'?init:ready).push(fn)},
- on(n,fn){handlers.set(n,fn)}},Object,Array,Set,Map,WeakSet,WeakMap,Math,String,Number};
+const token={id:'t',uuid:'Scene.x.Token.t',parent:{id:'x'},elevation:0,flags:{world:{underwater:true}}};
+const action={actionType:'mwak',hasAttack:true,actor,damage:{parts:[{types:new Set(['slashing'])}]}};
+class Op{constructor(d){Object.assign(this,d)}evaluate(){return this}}
+class Num{constructor(d){Object.assign(this,d)}evaluate(){return this}}
+class DamageRoll{
+ constructor(total,types,kind='normal',dice=[]){this.total=total;this.options={damageType:types,type:kind};this.dice=dice;this.terms=[{number:total,dice}]}
+ static fromTerms(terms,options){
+  const r=new DamageRoll(0,options.damageType,options.type);
+  r.options=options;r.terms=terms;r.dice=terms.flatMap(t=>t.dice??[]);
+  let total=0,sign=1;for(const t of terms){if(t.operator)sign=t.operator==='-'?-1:1;else total+=sign*t.number}
+  r.total=total;return r;
+ }
+}
+const dice=[{number:1,faces:8,results:[{result:5,active:true}]}];
+const roll=(n,type='slashing',kind='normal')=>new DamageRoll(n,[type],kind,dice);
+const makeAttack=(normal,critical=[])=>({damage:{rolls:normal,total:normal.reduce((s,r)=>s+r.total,0)},
+ critDamage:{rolls:critical,total:[...normal,...critical].reduce((s,r)=>s+r.total,0)}});
+function base(form,attacks=[makeAttack([roll(12)])]){
+ return {action,actor,token,shared:{attackBonus:[],rollData:{},chatAttacks:[]},
+  async createAttackDialog(){return form},
+  async generateChatAttacks(){this.shared.chatAttacks=attacks;return true}};
+}
+const ctx={game,console,foundry:{dice:{terms:{OperatorTerm:Op,NumericTerm:Num}}},
+ Hooks:{once(n,fn){(n==='init'?init:ready).push(fn)},on(n,fn){handlers.set(n,fn)}},Object,Array,Set,Map,WeakSet,WeakMap,Math,String,Number,JSON};
 ctx.globalThis=ctx;vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../scripts/underwater-melee.js'),'utf8'),ctx);
 for(const f of init)f();for(const f of ready)f();
-assert.ok(mod.api.underwaterMelee,'service is registered');
-function open(use){
+const FIELD='pf1ae-damage-multiplier',OLD='global-bonus_damage-multiplier',api=mod.api.underwaterMelee;
+async function execute(use,{skip=false}={}){
  handlers.get('pf1CreateActionUse')(use);
- return use.createAttackDialog();
-}
-function damage(parts){
- handlers.get('pf1PreDamageRoll')(action,{},parts);
- return parts;
+ const form=skip?{}:await use.createAttackDialog();
+ if(form===null)return;
+ use.formData=form;
+ await use.generateChatAttacks();return use.shared.chatAttacks[0];
 }
 (async()=>{
- let use=base();await open(use);
- assert.equal(use.shared.attackBonus.length,1);
- assert.match(use.shared.attackBonus[0],/^-2\[/);
- handlers.get('pf1CreateActionUse')(use);
- assert.equal(use.shared.attackBonus.length,1,'idempotent attack penalty');
- let parts=[{base:'1d8',extra:['4'],damageType:{values:['slashing']},type:'normal'}];
- damage(parts);
- assert.equal(parts[0].base,'floor((((1d8)) + ((4))) * 0.5)'.replace('((1d8))','(1d8)').replace('((4))','(4)'),
-  'weapon dice and extra bonus halved together and rounded down');
- assert.equal(parts[0].extra.length,0,'all extras are merged into same half-damage roll');
- damage(parts);
- assert.equal((parts[0].base.match(/floor\(/g)||[]).length,1,'same part list processed once');
- // Piercing attack unaffected.
- const pierce={...action,damage:{parts:[{types:['piercing']}]}};
- const pUse={...base(),action:pierce};
- await open(pUse);
- assert.equal(pUse.shared.attackBonus.length,0);
- // No water: no underwater penalty, but user-requested x2 still applies.
- token.elevation=0;
- const user=base();user.formData['pf1ae-damage-multiplier']='2';
- await open(user);assert.equal(user.shared.attackBonus.length,0);
- parts=[{base:'1d6',extra:['3'],damageType:{values:['slashing']},type:'normal'}];
- damage(parts);assert.match(parts[0].base,/\* 2\)/);
- // User x2 and water x0.5 cancel to x1.
+ assert.ok(api);assert.equal(handlers.has('pf1PreDamageRoll'),false);
+ let use=base({[FIELD]:'2',[OLD]:'3'}),a=await execute(use);
+ assert.equal(a.damage.total,24,'all evaluated bonuses included');assert.equal(a.damage.rolls[0].total,24);
+ assert.equal(a.damage.rolls[0].dice[0].results[0].result,5);assert.equal(Object.hasOwn(use.formData,OLD),false);
+ await use.generateChatAttacks();assert.equal(a.damage.total,24,'no duplicate scaling');
+ for(const form of [{},{[FIELD]:''},{[FIELD]:null},{[FIELD]:'abc'},{[FIELD]:false}]){
+  a=await execute(base(form));assert.equal(a.damage.total,12,'blank/invalid never becomes 0');
+ }
+ a=await execute(base({[FIELD]:'3'}),{skip:true});assert.equal(a.damage.total,12);
+ a=await execute(base({[FIELD]:'0'}));assert.equal(a.damage.total,0,'explicit zero only');
+ a=await execute(base({[FIELD]:'0,5'},[makeAttack([roll(3),roll(3,'fire')],[roll(3,'slashing','crit')])]));
+ assert.equal(a.damage.total,3,'floor whole damage, not each component');
+ assert.equal(a.damage.rolls.reduce((s,r)=>s+r.total,0),3);
+ assert.equal(a.critDamage.total,4,'critical includes normal damage and rounds once');
+ assert.equal(a.critDamage.rolls[0].options.type,'crit');
+ a=await execute(base({[FIELD]:'2'},[makeAttack([roll(12)],[roll(11,'slashing','crit')])]));
+ assert.equal(a.damage.total,24);assert.equal(a.critDamage.total,46);
  token.elevation=-1;
- const cancel=base();cancel.formData['pf1ae-damage-multiplier']='2';
- await open(cancel);
- parts=[{base:'1d6',extra:['3'],damageType:{values:['slashing']},type:'normal'}];
- damage(parts);assert.equal(parts[0].base,'1d6');
- // User x2 is independent from underwater x0.5 on energy damage:
- // physical returns to normal while fire stays doubled.
- const mixedDamage=base();mixedDamage.formData['pf1ae-damage-multiplier']='2';
- await open(mixedDamage);
- parts=[{base:'1d8',extra:['4'],damageType:{values:['slashing']},type:'normal'},
-  {base:'1d6',extra:[],damageType:{values:['fire']},type:'nonCrit'}];
- damage(parts);
- assert.equal(parts[0].base,'1d8');
- assert.match(parts[1].base,/\* 2\)/);
- // Native PF1 may store damage types as a Set as well as an Array.
- action.damage.parts[0].types=new Set(['bludgeoning']);
- const blunt=base();await open(blunt);
- assert.equal(blunt.shared.attackBonus.length,1);
- action.damage.parts[0].types=['slashing'];
- // Freedom of movement exempts melee penalties.
- actor.statuses.add('freedomOfMovement');
- const freedom=base();await open(freedom);
- assert.equal(freedom.shared.attackBonus.length,0);
- actor.statuses.clear();
- // Mixed slashing + piercing -> no automatic guess.
- action.damage.parts[0].types=['slashing','piercing'];
- const mixed=base();await open(mixed);
- assert.equal(mixed.shared.attackBonus.length,0);
- action.damage.parts[0].types=['slashing'];
- // Nonphysical energy components are excluded from underwater halving.
- const splash=base();await open(splash);
- parts=[{base:'1d8',extra:['4'],damageType:{values:['slashing']},type:'normal'},
- {base:'1d6',extra:[],damageType:{values:['fire']},type:'nonCrit'}];
- damage(parts);
- assert.match(parts[0].base,/\* 0.5\)/);
- assert.equal(parts[1].base,'1d6');
- // Native PF1 AttackDialog: own control replaces Roll Bonuses' field,
- // leaving its other conditional bonuses operational.
- class AttackDialog{}
- const nativeDialog=new AttackDialog();
- let removed=0,installed=null;
- const oldInput={value:'3',disabled:false,
-  closest:()=>({remove(){removed++;}})};
- const anchorGroup={after(group){installed=group;}};
- const root={querySelector(selector){
-  if(selector.includes('pf1ae-damage-multiplier'))return null;
-  if(selector.includes('global-bonus_damage-multiplier'))return oldInput;
-  if(selector.includes('damage-bonus'))return {closest:()=>anchorGroup};
-  return null;
- }};
- const oldPf1=ctx.pf1,oldDocument=ctx.document;
+ use=base({[FIELD]:'1'},[makeAttack([roll(9),roll(5,'electric')])]);a=await execute(use);
+ assert.equal(use.shared.attackBonus.length,1);assert.match(use.shared.attackBonus[0],/^-2\[/);
+ assert.equal(a.damage.total,9);assert.equal(a.damage.rolls[0].total,4);assert.equal(a.damage.rolls[1].total,5);
+ a=await execute(base({[FIELD]:'2'},[makeAttack([roll(9),roll(5,'fire')])]));
+ assert.equal(a.damage.total,19);assert.equal(a.damage.rolls[0].total,9);assert.equal(a.damage.rolls[1].total,10);
+ actor.statuses.add('freedomOfMovement');use=base({});a=await execute(use);assert.equal(a.damage.total,12);assert.equal(use.shared.attackBonus.length,0);actor.statuses.clear();
+ action.damage.parts[0].types=new Set(['piercing']);use=base({});a=await execute(use);assert.equal(a.damage.total,12);assert.equal(use.shared.attackBonus.length,0);
+ action.damage.parts[0].types=new Set(['slashing']);token.elevation=0;
+ const cancelled=base(null);await execute(cancelled);assert.equal(cancelled.shared.chatAttacks.length,0);
+ const left=base({[FIELD]:'2'}),right=base({[FIELD]:'3'});
+ const both=await Promise.all([execute(left),execute(right)]);assert.equal(both[0].damage.total,24);assert.equal(both[1].damage.total,36);
+ class AttackDialog{constructor(use){this.actionUse=use}}
+ const uiUse=base({[FIELD]:0,[OLD]:3}),dialog=new AttackDialog(uiUse);
+ let installed,removed=0;
+ const old={value:'3',disabled:false,closest:()=>({remove(){removed++}})};
+ const root={querySelector(q){if(q.includes(FIELD))return null;if(q.includes(OLD))return old;
+  if(q.includes('damage-bonus'))return {closest:()=>({after:g=>installed=g})};return null}};
  ctx.pf1={applications:{AttackDialog}};
- ctx.document={createElement(tag){
-  return {tagName:tag,children:[],appendChild(x){this.children.push(x)},
-   append(...xs){this.children.push(...xs)}};
- }};
- handlers.get('renderApplication')(nativeDialog,[root]);
- assert.equal(removed,1);
- assert.equal(oldInput.disabled,true);
- assert.ok(installed,'our multiplier control inserted next to damage bonus');
- assert.equal(installed.children[1].children[0].name,'pf1ae-damage-multiplier');
- assert.equal(installed.children[1].children[0].value,'1');
- ctx.pf1=oldPf1;ctx.document=oldDocument;
- const rollback=base();rollback.formData['global-bonus_damage-multiplier']='3';
- await open(rollback);
- assert.equal(Object.hasOwn(rollback.formData,'global-bonus_damage-multiplier'),false,
-  'legacy Roll Bonuses multiplier value removed to avoid stacking');
- // Inactive setting completely removes rule.
- settings.set('autoUnderwaterMelee',false);
- const disabled=base();await open(disabled);
- assert.equal(disabled.shared.attackBonus.length,0);
- assert.equal(mod.api.underwaterMelee.preview(disabled)?.penalty,-2,
-  'diagnostic can still inspect a rule while disabled');
- console.log('PASS underwater melee: -2, half-damage native formula, x2, piercing, freedom, energy and idempotence');
+ ctx.document={createElement(tag){return {tag,children:[],listeners:{},appendChild(x){this.children.push(x)},
+  append(...xs){this.children.push(...xs)},addEventListener(n,fn){this.listeners[n]=fn}}}};
+ handlers.get('renderApplication')(dialog,[root]);assert.equal(removed,1);
+ let input=installed.children[1].children[0];assert.equal(input.value,'1');
+ input.value='2';input.listeners.input();
+ handlers.get('renderApplication')(dialog,[root]);input=installed.children[1].children[0];assert.equal(input.value,'2');
+ input.value='';input.listeners.input();
+ a=await execute(uiUse);assert.equal(a.damage.total,12,'blank UI overrides coerced numeric zero');
+ settings.set('nativeDamageMultiplier',false);
+ use=base({[FIELD]:3,[OLD]:2});a=await execute(use);assert.equal(a.damage.total,12);assert.equal(use.formData[OLD],2,'disabled feature does not remove other module data');
+ settings.set('nativeDamageMultiplier',true);
+ const original=DamageRoll.fromTerms;DamageRoll.fromTerms=()=>new DamageRoll(0,['slashing']);
+ use=base({[FIELD]:2});await assert.rejects(execute(use),/reconstruction/);assert.equal(use.shared.chatAttacks[0].damage.total,12);
+ DamageRoll.fromTerms=original;
+ console.log('PASS native damage multiplier: form ordering, default one, rerenders, complete bonus totals, typed aggregate rounding, critical, underwater, no rerolls');
 })().catch(error=>{console.error(error);process.exitCode=1;});

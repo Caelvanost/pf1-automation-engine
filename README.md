@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.49.0
+# PF1 Automation Engine v1.50.0
+
+## Multiplicateur de dégâts et défenses simples (v1.50.0)
+
+Le multiplicateur de PF1AE remplaçant celui de Roll Bonuses est lu après la soumission native du formulaire, avec 1 par défaut, et conservé pendant les rafraîchissements du même dialogue. Les jets natifs complets (Force, altération, bonus circonstanciels, critique, etc.) sont multipliés après leur résolution, en conservant les dés et les types. L'arrondi porte sur le total, réparti entre les composantes. Les jets suivants sans multiplicateur reviennent à 1. La nouvelle option **Calcul automatique des défenses contre les dégâts** (désactivée par défaut) traite les défenses simples de PF1 lors de l'application directe d'une carte de dégâts typée ; Automate Damage doit être désactivé pour la tester. La fenêtre native d'application reste inchangée. Aucun double calcul, aucune nouvelle application directe des PV. Les cas complexes nécessitent un arbitrage ; voir [Damage resolution](docs/DAMAGE-RESOLUTION.md).
 
 ## Conditions génériques (v1.49.0)
 
