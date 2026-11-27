@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.50.4
+# PF1 Automation Engine v1.50.5
+
+## Application native des dégâts (v1.50.5)
+
+Corrige le blocage `invalid-native-total` observé dans PF1 11.11 : le clonage par cible de DamagePartModel via `toObject()` perd le montant évalué hors schéma. PF1AE récupère les montants depuis les DamageRolls déjà évalués de la carte exacte, avec validation de l'index, des types, du bouton, du total et du critique. Aucun dé relancé, aucune modification du moteur de santé.
 
 ## Infobulle Foundry v13 (v1.50.4)
 

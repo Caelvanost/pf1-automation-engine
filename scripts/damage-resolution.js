@@ -151,6 +151,11 @@ const DR_REASONS={
  "combined-vulnerability-resistance":["résistance et vulnérabilité simultanées","combined resistance and vulnerability"],
  "mixed-or-unsupported-damage-type":["type de dégâts mixte ou non pris en charge","mixed or unsupported damage type"],
  "native-card-total-mismatch":["total de carte incohérent","inconsistent card total"],
+ "invalid-native-total":["montant de dégâts invalide","invalid damage amount"],
+ "missing-native-card-context":["contexte de carte absent","missing card context"],
+ "missing-native-card-rolls":["jets de la carte introuvables","missing card rolls"],
+ "native-card-attack-mismatch":["attaque de la carte incohérente","inconsistent attack index"],
+ "native-card-instance-mismatch":["composantes de dégâts incohérentes","inconsistent damage components"],
  "modifier-tag-defense":["immunité ou vulnérabilité à un modificateur de dégâts","damage modifier immunity or vulnerability"],
  "untyped-with-damage-reduction":["dégâts non typés avec RD","untyped damage with DR"]
 };
@@ -164,6 +169,42 @@ function drBlock(actor,options,result){
   "PF1AE : dégâts non appliqués automatiquement ("+fr+"). Utilise la fenêtre native d’application des dégâts.",
   "PF1AE: automatic damage not applied ("+en+"). Use the native Apply Damage dialog."));
 }
+// PF1 11.11 utils/chat.mjs builds DamagePartModel instances with .value
+// assigned at runtime. ActorPF.static applyDamage then reconstructs each
+// instance from i.toObject() per target. The schema contains only formula
+// and types, so the evaluated .value is discarded by this native clone.
+// Recover from the exact serialized attack's already evaluated DamageRolls,
+// never from a formula, canvas selection, the last attack or a new dice roll.
+function drCardComponents(options){
+ const message=options.message,index=options.attackIndex;
+ if(!Number.isSafeInteger(index)||index<0||!message?.uuid||
+    (options.reference!=null&&options.reference!==message.uuid))
+  throw Error("missing-native-card-context");
+ const button=options.element,dataset=button?.dataset;
+ if(dataset?.action!=="applyDamage")throw Error("missing-native-card-context");
+ const buttonIndex=button.closest?.("[data-index]")?.dataset?.index;
+ if(buttonIndex!=null&&String(index)!==String(buttonIndex))throw Error("native-card-attack-mismatch");
+ if(![undefined,"","normal","critical"].includes(dataset.type))throw Error("native-card-attack-mismatch");
+ if((dataset.type==="critical")!==(options.isCritical===true))throw Error("native-card-attack-mismatch");
+ const attack=message.systemRolls?.attacks?.[index];
+ if(!attack||!Array.isArray(attack.damage)||!attack.damage.length||
+    (options.isCritical===true&&(!Array.isArray(attack.critDamage)||!attack.critDamage.length)))
+  throw Error("missing-native-card-rolls");
+ const rolls=[...attack.damage,...(options.isCritical===true?attack.critDamage:[])];
+ if(rolls.length!==options.instances.length||rolls.length>500)throw Error("native-card-instance-mismatch");
+ return rolls.map((roll,i)=>{
+  const instance=options.instances[i],value=roll?.total;
+  const types=drArray(roll?.damageType?.types),actual=drArray(instance?.types);
+  if(!Number.isSafeInteger(value)||value<0||!types||!actual||
+     types.some(x=>typeof x!=="string")||actual.some(x=>typeof x!=="string")||
+     JSON.stringify([...new Set(types)].sort())!==JSON.stringify([...new Set(actual)].sort()))
+   throw Error("native-card-instance-mismatch");
+  // If a third-party module preserved .value, verify it rather than
+  // silently overriding a conflicting evaluated amount.
+  if(instance.value!=null&&instance.value!==value)throw Error("native-card-instance-mismatch");
+  return {value,types};
+ });
+}
 function drOnApply(actor,options){
  if(!drAvailable()||!options||DR_SEEN.has(options))return;
  // Native dialog already computes its own adjustments. Healing, direct
@@ -173,14 +214,17 @@ function drOnApply(actor,options){
     options.interactive!==true||!options.message||!Array.isArray(options.instances)||!options.instances.length)return;
  if(game.settings.get("pf1","healthConfig")?.getActorConfig?.(actor)?.rules?.useWoundsAndVigor)return;
  DR_SEEN.add(options);
- const raw=options.instances.reduce((a,r)=>a+Number(r?.value),0);
+ let components;
+ try{components=drCardComponents(options)}
+ catch(error){return drBlock(actor,options,drFail(String(error?.message??error)))}
+ const raw=components.reduce((a,r)=>a+r.value,0);
  if(!Number.isSafeInteger(raw)||raw<0)return drBlock(actor,options,drFail("invalid-native-total"));
- const buttonRatio=Number(options.element?.dataset?.ratio);
- const ratio=buttonRatio===0.5||buttonRatio===1?buttonRatio:
-  options.value===raw?1:options.value===Math.floor(raw/2)?0.5:null;
- if(ratio==null||Math.floor(raw*ratio)!==options.value)
+ const ratio=Number(options.element.dataset.ratio);
+ const buttonValue=Number(options.element.dataset.value);
+ if((ratio!==0.5&&ratio!==1)||!Number.isSafeInteger(buttonValue)||
+    buttonValue!==options.value||Math.floor(raw*ratio)!==options.value)
   return drBlock(actor,options,drFail("native-card-total-mismatch"));
- const result=drPreview({actor,components:options.instances,ratio,...drSource(options),asNonlethal:options.asNonlethal===true});
+ const result=drPreview({actor,components,ratio,...drSource(options),asNonlethal:options.asNonlethal===true});
  if(!result.supported)return drBlock(actor,options,result);
  drRemember(actor,result);
  // Native method applies ratio then reduction. Only pass the final value.

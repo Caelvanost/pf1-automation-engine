@@ -10,7 +10,29 @@ hooks.get('init')();hooks.get('ready')();
 const api=mod.api.damageResolution,actor={uuid:'Scene.s.Token.t.Actor.a',system:{traits:{di:{standard:new Set(),custom:[]},dv:{standard:new Set(),custom:[]},eres:{value:[],custom:''},dr:{value:[],custom:''},hardness:0}}};
 const t=actor.system.traits,c=(value,...types)=>({value,types:new Set(types)});
 const preview=(components,extra={})=>api.preview({actor,components,sourceKind:'weapon',magic:false,...extra});
-const opts=(instances,extra={})=>({value:instances.reduce((a,r)=>a+r.value,0),ratio:1,reduction:0,interactive:true,message:{uuid:'ChatMessage.m'},instances,action:{actionType:'mwak',enhancementBonus:0,item:{type:'weapon'}},...extra});
+// Reproduce the actual PF1 11.11 clone: .value is not a schema field,
+// so toObject() drops it. The serialized DamageRolls keep their totals.
+class DamagePartModel{
+ constructor(data){this.formula=data.formula??"";this.types=new Set(data.types)}
+ toObject(){return {formula:this.formula,types:[...this.types]}}
+}
+const roll=r=>({total:r.value,damageType:new DamagePartModel({types:r.types})});
+const opts=(parts,extra={})=>{
+ const {critical=[],half=false,index=0,...overrides}=extra;
+ const all=[...parts,...critical],raw=all.reduce((a,r)=>a+r.value,0),value=Math.floor(raw*(half?.5:1));
+ const instances=all.map(r=>{
+  const native=new DamagePartModel({types:r.types});native.value=r.value;
+  return new DamagePartModel(native.toObject());
+ });
+ const attacks=Array.from({length:index+1},()=>({damage:[roll(c(99,'cold'))],critDamage:[]}));
+ attacks[index]={damage:parts.map(roll),critDamage:critical.map(roll)};
+ return {value,ratio:1,reduction:0,interactive:true,
+  message:{uuid:'ChatMessage.m',systemRolls:{attacks}},reference:'ChatMessage.m',attackIndex:index,
+  isCritical:critical.length>0,instances,
+  element:{dataset:{action:'applyDamage',type:critical.length?'critical':'normal',ratio:half?'0.5':'1',value:String(value)},
+   closest:()=>({dataset:{index:String(index)}})},
+  action:{actionType:'mwak',enhancementBonus:0,item:{type:'weapon'}},...overrides};
+};
 const apply=o=>{hooks.get('pf1ApplyDamage')(actor,o);return o};
 assert.equal(settings.get('automaticDamageDefenses'),false);
 t.eres.value=[{amount:5,types:['fire']},{amount:3,types:['fire']}];
@@ -46,7 +68,30 @@ ad.active=true;assert.equal(api.isAvailable(),false);assert.equal(apply(opts([c(
 assert.equal(api.isAvailable(),true);
 let o=apply(opts([c(8,'fire')]));assert.equal(o.value,3);assert.equal(o.reduction,0);assert.equal(o.ratio,1);
 assert.equal(apply(o).value,3,'same native context never double processed');
-o=apply(opts([c(8,'fire')],{value:4,element:{dataset:{ratio:'0.5'}}}));assert.equal(o.value,0,'half damage before resistance');
+o=apply(opts([c(8,'fire')],{half:true}));assert.equal(o.value,0,'half damage before resistance');
+t.eres.value=[];t.dr.value=[];
+o=opts([c(16,'slashing')]);assert.equal(o.instances[0].value,undefined);
+assert.equal(apply(o).value,16,'actual native schema clone does not block unmitigated damage');
+t.dr.value=[{amount:5,types:[]}];t.eres.value=[{amount:5,types:['fire']}];
+assert.equal(apply(opts([c(14,'slashing'),c(8,'fire')],{index:2})).value,12,'exact nonfirst attack and separate defenses');
+assert.equal(apply(opts([c(14,'slashing')],{half:true})).value,2);
+assert.equal(apply(opts([c(14,'slashing')],{critical:[c(11,'slashing'),c(8,'fire')]})).value,23,'normal and critical rolls combined, DR once');
+o=opts([c(16,'slashing')]);o.instances[0].value=16;
+assert.equal(apply(o).value,11,'preserved runtime value verified');
+o=opts([c(16,'slashing')]);o.instances[0].value=12;
+assert.equal(apply(o).value,0);assert.equal(api.lastDiagnostic(actor).reason,'native-card-instance-mismatch');
+o=opts([c(16,'slashing')]);o.instances[0].types=new Set(['fire']);
+assert.equal(apply(o).value,0);assert.equal(api.lastDiagnostic(actor).reason,'native-card-instance-mismatch');
+o=opts([c(16,'slashing')]);o.attackIndex=1;
+assert.equal(apply(o).value,0);assert.equal(api.lastDiagnostic(actor).reason,'native-card-attack-mismatch');
+o=opts([c(16,'slashing')]);delete o.message.systemRolls;
+assert.equal(apply(o).value,0);assert.equal(api.lastDiagnostic(actor).reason,'missing-native-card-rolls');
+o=opts([c(16,'slashing')]);o.value=15;
+assert.equal(apply(o).value,0);assert.equal(api.lastDiagnostic(actor).reason,'native-card-total-mismatch');
+o=opts([c(16,'slashing')]);o.element.dataset.type='critical';
+assert.equal(apply(o).value,0);assert.equal(api.lastDiagnostic(actor).reason,'native-card-attack-mismatch');
+t.dr.value=[];t.eres.value=[{amount:5,types:['fire']}];
+
 assert.equal(apply(opts([c(8,'fire')],{dialog:true,reduction:5})).value,8,'native dialog untouched');
 assert.equal(apply(opts([c(8,'fire')],{reduction:2})).value,8,'manual reduction untouched');
 assert.equal(apply(opts([c(8,'fire')],{value:-8})).value,-8,'healing untouched');
