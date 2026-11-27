@@ -1,3 +1,9 @@
+# 1.50.5 — Correction des montants de dégâts natifs
+
+- Corrige `invalid-native-total` en application directe : PF1 11.11 recrée les DamagePartModel par cible à partir de leur schéma (formule, types), qui ne contient pas la propriété d'exécution `value`. Récupère les montants évalués depuis `message.systemRolls.attacks[attackIndex]` (normaux et critiques selon le bouton), vérifie les types, les éventuels montants conservés, l'index, le ratio et le total exact. Aucun nouveau jet, aucune lecture de sélection globale.
+- Cas incohérents toujours bloqués avec diagnostic explicite. Calcul des défenses, multiplicateur, application native des PV et dialogue manuel inchangés.
+- Tests avec modèle reproduisant la perte de `value` au clonage natif, 16 dégâts sans défense, RD, énergie mixte, critique, demi-dégâts, attaque non initiale et incohérences.
+
 # 1.50.4 — Infobulle native Foundry v13
 
 - Corrige `data-tooltip-text` (v13) au lieu du seul `data-tooltip` (hérité). Le texte multiplicatif remplace la formule technique au survol des dégâts ; les ancres de dégâts finalisées sont également vérifiées dans `pf1PreDisplayActionUse` avant rendu de la carte. Texte brut pour l'attribut v13, HTML échappé pour l'ancien attribut.
