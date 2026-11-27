@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.51.1
+# PF1 Automation Engine v1.51.2
+
+## RD combinées et alignements (v1.51.2)
+
+Les RD à plusieurs critères sont évaluées en OU (`operator:true`) ou ET (`operator:false`). Alignements d'une arme de mêlée, surcharges de l'action et altération réelle +5. Une donnée inconnue ne bloque que si elle peut changer le total. La lecture des sous-types préparés et la convention des opérateurs restent à confirmer dans PF1 11.11 ; pas d'inférence depuis l'alignement personnel. La RD argent 1.51.1 est validée en jeu. Les tests de cette étape sont reportés.
 
 ## Identifiant natif de la RD argent (v1.51.1)
 

@@ -1,3 +1,9 @@
+# 1.51.2 — RD combinées et alignements (mêlée)
+
+- Évalue les critères natifs dans une RD : OU (operator true) / ET (operator false), convention corroborée par Automate Damage ; opérateur absent/inconnu sur une RD multiple : arbitrage manuel. Un seul critère ignore l'opérateur. Conditions à trois valeurs : une preuve décisive suffit ; un critère inconnu ne bloque que s'il peut changer le résultat. Plus forte RD non contournée, jamais de cumul.
+- Alignements explicites de l'arme de mêlée et surcharges de l'action (null hérite, true/false remplace), +5 d'altération réelle. Le sous-type d'alignement du porteur n'est pas son alignement personnel : lecture prudente d'une collection préparée creatureSubtypes.total si disponible ; absence non interprétée comme neutre. Ce contrat et les opérateurs combinés restent à confirmer en jeu sur PF1 11.11 ; en cas de donnée manquante, arbitrage manuel.
+- RD/argent 1.51.1 validée en jeu par l'utilisateur. Fer froid, adamantium, alignements, opérateurs et autres scénarios de cette étape : tests en jeu reportés. Les munitions, armes naturelles, dommages physiques mixtes, solidité et provenance immuable restent hors périmètre.
+
 # 1.51.1 — Identifiant natif de la RD argent
 
 - Corrige le diagnostic réel PF1 11.11 : le critère de RD natif est `alchemicalSilver`, distinct de l'alias `silver` déjà pris en charge. Normalisation locale du critère, sans mutation de l'acteur.

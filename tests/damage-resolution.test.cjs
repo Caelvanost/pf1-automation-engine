@@ -100,6 +100,7 @@ assert.equal(apply({value:8,ratio:1,reduction:0}).value,8,'raw damage untouched'
 // The action's enhancement is null for this mundane steel weapon.
 const melee=(normal='steel',addons=[],enh=null,extra={})=>({
  actionType:'mwak',normalMaterial:normal,addonMaterial:addons,
+ actor:{system:{traits:{creatureSubtypes:{total:new Set(),custom:[]}}}},
  material:{normal:{custom:false},addon:[]},enhancementBonus:enh,
  alignments:{lawful:null,chaotic:null,good:null,evil:null},
  ammo:{type:null,cost:0,misfire:null},
@@ -144,9 +145,9 @@ assert.equal(hit(melee('silver',[],null,{ammo:{type:'arrow'}})),0);
 assert.equal(hit(melee('silver',[],null,{item:{type:'attack',subType:'natural'}})),0);
 o=apply(opts([c(9,'slashing')]));assert.equal(o.value,0);assert.ok(warnings.length);assert.equal(api.lastDiagnostic(actor).reason,'unknown-material-bypass');
 t.dr.value=[{amount:5,types:['silver','magic'],operator:true}];
-assert.equal(hit(),0);assert.equal(api.lastDiagnostic(actor).reason,'complex-damage-reduction');
+assert.equal(hit(),7);assert.equal(hit(melee('silver')),12);assert.equal(hit(melee('steel',[],1)),12);
 t.dr.value=[{amount:5,types:['good']}];
-assert.equal(hit(),0);assert.equal(api.lastDiagnostic(actor).reason,'material-alignment-damage-reduction');
+assert.equal(hit(),7);
 // Exact second live report: native RD criterion alchemicalSilver, 19 slashing,
 // steel, null enhancement. Both preview and native application must agree.
 t.dr.value=[{amount:5,types:['alchemicalSilver'],operator:true}];
@@ -171,6 +172,66 @@ t.dr.value.push({amount:3,types:[]});
 assert.equal(hit(melee('alchemicalSilver')),9);
 assert.equal(hit(),7);
 t.dr.value=[{amount:5,types:['alchemicalSilver','magic'],operator:true}];
-assert.equal(hit(),0);
-assert.equal(api.lastDiagnostic(actor).reason,'complex-damage-reduction');
+assert.equal(hit(),7);
+assert.equal(hit(melee('alchemicalSilver')),12);
+assert.equal(hit(melee('steel',[],1)),12);
+t.dr.value=[{amount:5,types:['alchemicalSilver','magic'],operator:false}];
+assert.equal(hit(),7);
+assert.equal(hit(melee('alchemicalSilver')),7);
+assert.equal(hit(melee('steel',[],1)),7);
+assert.equal(hit(melee('alchemicalSilver',[],1)),12);
+assert.equal(hit(melee('steel',[],3)),12);
+assert.equal(hit(melee('steel',[],3),{critical:[c(12,'slashing')]}),24);
+assert.equal(hit(melee(),{half:true}),1);
+const aligned=(id,base=false,override=null,enh=null,subtypes=[])=>{
+ const action=melee('steel',[],enh);
+ action.item.system.alignments[id]=base;
+ action.alignments[id]=override;
+ action.actor.system.traits.creatureSubtypes.total=new Set(subtypes);
+ return action;
+};
+for(const id of ['good','evil','lawful','chaotic']){
+ t.dr.value=[{amount:5,types:[id],operator:true}];
+ assert.equal(hit(aligned(id)),7);
+ assert.equal(hit(aligned(id,true)),12,'inherit item alignment');
+ assert.equal(hit(aligned(id,false,true)),12,'positive action override');
+ assert.equal(hit(aligned(id,true,false)),7,'negative action override');
+ assert.equal(hit(aligned(id,false,null,4)),7);
+ assert.equal(hit(aligned(id,false,null,5)),12,'+5 actual enhancement');
+ assert.equal(hit(aligned(id,false,null,null,[id])),12,'matching prepared subtype');
+ const unknown=aligned(id);delete unknown.actor.system.traits.creatureSubtypes;
+ assert.equal(hit(unknown),0);assert.equal(api.lastDiagnostic(actor).reason,'unknown-alignment-bypass');
+ unknown.actor.system.details={alignment:id};
+ assert.equal(hit(unknown),0,'personal alignment not subtype');
+ unknown.alignments[id]=true;assert.equal(hit(unknown),12,'explicit positive bypass works without subtype data');
+ assert.equal(hit(melee('steel',[],5,{actionType:'rwak'})),0,'ranged provenance deferred');
+}
+t.dr.value=[{amount:5,types:['good','alchemicalSilver'],operator:false}];
+assert.equal(hit(aligned('good',true)),7);
+assert.equal(hit(melee('alchemicalSilver')),7);
+const both=aligned('good',true);both.normalMaterial='alchemicalSilver';
+assert.equal(hit(both),12);
+assert.equal(hit(melee('steel',[],5)),12);
+t.dr.value[0].operator=true;
+assert.equal(hit(aligned('good',true)),12);
+assert.equal(hit(melee('alchemicalSilver')),12);
+assert.equal(hit(),7);
+t.dr.value=[{amount:5,types:['slashing','magic'],operator:true}];
+assert.equal(hit(),12);
+t.dr.value[0].operator=false;assert.equal(hit(),7);assert.equal(hit(melee('steel',[],1)),12);
+t.dr.value=[{amount:5,types:['slashing','unrecognized'],operator:true}];
+assert.equal(hit(),12,'known true OR unknown is true');
+t.dr.value[0].operator=false;
+assert.equal(hit(),0);assert.equal(api.lastDiagnostic(actor).reason,'material-alignment-damage-reduction');
+t.dr.value=[{amount:5,types:['piercing','unrecognized'],operator:false}];
+assert.equal(hit(),7,'known false AND unknown is false');
+t.dr.value=[{amount:5,types:['piercing','unrecognized'],operator:true}];
+assert.equal(hit(),0);assert.equal(api.lastDiagnostic(actor).reason,'material-alignment-damage-reduction');
+t.dr.value.push({amount:6,types:[]});
+assert.equal(hit(),6,'unknown weaker DR cannot affect highest known RD');
+t.dr.value=[{amount:5,types:['silver','magic']}];
+assert.equal(hit(),0);assert.equal(api.lastDiagnostic(actor).reason,'complex-damage-reduction');
+t.dr.value=[{amount:5,types:['good']}];
+assert.equal(preview([c(12,'slashing')],{alignment:{values:{good:true},enhancement:0}}).total,12);
+assert.equal(preview([c(12,'slashing')],{alignment:{values:{good:false},enhancement:0}}).total,7);
 console.log('PASS damage resolution: native traits, material DR, per-hit maximum RD/ER, immunity, vulnerability, ratio, conflict, manual fallback');
