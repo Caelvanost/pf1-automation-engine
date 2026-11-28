@@ -9,10 +9,11 @@ const AP_MATERIALS=["ordinaryAmmo","steel","iron","wood","stone","bone","alchemi
 const AP_ALIGN=["good","evil","lawful","chaotic"];
 const AP_PHYSICAL=["slashing","piercing","bludgeoning"];
 const AP_WRAPPED=new WeakSet(),AP_OUTPUTS=new WeakMap();
-let AP_LAST=null;
+let AP_LAST=null,AP_SHEET_LAST=null;
 const apText=(fr,en)=>String(game.i18n?.lang??"").startsWith("fr")?fr:en;
 const apArray=x=>Array.isArray(x)?x:typeof x?.values==="function"?[...x.values()]:null;
-const apEligible=item=>item?.type==="ammo"||item?.type==="loot"&&item.system?.subType==="ammo";
+const apEligible=item=>item?.type==="ammo"||item?.type==="loot"&&
+ (item.subType==="ammo"||item.system?.subType==="ammo");
 const apSupported=()=>game.release?.generation===13&&game.system?.id==="pf1"&&game.system?.version==="11.11"&&game.modules.get(AP_NS)?.active===true;
 const apEnabled=()=>apSupported()&&game.settings.get(AP_NS,"genericEnabled")===true&&game.settings.get(AP_NS,AP_SETTING)===true&&!game.modules.get(AP_RB)?.active;
 const apReadFlag=(item,ns,key)=>item?.getFlag?.(ns,key)??item?.flags?.[ns]?.[key];
@@ -138,12 +139,39 @@ function apWrap(use){
   AP_WRAPPED.add(use);
  }catch(error){console.warn("[PF1AE][Ammo] Conditional wrapper unavailable",error);}
 }
-function apRender(app,rendered){
- if(!apSupported()||!apEligible(app?.item))return;
- const root=rendered?.querySelector?rendered:rendered?.[0]??app.element;
- const section=root?.querySelector?.('[data-tab="details"]')??root?.querySelector?.(".tab.details");
- if(!section||section.querySelector("[data-pf1ae-ammunition]"))return;
- const doc=section.ownerDocument,item=app.item,data=apInspect(item),profile=data.profile;
+function apSheetSection(app,rendered){
+ // ApplicationV2's window.content is the full sheet, whereas the render
+ // argument can be an individual part, and navigation also uses data-tab.
+ const roots=[app?.window?.content,rendered,app?.element,app?.form]
+  .map(root=>root?.querySelector?root:root?.[0]?.querySelector?root[0]:null)
+  .filter(Boolean);
+ const selectors=['.tab.details[data-tab="details"]','.tab[data-tab="details"]','.tab.details',
+  'section[data-tab="details"]','div[data-tab="details"]:not(.item):not([role="tab"])'];
+ for(const root of roots){
+  for(const selector of selectors){
+   const section=root.matches?.(selector)?root:root.querySelector(selector);
+   if(section&&!section.closest?.("nav")&&!section.matches?.('a,button,[role="tab"]'))return section;
+  }
+  // Native subtype control anchors the Details content even when the
+  // particular PF1 sheet variant uses different tab classes.
+  const subtype=root.querySelector('select[name="system.subType"]');
+  const section=subtype?.closest?.(".tab,section[data-tab],div[data-tab]");
+  if(section&&!section.closest?.("nav")&&section.dataset?.tab==="details")return section;
+ }
+ return null;
+}
+function apRender(app,rendered,hook="unknown"){
+ if(!apSupported())return;
+ const item=app?.item??app?.document??app?.object;
+ if(!apEligible(item))return;
+ const section=apSheetSection(app,rendered);
+ AP_SHEET_LAST={hook,itemId:item.id??null,itemType:item.type,subType:item.subType??item.system?.subType??null,
+  sheetClass:app?.constructor?.name??null,status:section?"details-found":"details-not-found"};
+ if(!section)return;
+ if(section.querySelector("[data-pf1ae-ammunition]")){
+  AP_SHEET_LAST.status="already-rendered";return;
+ }
+ const doc=section.ownerDocument,data=apInspect(item),profile=data.profile;
  const box=doc.createElement("fieldset");box.dataset.pf1aeAmmunition="true";
  const legend=doc.createElement("legend");legend.textContent=apText("Propriétés de munition — PF1AE","Ammunition properties — PF1AE");box.append(legend);
  const info=doc.createElement("p");info.className="hint";
@@ -152,8 +180,9 @@ function apRender(app,rendered){
  data.issues?.length?apText("Migration incomplète : "+data.issues.join(", ")+". Vérifier les valeurs avant enregistrement.","Incomplete migration: "+data.issues.join(", ")+". Review before saving."):
  apText("Le bonus d’altération ne se cumule pas avec celui du lanceur. Enregistrer pour conserver les propriétés.","Enhancement does not stack with the launcher. Save to persist properties.");
  box.append(info);
- if(!profile){section.append(box);return;}
- const enabled=app.isEditable===true&&item.isOwner===true&&!conflict;
+ if(!profile){section.append(box);AP_SHEET_LAST.status="invalid-profile";return;}
+ const enabled=(app.isEditable===true||app.isEditable===undefined&&app.options?.editable===true)&&
+  (item.isOwner===true||game.user?.isGM===true)&&!conflict;
  const controls={};
  const field=(key,label,input)=>{
   const row=doc.createElement("div");row.className="form-group";
@@ -186,16 +215,33 @@ function apRender(app,rendered){
   }catch(error){globalThis.ui?.notifications?.warn?.(String(error.message??error));}
   finally{save.disabled=!enabled;}
  });
- box.append(save);section.append(box);
+ box.append(save);
+ // Prefer placement immediately below the native ammunition controls,
+ // rather than after the potentially long Statistics/Aura/Advanced area.
+ const ammoType=section.querySelector('select[name="system.ammoType"]')??
+  section.querySelector('select[name="system.ammo.type"]')??
+  section.querySelector('select[name="system.subType"]');
+ const group=ammoType?.closest?.(".form-group");
+ if(group&&typeof group.after==="function"&&section.contains?.(group))group.after(box);
+ else if(typeof section.prepend==="function")section.prepend(box);
+ else section.append(box);
+ AP_SHEET_LAST.status="rendered";AP_SHEET_LAST.editable=enabled;
+}
+function apOnRender(hook,app,rendered){
+ try{apRender(app,rendered,hook);}
+ catch(error){
+  AP_SHEET_LAST={...(AP_SHEET_LAST??{}),hook,status:"render-error",error:String(error?.message??error)};
+  console.warn("[PF1AE][Ammo] Sheet rendering failed",error);
+ }
 }
 Hooks.once("init",()=>{
  game.settings.register(AP_NS,AP_SETTING,{scope:"world",config:true,restricted:true,type:Boolean,default:true,
   name:"PF1AE.Settings.AmmunitionBonuses.Name",hint:"PF1AE.Settings.AmmunitionBonuses.Hint"});
  Hooks.on("pf1CreateActionUse",apWrap);
 });
-Hooks.on("renderApplication",apRender);
-Hooks.on("renderItemSheet",apRender);
+for(const hook of ["renderApplicationV2","renderApplication","renderItemSheetPF","renderLootSheetPF","renderItemSheet"])
+ Hooks.on(hook,(app,rendered)=>apOnRender(hook,app,rendered));
 Hooks.once("ready",()=>{
  const mod=game.modules.get(AP_NS);if(!mod)return;mod.api??={};
- mod.api.ammunition=Object.freeze({isAvailable:apEnabled,inspect:apInspect,save:apSave,previewBonus:apDelta,lastDiagnostic:()=>AP_LAST});
+ mod.api.ammunition=Object.freeze({isAvailable:apEnabled,inspect:apInspect,save:apSave,previewBonus:apDelta,lastDiagnostic:()=>AP_LAST,sheetDiagnostic:()=>AP_SHEET_LAST?{...AP_SHEET_LAST}:null});
 });

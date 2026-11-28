@@ -324,7 +324,7 @@ function drAmmoProfile(action,item,entry){
  if(!ammo||ammo.id!==id||ammo.actor?.uuid!==actor?.uuid||
     ammo.uuid!==actor?.uuid+".Item."+id||
     !(ammo.type==="ammo"&&(!ammo.system?.subType||ammo.system.subType===action.ammo.type)||
-      ammo.type==="loot"&&ammo.system?.subType==="ammo"&&item.system?.ammo?.default===id))
+      ammo.type==="loot"&&(ammo.subType==="ammo"||ammo.system?.subType==="ammo")&&item.system?.ammo?.default===id))
   return {ammoId:id,...drProjectileUnknown()};
  // PF1AE ammunition property service, if present, is authoritative for
  // configured or safely migrated profiles. Keep legacy adapter for old

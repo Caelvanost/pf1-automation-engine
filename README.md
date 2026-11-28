@@ -1,4 +1,6 @@
-# PF1 Automation Engine v1.52.1
+# PF1 Automation Engine v1.52.2
+
+Correctif d'affichage du panneau de munition pour les fiches PF1 ApplicationV2 (Butin/Munitions). Diagnostic : `game.modules.get('pf1-automation-engine').api.ammunition.sheetDiagnostic()`.
 
 ## Propriétés des munitions
 

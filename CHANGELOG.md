@@ -1,3 +1,8 @@
+# 1.52.2 — Affichage des propriétés de munition dans les fiches PF1 V2
+
+- Corrige le signalement utilisateur : panneau absent sur Butin/Munitions. Écoute renderApplicationV2 et hooks spécifiques, priorité au contenu complet de la fenêtre, exclusion des onglets de navigation, insertion dans la vraie section Détails. Accepte le sous-type natif du document ou du modèle système. Le panneau reste visible en lecture seule lorsque Roll Bonuses est actif.
+- Ajoute des tests simulés de rendu (navigation avant le contenu, document V2, sous-type loot, absence de doublon et conflit Roll Bonuses), et API ammunition.sheetDiagnostic(). Le rendu exact en jeu reste à confirmer ; aucun changement aux calculs de jets.
+
 # 1.52.1 — Propriétés et bonus des munitions
 
 - Fiche native ammo/loot-ammo : panneau PF1AE de maître, altération réelle, magie, matériau et quatre alignements ; stockage versionné par flag, enregistrement explicite propriétaire/MJ. Paramètre mondial de bonus, actif par défaut, suspendu si Roll Bonuses est actif.
