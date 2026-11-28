@@ -1,0 +1,54 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const ns='pf1-automation-engine',mod={active:true,api:{}},rb={active:false},hooks=new Map(),settings=new Map([['genericEnabled',true]]);
+const game={release:{generation:13},system:{id:'pf1',version:'11.11'},i18n:{lang:'fr'},user:{isGM:true},modules:new Map([[ns,mod],['ckl-roll-bonuses',rb]]),settings:{register(_n,k,o){settings.set(k,o.default)},get(_n,k){return settings.get(k)}}};
+const ctx={game,console,Hooks:{once:(n,fn)=>hooks.set(n,fn),on:(n,fn)=>hooks.set(n,fn)}};
+ctx.globalThis=ctx;vm.runInNewContext(fs.readFileSync(path.resolve(__dirname,'../scripts/ammunition-properties.js'),'utf8'),ctx);
+hooks.get('init')();hooks.get('ready')();
+const api=mod.api.ammunition,actor={uuid:'Actor.a'};
+const ammo=(enh=0,mw=false)=>({id:'m',uuid:'Actor.a.Item.m',actor,type:'ammo',isOwner:true,system:{subType:'arrow',masterwork:mw,flags:{dictionary:{Enhancement:String(enh)},boolean:[]}},flags:{},getFlag(n,k){return this.flags[n]?.[k]},async setFlag(n,k,v){(this.flags[n]??={})[k]=v}});
+const native={"attack.normal":["2[native]"],"damage.normal":[["1d6",["piercing"],false]]};
+function use(launcher,projectile,masterwork=false){
+ const entry={hasAmmo:true,ammo:{id:projectile.id,document:projectile}};
+ const item={type:'weapon',actor,system:{enh:launcher,masterwork}};
+ return {actor,item,action:{actionType:'rwak',enhancementBonus:launcher,ammo:{type:'arrow'},damage:{parts:[{types:new Set(['piercing'])}]}},shared:{attacks:[entry]},_getConditionalParts(){return native}};
+}
+const run=(launcher,projectile,masterwork=false)=>{
+ const u=use(launcher,projectile,masterwork);hooks.get('pf1CreateActionUse')(u);
+ return u._getConditionalParts(u.shared.attacks[0],{index:0});
+};
+assert.equal(api.previewBonus({launcherEnh:1,launcherMasterwork:true,ammoEnh:3,ammoMasterwork:true}).damage,2);
+assert.equal(api.previewBonus({launcherEnh:0,launcherMasterwork:true,ammoEnh:3,ammoMasterwork:true}).attack,2);
+assert.equal(api.previewBonus({launcherEnh:0,launcherMasterwork:false,ammoEnh:0,ammoMasterwork:true}).attack,1);
+assert.equal(run(3,ammo(1)),native);
+assert.equal(run(2,ammo(2)),native);
+let result=run(1,ammo(3));
+assert.equal(result['attack.normal'][1],'2[Munition PF1AE]');
+assert.equal(result['damage.normal'][1][0],'2[Munition PF1AE]');
+assert.equal(result['damage.normal'][1][1][0],'piercing');
+assert.equal(native['damage.normal'].length,1);
+assert.equal(run(0,ammo(3),true)['attack.normal'][1],'2[Munition PF1AE]');
+assert.equal(run(0,ammo(0,true))['attack.normal'][1],'1[Munition PF1AE]');
+assert.equal(run(0,ammo(0,true))['damage.normal'].length,1);
+rb.active=true;assert.equal(run(0,ammo(3)),native);rb.active=false;
+settings.set('ammunitionBonuses',false);assert.equal(run(0,ammo(3)),native);settings.set('ammunitionBonuses',true);
+const legacy=ammo();delete legacy.system.flags.dictionary.Enhancement;
+legacy.flags['ckl-roll-bonuses']={'ammo-enhancement':'3'};
+assert.equal(api.inspect(legacy).profile.enhancement,3);
+legacy.flags['ckl-roll-bonuses']['ammo-enhancement-stacks']='2';
+assert.equal(api.inspect(legacy).supported,false);assert.equal(run(0,legacy),native);
+delete legacy.flags['ckl-roll-bonuses']['ammo-enhancement-stacks'];
+legacy.flags['ckl-roll-bonuses']['ammo-enhancement']='@cl';
+assert.equal(api.inspect(legacy).supported,false);
+const bad=ammo(3);bad.uuid='Actor.other.Item.m';assert.equal(run(0,bad),native);
+const unknown=use(0,ammo(3));unknown.action.damage.parts=[];hooks.get('pf1CreateActionUse')(unknown);
+assert.equal(unknown._getConditionalParts(unknown.shared.attacks[0],{index:0}),native);
+(async()=>{
+ const p=ammo(0);
+ await api.save(p,{schema:1,enhancement:3,masterwork:false,magic:false,material:'alchemicalSilver',alignments:{good:true,evil:false,lawful:false,chaotic:false}});
+ const profile=api.inspect(p).profile;assert.equal(profile.enhancement,3);assert.equal(profile.masterwork,true);assert.equal(profile.magic,true);
+ assert.equal(profile.material,'alchemicalSilver');assert.equal(run(1,p)['damage.normal'][1][0],'2[Munition PF1AE]');
+ rb.active=true;await assert.rejects(api.save(p,profile));rb.active=false;
+ game.user={isGM:false};p.isOwner=false;await assert.rejects(api.save(p,profile));
+ console.log('PASS ammunition properties: legacy inspection, persistence, native conditional parts, enhancement nonstacking, masterwork and conflict');
+})().catch(e=>{console.error(e);process.exitCode=1;});

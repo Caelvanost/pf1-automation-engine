@@ -74,6 +74,10 @@
       "AutomaticDamageDefenses": {
         "Name": "Automatic damage defenses",
         "Hint": "Resolve basic PF1 defenses on typed attack cards. Disable Automate Damage. Complex defenses require the native dialog."
+      },
+      "AmmunitionBonuses": {
+        "Name": "PF1AE ammunition bonuses",
+        "Hint": "Suspended while Roll Bonuses is active."
       }
     },
     "Range": {

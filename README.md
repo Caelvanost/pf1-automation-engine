@@ -1,4 +1,8 @@
-# PF1 Automation Engine v1.52.0
+# PF1 Automation Engine v1.52.1
+
+## Propriétés des munitions
+
+Panneau PF1AE sur les fiches de munitions : altération, de maître, magie, matériau et alignements. Enregistrer pour migrer les anciennes valeurs simples ; le moteur de jets est suspendu quand Roll Bonuses est actif. Les autres fonctionnalités de Roll Bonuses restent à remplacer. Voir [Damage resolution](docs/DAMAGE-RESOLUTION.md).
 
 ## Affaiblissements de caractéristiques (v1.52.0)
 

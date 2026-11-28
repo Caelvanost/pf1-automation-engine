@@ -74,6 +74,10 @@
       "AutomaticDamageDefenses": {
         "Name": "Calcul automatique des défenses contre les dégâts",
         "Hint": "Applique les défenses simples de PF1 aux dégâts des cartes d’attaque. Désactiver Automate Damage. Les défenses complexes nécessitent la fenêtre native."
+      },
+      "AmmunitionBonuses": {
+        "Name": "Bonus de munitions PF1AE",
+        "Hint": "Suspendus lorsque Roll Bonuses est actif."
       }
     },
     "Range": {

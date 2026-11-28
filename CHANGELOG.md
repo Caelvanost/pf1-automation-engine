@@ -1,3 +1,10 @@
+# 1.52.1 — Propriétés et bonus des munitions
+
+- Fiche native ammo/loot-ammo : panneau PF1AE de maître, altération réelle, magie, matériau et quatre alignements ; stockage versionné par flag, enregistrement explicite propriétaire/MJ. Paramètre mondial de bonus, actif par défaut, suspendu si Roll Bonuses est actif.
+- Bonus d'attaque et dégâts via _getConditionalParts de l'instance ActionUse : différentiel non cumulable, qualité de maître déduite côté lanceur, types physiques natifs, pas de relance ou mutation de l'arme. Source native exacte de munition ; cas non vérifiables signalés. PF1FR inchangé.
+- Lecture/migration explicite des flags PF1 et Roll Bonuses numériques simples. Formules, cumul, bane, dégâts additionnels et notes hérités non migrés automatiquement. Aucun effacement de données Roll Bonuses. Moteur RD utilise le profil PF1AE ou legacy validé.
+- Tests simulés ; chemin natif exact PF1 11.11 et rendu réel à valider. Ne remplace pas encore l'ensemble de Roll Bonuses. Reprise registre de dégâts personnalisés après ce jalon.
+
 # 1.52.0 — Moteur d'affaiblissement de caractéristiques (premier volet)
 
 - API abilityDamage.preview/apply : opérations explicites sur les six caractéristiques natives (damage, drain, userPenalty). Affaiblissements et diminutions cumulés séparément ; restauration plafonnée à zéro. Pénalité = total manuel résolu, jamais somme implicite ; durée/cumul des effets à la charge de l'appelant. Aucun calcul secondaire des modificateurs, PV, état ou repos.

@@ -326,6 +326,28 @@ function drAmmoProfile(action,item,entry){
     !(ammo.type==="ammo"&&(!ammo.system?.subType||ammo.system.subType===action.ammo.type)||
       ammo.type==="loot"&&ammo.system?.subType==="ammo"&&item.system?.ammo?.default===id))
   return {ammoId:id,...drProjectileUnknown()};
+ // PF1AE ammunition property service, if present, is authoritative for
+ // configured or safely migrated profiles. Keep legacy adapter for old
+ // worlds/tests without this service. Roll Bonuses active: do not infer
+ // PF1AE-configured enhancement as a roll bonus.
+ const properties=game.modules.get(DR_NS)?.api?.ammunition?.inspect?.(ammo);
+ if(properties){
+  if(!properties.supported)return {ammoId:id,...drProjectileUnknown()};
+  const p=properties.profile;
+  if(p){
+   const launcher=drMeleeEnhancement(action,item);
+   const subtypes=drAlignmentSubtypes(actor),values={};
+   for(const align of DR_ALIGNMENTS){
+    const override=action.alignments?.[align],base=item.system?.alignments?.[align];
+    const launch=typeof override==="boolean"?override:override===null&&typeof base==="boolean"?base:null;
+    values[align]=drOr(launch,p.alignments[align],subtypes===null?null:subtypes.includes(align));
+   }
+   const ownEnh=game.modules.get("ckl-roll-bonuses")?.active&&properties.source==="pf1ae"?null:p.enhancement;
+   return {ammoId:id,sourceKind:"weapon",magic:drOr(launcher===null?null:launcher>0,ownEnh===null?null:ownEnh>0,p.magic&&p.enhancement===0),
+    epic:ownEnh!==null&&ownEnh>=6?true:null,material:{normal:p.material,addons:[],enhancement:ownEnh},
+    alignment:{values,enhancement:ownEnh}};
+  }
+ }
  const sys=ammo.system,dict=sys?.flags?.dictionary,booleans=drArray(sys?.flags?.boolean);
  const flags=dict&&typeof dict==="object"&&!Array.isArray(dict)?dict:null;
  // Explicit PF1 item dictionary flags supported for legacy ammunition:
